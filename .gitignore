@@ -1,0 +1,13 @@
+# Xcode
+xcuserdata/
+DerivedData/
+build/
+*.xcscmblueprint
+*.xccheckout
+
+# macOS
+.DS_Store
+
+# Internal planning docs — kept local, not published
+docs/
+.ratchet/
