@@ -50,7 +50,7 @@ struct INV01BuildLaunchTests {
 // MARK: - Level 3: Integration — Simulator launch (shell-level, documented here as a reference)
 //
 // The integration check is performed by the CI step referenced in spec.yaml:
-//   xcodebuild build -project fonos-ios/FonosApp.xcodeproj \
+//   xcodebuild build -project FonosApp.xcodeproj \
 //                    -scheme FonosApp \
 //                    -destination 'platform=iOS Simulator,name=iPhone 16 Pro' | tail -1
 //

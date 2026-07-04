@@ -19,15 +19,15 @@ final class NoteQD04LintTests: XCTestCase {
     /// Absolute paths to all new Swift files introduced by the Voice Notes feature.
     /// Update this list as new files are added.
     private static let newVoiceNotesFiles: [String] = [
-        "/Users/ethan/Projects/design/fonos/fonos-ios/FonosApp/Models/NoteContainer.swift",
-        "/Users/ethan/Projects/design/fonos/fonos-ios/FonosApp/Models/NoteEntry.swift",
-        "/Users/ethan/Projects/design/fonos/fonos-ios/FonosApp/Services/NoteService.swift",
-        "/Users/ethan/Projects/design/fonos/fonos-ios/FonosApp/Services/NoteViewModel.swift",
-        "/Users/ethan/Projects/design/fonos/fonos-ios/FonosApp/Views/NotesView.swift",
-        "/Users/ethan/Projects/design/fonos/fonos-ios/FonosApp/Views/NotebookDetailView.swift",
-        "/Users/ethan/Projects/design/fonos/fonos-ios/FonosApp/Views/RecordNoteSheet.swift",
-        "/Users/ethan/Projects/design/fonos/fonos-ios/FonosApp/Views/SettingsView/NotebookSettingsView.swift",
-        "/Users/ethan/Projects/design/fonos/fonos-ios/FonosApp/FonosIntents/RecordNoteIntent.swift",
+        "/Users/ethan/Projects/design/FonosApp/Models/NoteContainer.swift",
+        "/Users/ethan/Projects/design/FonosApp/Models/NoteEntry.swift",
+        "/Users/ethan/Projects/design/FonosApp/Services/NoteService.swift",
+        "/Users/ethan/Projects/design/FonosApp/Services/NoteViewModel.swift",
+        "/Users/ethan/Projects/design/FonosApp/Views/NotesView.swift",
+        "/Users/ethan/Projects/design/FonosApp/Views/NotebookDetailView.swift",
+        "/Users/ethan/Projects/design/FonosApp/Views/RecordNoteSheet.swift",
+        "/Users/ethan/Projects/design/FonosApp/Views/SettingsView/NotebookSettingsView.swift",
+        "/Users/ethan/Projects/design/FonosApp/FonosIntents/RecordNoteIntent.swift",
     ]
 
     // MARK: - SwiftLint availability

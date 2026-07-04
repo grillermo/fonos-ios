@@ -97,8 +97,8 @@ struct QD06BundleSizeTests {
     func packageResolvedLightweightDeps() throws {
         // Find Package.resolved relative to the test bundle's source package
         let possiblePaths = [
-            "/Users/ethan/Projects/design/fonos/fonos-ios/FonosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
-            "/Users/ethan/Projects/design/fonos/fonos-ios/Package.resolved",
+            "/Users/ethan/Projects/design/FonosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+            "/Users/ethan/Projects/design/fonos-ios/Package.resolved",
         ]
 
         var resolvedURL: URL?
@@ -134,7 +134,7 @@ struct QD06BundleSizeTests {
 // The ratchet runner executes the following to measure actual IPA size:
 //
 //   xcodebuild archive \
-//     -project fonos-ios/FonosApp.xcodeproj \
+//     -project FonosApp.xcodeproj \
 //     -scheme FonosApp \
 //     -archivePath /tmp/FonosApp.xcarchive \
 //     -configuration Release

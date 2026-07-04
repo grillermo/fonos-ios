@@ -166,6 +166,6 @@ private func parseViolations(from jsonOutput: String) -> [SwiftLintViolation] {
 
 private func sourcePath() -> String {
     // Absolute path to the app source directory relative to the repo root
-    "/Users/ethan/Projects/design/fonos/fonos-ios/FonosApp"
+    "/Users/ethan/Projects/design/FonosApp"
 }
 #endif
