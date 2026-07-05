@@ -8,6 +8,7 @@ struct HistoryView: View {
 
     @State private var searchText: String = ""
     @State private var activeFilter: HistoryFilter = .all
+    @State private var correctionSession: DictationSession?
 
     // MARK: - Filter chips
 
@@ -139,7 +140,7 @@ struct HistoryView: View {
                 activeFilter = filter
             }
         } label: {
-            Text(filter.rawValue)
+            Text(LocalizedStringKey(filter.rawValue))
                 .font(.system(size: 13, weight: isActive ? .semibold : .regular))
                 .foregroundColor(isActive ? Color(hex: "#1a1917") : Color(hex: "#fafaf9").opacity(0.6))
                 .padding(.horizontal, 14)
@@ -168,11 +169,27 @@ struct HistoryView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .contextMenu {
+                        Button {
+                            UIPasteboard.general.string = session.outputText.isEmpty
+                                ? session.inputText : session.outputText
+                        } label: {
+                            Label("Copy text", systemImage: "doc.on.doc")
+                        }
+                        Button {
+                            correctionSession = session
+                        } label: {
+                            Label("Save correction…", systemImage: "character.cursor.ibeam")
+                        }
+                    }
             }
             .onDelete(perform: deleteSessions)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .sheet(item: $correctionSession) { session in
+            CorrectionCaptureSheet(session: session)
+        }
     }
 
     // MARK: - Empty states
@@ -214,6 +231,108 @@ struct HistoryView: View {
             let session = filteredSessions[index]
             modelContext.delete(session)
         }
+    }
+}
+
+// MARK: - CorrectionCaptureSheet
+
+/// P1-1 "correction grows from use": capture a mis-heard span from a history
+/// session as a vocab correction rule (find → replace) or a domain term.
+/// Saved into the globally-mounted Corrections book.
+private struct CorrectionCaptureSheet: View {
+    let session: DictationSession
+    var vocabStore = VocabStore()
+
+    @Environment(\.dismiss) private var dismiss
+
+    private enum CaptureKind: String, CaseIterable {
+        case rule = "Correction rule"
+        case term = "Term"
+    }
+
+    @State private var captureKind: CaptureKind = .rule
+    @State private var fromText = ""
+    @State private var toText = ""
+    @State private var useRegex = false
+    @State private var saved = false
+
+    private var canSave: Bool {
+        switch captureKind {
+        case .rule: return !fromText.isEmpty && !toText.isEmpty
+        case .term: return !toText.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(hex: "#1a1917").ignoresSafeArea()
+
+                List {
+                    Section {
+                        Text(session.inputText.isEmpty ? session.outputText : session.inputText)
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: "#fafaf9").opacity(0.8))
+                            .textSelection(.enabled)
+                    } header: {
+                        Text("Transcript")
+                    } footer: {
+                        Text("Copy the mis-heard span from the transcript, then define its correction.")
+                    }
+
+                    Section {
+                        Picker("Save as", selection: $captureKind) {
+                            ForEach(CaptureKind.allCases, id: \.self) { kind in
+                                Text(LocalizedStringKey(kind.rawValue)).tag(kind)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        if captureKind == .rule {
+                            TextField("Mis-heard text (e.g. \"my sequel\")", text: $fromText)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                            TextField("Correct text (e.g. \"MySQL\")", text: $toText)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                            Toggle("Regular expression", isOn: $useRegex)
+                        } else {
+                            TextField("Correct spelling (e.g. \"Kubernetes\")", text: $toText)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                        }
+                    } footer: {
+                        Text(captureKind == .rule
+                             ? "Applied to every future transcript (Corrections book, mounted globally)."
+                             : "Biases speech recognition and LLM cleanup toward this spelling.")
+                    }
+                }
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Save Correction")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        switch captureKind {
+                        case .rule:
+                            vocabStore.addCorrectionRule(
+                                from: fromText, to: toText,
+                                kind: useRegex ? .regex : .literal
+                            )
+                        case .term:
+                            vocabStore.addCorrectionTerm(toText)
+                        }
+                        dismiss()
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }
 

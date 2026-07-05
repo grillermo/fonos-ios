@@ -12,7 +12,7 @@ struct SettingsView: View {
     // MARK: - Tab state
 
     enum SettingsTab {
-        case models, modes, general
+        case models, modes, vocab, general
     }
 
     @State private var selectedTab: SettingsTab = .models
@@ -47,7 +47,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
         }
         .onChange(of: config) { _, _ in
             saveConfig()
@@ -60,6 +60,7 @@ struct SettingsView: View {
         HStack(spacing: 0) {
             tabButton(title: "Models", tab: .models)
             tabButton(title: "Modes", tab: .modes)
+            tabButton(title: "Vocab", tab: .vocab)
             tabButton(title: "General", tab: .general)
         }
         .padding(4)
@@ -76,7 +77,7 @@ struct SettingsView: View {
                 selectedTab = tab
             }
         } label: {
-            Text(title)
+            Text(LocalizedStringKey(title))
                 .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
                 .foregroundColor(isSelected ? Color(hex: "#1a1917") : textDim)
                 .frame(maxWidth: .infinity)
@@ -104,6 +105,8 @@ struct SettingsView: View {
             ModelsTab(config: $config)
         case .modes:
             ModesTab(config: $config)
+        case .vocab:
+            VocabTab()
         case .general:
             generalTab
         }
@@ -113,6 +116,7 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         List {
+            doctorSection
             dictationSection
             recordingSection
             destinationsSection
@@ -120,6 +124,29 @@ struct SettingsView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+    }
+
+    // MARK: - Setup Doctor Section
+
+    private var doctorSection: some View {
+        Section {
+            NavigationLink {
+                SetupDoctorView(config: config)
+            } label: {
+                Label {
+                    Text("Setup Doctor")
+                        .foregroundColor(textPrimary)
+                } icon: {
+                    Image(systemName: "stethoscope")
+                        .foregroundColor(amber)
+                }
+            }
+            .listRowBackground(cardBg)
+        } footer: {
+            Text("Check permissions, keyboard setup, endpoints, and configuration in one place.")
+                .font(.system(size: 12))
+                .foregroundColor(textDim)
+        }
     }
 
     // MARK: - Dictation Section
@@ -292,9 +319,7 @@ struct SettingsView: View {
     // MARK: - Persistence
 
     private func saveConfig() {
-        if let data = try? JSONEncoder().encode(config) {
-            UserDefaults.standard.set(data, forKey: "app_config")
-        }
+        AppConfigStorage.save(config)
     }
 }
 

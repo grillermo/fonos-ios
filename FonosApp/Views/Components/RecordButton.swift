@@ -1,9 +1,13 @@
 import SwiftUI
 
 /// Large circular mic button with recording states.
+/// Default interaction is tap; pass `onPressingChanged` to switch the button
+/// to press-and-hold (RecordMode.hold) — it fires true on touch-down and
+/// false on release.
 struct RecordButton: View {
     let state: RecordButton.ButtonState
     let onTap: () -> Void
+    var onPressingChanged: ((Bool) -> Void)?
 
     enum ButtonState: Equatable {
         case idle
@@ -38,14 +42,46 @@ struct RecordButton: View {
         }
         .frame(width: buttonSize, height: buttonSize)
         .contentShape(Circle())
-        .onTapGesture {
-            onTap()
-        }
+        .gesture(interactionGesture)
         .shadow(
             color: state == .recording ? Color.red.opacity(0.5) : Color.orange.opacity(0.4),
             radius: state == .recording ? 16 : 8,
             x: 0, y: 4
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("record-button")
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var accessibilityLabel: String {
+        switch state {
+        case .idle: return "Record"
+        case .recording: return "Stop recording"
+        case .processing: return "Processing recording"
+        }
+    }
+
+    private var accessibilityValue: String {
+        switch state {
+        case .idle: return "Idle"
+        case .recording: return "Recording"
+        case .processing: return "Processing"
+        }
+    }
+
+    /// Tap by default; touch-down/up reporting when onPressingChanged is set.
+    private var interactionGesture: AnyGesture<Void> {
+        if let onPressingChanged {
+            return AnyGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in onPressingChanged(true) }
+                    .onEnded { _ in onPressingChanged(false) }
+                    .map { _ in () }
+            )
+        }
+        return AnyGesture(TapGesture().onEnded { onTap() }.map { _ in () })
     }
 }
 

@@ -42,6 +42,23 @@ struct NotebookDetailView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button {
+                        shareExport(format: .markdown)
+                    } label: {
+                        Label("Export as Markdown", systemImage: "doc.text")
+                    }
+                    Button {
+                        shareExport(format: .json)
+                    } label: {
+                        Label("Export as JSON", systemImage: "curlybraces")
+                    }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .foregroundColor(Color(hex: "#fafaf9").opacity(0.7))
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink(destination: NotebookSettingsView(notebook: notebook, noteService: noteService)) {
                     Image(systemName: "gear")
                         .foregroundColor(Color(hex: "#fafaf9").opacity(0.7))
@@ -100,6 +117,28 @@ struct NotebookDetailView: View {
 
     private func reloadEntries() {
         entries = noteService.entriesForNotebook(notebook.id)
+    }
+
+    /// Exports the notebook (entries in chronological order) and presents
+    /// the system share sheet with the resulting file.
+    private func shareExport(format: NoteExportFormat) {
+        let chronological = noteService.entriesForNotebook(notebook.id).reversed()
+        guard let url = try? noteService.exportFileURL(
+            notebook: notebook,
+            entries: Array(chronological),
+            format: format
+        ) else { return }
+
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController else {
+            return
+        }
+        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        var presenter = rootVC
+        while let presented = presenter.presentedViewController {
+            presenter = presented
+        }
+        presenter.present(activityVC, animated: true)
     }
 }
 

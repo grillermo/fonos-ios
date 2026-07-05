@@ -39,7 +39,7 @@ struct QD06BundleSizeTests {
 
     // MARK: - No large asset blobs
 
-    @Test("App bundle contains no individual files larger than 5MB")
+    @Test("App bundle contains no individual asset files larger than 5MB")
     func noLargeAssetFiles() throws {
         let bundle = Bundle(for: FonosAppModule.self)
         let bundleURL = bundle.bundleURL
@@ -51,9 +51,18 @@ struct QD06BundleSizeTests {
         }
         let fiveMB = 5 * 1024 * 1024
         for case let url as URL in enumerator {
-            let attrs = try? fm.attributesOfItem(atPath: url.path)
+            // Compiled code is not an asset: Debug builds carry large
+            // unstripped binaries (app debug dylib, test bundle executable,
+            // Apple's Testing.framework). The invariant guards resource blobs.
+            let path = url.path
+            let isExecutableCode = url.pathExtension.isEmpty
+                || url.pathExtension == "dylib"
+                || path.contains(".framework/")
+                || path.contains(".xctest/")
+            if isExecutableCode { continue }
+            let attrs = try? fm.attributesOfItem(atPath: path)
             if let size = attrs?[.size] as? Int, size > fiveMB {
-                Issue.record("Large file in bundle: \(url.lastPathComponent) (\(size / 1024)KB)")
+                Issue.record("Large asset in bundle: \(url.lastPathComponent) (\(size / 1024)KB)")
             }
         }
     }

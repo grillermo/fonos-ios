@@ -26,6 +26,11 @@ struct NotebookSettingsView: View {
     @State private var showDeleteConfirmation = false
     @Environment(\.dismiss) private var dismiss
 
+    // Vocab books mounted on this notebook (P1-1)
+    private let vocabStore = VocabStore()
+    @State private var vocabBooks: [VocabBook] = []
+    @State private var mountedBookIDs: Set<String> = []
+
     // MARK: - Colors (Fonos warm-dark tokens)
 
     private let bg = Color(hex: "#1a1917")
@@ -94,6 +99,7 @@ struct NotebookSettingsView: View {
                 generalSection
                 sttSection
                 llmSection
+                vocabSection
                 displaySection
                 shortcutSection
                 dangerZoneSection
@@ -180,6 +186,40 @@ struct NotebookSettingsView: View {
 
             modelPicker(title: "STT Model", selection: $sttModelOverride, capability: "stt")
         } header: { numberedHeader(1, "Speech-to-Text") }
+    }
+
+    private var vocabSection: some View {
+        Section {
+            if vocabBooks.isEmpty {
+                Text("No vocab books yet — create them in Settings › Vocab.")
+                    .font(.system(size: 13))
+                    .foregroundColor(textDim)
+                    .listRowBackground(cardBg)
+            } else {
+                ForEach(vocabBooks) { book in
+                    Toggle(book.name, isOn: Binding(
+                        get: { mountedBookIDs.contains(book.id) },
+                        set: { mounted in
+                            if mounted { mountedBookIDs.insert(book.id) } else { mountedBookIDs.remove(book.id) }
+                            vocabStore.setMounted(mounted, bookID: book.id,
+                                                  forKey: VocabStore.notebookMountKey(notebook.id))
+                        }
+                    ))
+                    .foregroundColor(textPrimary)
+                    .listRowBackground(cardBg)
+                }
+            }
+        } header: {
+            sectionHeader("Vocabulary")
+        } footer: {
+            Text("Books mounted on this notebook. Globally mounted books always apply.")
+                .font(.system(size: 12))
+                .foregroundColor(textDim)
+        }
+        .onAppear {
+            vocabBooks = vocabStore.books
+            mountedBookIDs = Set(vocabStore.mountedIDs(forKey: VocabStore.notebookMountKey(notebook.id)))
+        }
     }
 
     private var llmSection: some View {
@@ -299,11 +339,11 @@ struct NotebookSettingsView: View {
         .listRowBackground(cardBg)
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
+    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title)
             .font(.system(size: 12, weight: .medium))
             .foregroundColor(textDim)
-            .textCase(nil)
+            .textCase(.uppercase)
     }
 
     private func numberedHeader(_ n: Int, _ title: String) -> some View {

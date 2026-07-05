@@ -20,6 +20,12 @@ enum NoteServiceError: LocalizedError, Equatable {
     }
 }
 
+/// Export formats supported by the notebook share sheet.
+enum NoteExportFormat: String, CaseIterable, Sendable {
+    case markdown = "md"
+    case json = "json"
+}
+
 /// Service for creating and managing NoteContainer and NoteEntry objects.
 @MainActor
 final class NoteService {
@@ -366,6 +372,34 @@ final class NoteService {
             return "{}"
         }
         return jsonString
+    }
+
+    /// Writes an export to a temp file (named after the notebook) suitable
+    /// for handing to a share sheet.
+    func exportFileURL(notebook: NoteContainer,
+                       entries: [NoteEntry],
+                       format: NoteExportFormat) throws -> URL {
+        let content: String
+        switch format {
+        case .markdown: content = exportMarkdown(notebook: notebook, entries: entries)
+        case .json:     content = exportJSON(notebook: notebook, entries: entries)
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(Self.sanitizedFilename(notebook.title))
+            .appendingPathExtension(format.rawValue)
+        try content.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    /// Replaces path-hostile characters so the notebook title can be a filename.
+    static func sanitizedFilename(_ title: String) -> String {
+        let forbidden = CharacterSet(charactersIn: "/\\:?%*|\"<>")
+        let joined = title.components(separatedBy: forbidden).joined(separator: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let meaningful = joined.trimmingCharacters(
+            in: CharacterSet(charactersIn: "-").union(.whitespacesAndNewlines)
+        )
+        return meaningful.isEmpty ? "Notebook" : joined
     }
 
     // MARK: - Per-notebook Configuration

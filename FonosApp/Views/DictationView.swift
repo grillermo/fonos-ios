@@ -119,11 +119,11 @@ struct DictationView: View {
 
     private var statusText: String {
         switch viewModel.recordingState {
-        case .idle:       return "Ready"
-        case .recording:  return "Recording"
-        case .processing: return "Processing"
-        case .result:     return "Done"
-        case .error:      return "Error"
+        case .idle:       return String(localized: "Ready")
+        case .recording:  return String(localized: "Recording")
+        case .processing: return String(localized: "Processing")
+        case .result:     return String(localized: "Done")
+        case .error:      return String(localized: "Error")
         }
     }
 
@@ -176,7 +176,8 @@ struct DictationView: View {
         VStack(spacing: 16) {
             RecordButton(
                 state: recordButtonState,
-                onTap: handleRecordTap
+                onTap: handleRecordTap,
+                onPressingChanged: holdHandler
             )
 
             Text(recordButtonHint)
@@ -196,12 +197,18 @@ struct DictationView: View {
     }
 
     private var recordButtonHint: String {
+        let holdMode = viewModel.config.recordMode == .hold
         switch viewModel.recordingState {
-        case .idle:       return "Tap to dictate"
-        case .recording:  return "Tap to stop"
-        case .processing: return "Processing..."
-        case .result:     return "Tap to record again"
-        case .error:      return "Tap to try again"
+        case .idle:
+            return holdMode ? String(localized: "Hold to dictate") : String(localized: "Tap to dictate")
+        case .recording:
+            return holdMode ? String(localized: "Release to stop") : String(localized: "Tap to stop")
+        case .processing:
+            return String(localized: "Processing...")
+        case .result:
+            return holdMode ? String(localized: "Hold to record again") : String(localized: "Tap to record again")
+        case .error:
+            return holdMode ? String(localized: "Hold to try again") : String(localized: "Tap to try again")
         }
     }
 
@@ -249,6 +256,27 @@ struct DictationView: View {
             .background(
                 Capsule().fill(Color(red: 134/255, green: 239/255, blue: 172/255).opacity(0.08))
             )
+        }
+    }
+
+    /// Non-nil only in hold mode — switches RecordButton to press-and-hold.
+    private var holdHandler: ((Bool) -> Void)? {
+        guard viewModel.config.recordMode == .hold else { return nil }
+        return handleHoldChange
+    }
+
+    /// Press-and-hold handling (RecordMode.hold): touch-down starts, release stops.
+    private func handleHoldChange(_ pressing: Bool) {
+        let action = DictationViewModel.holdGestureAction(
+            pressing: pressing,
+            state: viewModel.recordingState,
+            recordMode: viewModel.config.recordMode
+        )
+        viewLog.info("✊ handleHoldChange(pressing: \(pressing)) → \(String(describing: action))")
+        switch action {
+        case .start: viewModel.startRecording()
+        case .stop:  viewModel.stopRecording()
+        case .none:  break
         }
     }
 
@@ -421,7 +449,7 @@ struct DictationView: View {
                 Image(systemName: icon)
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(Color(hex: "#fbbf24"))
-                Text(label)
+                Text(LocalizedStringKey(label))
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(Color(hex: "#fafaf9").opacity(0.6))
             }

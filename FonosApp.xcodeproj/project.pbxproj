@@ -15,11 +15,17 @@
 		663C34A9CC884E40AD59B706 /* Color+Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A3 /* Color+Hex.swift */; };
 		663C34A9CC884E40AD59B707 /* DictationSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A4 /* DictationSession.swift */; };
 		663C34A9CC884E40AD59B708 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A5 /* AppConfig.swift */; };
+		FE0018AA0018AA0018AA0002 /* VocabBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0018AA0018AA0018AA0001 /* VocabBook.swift */; };
+		FE0019AA0019AA0019AA0002 /* VocabStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0019AA0019AA0019AA0001 /* VocabStore.swift */; };
+		FE0022AA0022AA0022AA0002 /* ScenarioImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0022AA0022AA0022AA0001 /* ScenarioImporter.swift */; };
+		FE0024AA0024AA0024AA0002 /* SetupDoctor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */; };
+		FE0025AA0025AA0025AA0002 /* SetupDoctorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */; };
 		663C34A9CC884E40AD59B709 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */; };
 		663C34A9CC884E40AD59B70A /* STTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A7 /* STTService.swift */; };
 		663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */; };
 		663C34A9CC884E40AD59B70C /* TextRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A9 /* TextRouter.swift */; };
 		663C34A9CC884E40AD59B70D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645AA /* Assets.xcassets */; };
+		FE0026AA0026AA0026AA0002 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FE0026AA0026AA0026AA0001 /* Localizable.xcstrings */; };
 		77D41ED5933B42BF9BE9C701 /* FonosAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C711 /* FonosAppTests.swift */; };
 		77D41ED5933B42BF9BE9C702 /* AudioCaptureServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C712 /* AudioCaptureServiceTests.swift */; };
 		77D41ED5933B42BF9BE9C703 /* STTServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C713 /* STTServiceTests.swift */; };
@@ -43,6 +49,9 @@
 		KB12001AA012001AA012001B /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = KB12001AA012001AA012001A /* KeyboardViewController.swift */; };
 		KB12002AA012002AA012002B /* KeyboardAudioService.swift in Sources */ = {isa = PBXBuildFile; fileRef = KB12002AA012002AA012002A /* KeyboardAudioService.swift */; };
 		KB12003AA012003AA012003B /* KeyboardSTTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = KB12003AA012003AA012003A /* KeyboardSTTService.swift */; };
+		KBIPC001AA001AA001AA01B /* KeyboardIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */; };
+		KBIPC001AA001AA001AA02B /* KeyboardIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */; };
+		KBIPC002AA002AA002AA01B /* KeyboardIPCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBIPC002AA002AA002AA01A /* KeyboardIPCTests.swift */; };
 		KB12004AA012004AA012004B /* FonosKeyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = KB12004AA012004AA012004A /* FonosKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		MP01001AA001001AA001001B /* ModelProbeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP01001AA001001AA001001A /* ModelProbeService.swift */; };
 		UI13001AA013001AA013001B /* FonosAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UI13001AA013001AA013001A /* FonosAppUITests.swift */; };
@@ -58,6 +67,11 @@
 		WP01VON003AA003AA003001B /* NoteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP01VON003AA003AA003001A /* NoteService.swift */; };
 		WP01VON004AA004AA004001B /* NoteINV01ModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP01VON004AA004AA004001A /* NoteINV01ModelTests.swift */; };
 		FE0006AA0006AA0006AA0002 /* NoteINV14BackfillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0006AA0006AA0006AA0001 /* NoteINV14BackfillTests.swift */; };
+		FE0012AA0012AA0012AA0002 /* NoteINV12ExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0012AA0012AA0012AA0001 /* NoteINV12ExportTests.swift */; };
+		FE0016AA0016AA0016AA0002 /* RecordGestureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0016AA0016AA0016AA0001 /* RecordGestureTests.swift */; };
+		FE0017AA0017AA0017AA0002 /* VocabTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0017AA0017AA0017AA0001 /* VocabTests.swift */; };
+		FE0021AA0021AA0021AA0002 /* ScenarioImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */; };
+		FE0023AA0023AA0023AA0002 /* SetupDoctorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */; };
 		WP01VON005AA005AA005001B /* NoteINV13ContainerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP01VON005AA005AA005001A /* NoteINV13ContainerTests.swift */; };
 		WP01VON006AA006AA006001B /* NoteQD03SyncFriendlyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP01VON006AA006AA006001A /* NoteQD03SyncFriendlyTests.swift */; };
 		WP03001AA003001AA003001B /* FonosSTT.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03001AA003001AA003001A /* FonosSTT.swift */; };
@@ -99,6 +113,7 @@
 		WP10002AA010002AA010002B /* QD07SwiftLintTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP10002AA010002AA010002A /* QD07SwiftLintTests.swift */; };
 		WP11001AA011001AA011001B /* ModeConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP11001AA011001AA011001A /* ModeConfig.swift */; };
 		WP11002AA011002AA011002B /* ModelsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP11002AA011002AA011002A /* ModelsTab.swift */; };
+		FE0020AA0020AA0020AA0002 /* VocabTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0020AA0020AA0020AA0001 /* VocabTab.swift */; };
 		WP11003AA011003AA011003B /* ModesTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP11003AA011003AA011003A /* ModesTab.swift */; };
 /* End PBXBuildFile section */
 
@@ -146,11 +161,17 @@
 		50BA9D99CDBC44ABA7E645A3 /* Color+Hex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Hex.swift"; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A4 /* DictationSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationSession.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A5 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		FE0018AA0018AA0018AA0001 /* VocabBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabBook.swift; sourceTree = "<group>"; };
+		FE0019AA0019AA0019AA0001 /* VocabStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabStore.swift; sourceTree = "<group>"; };
+		FE0022AA0022AA0022AA0001 /* ScenarioImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioImporter.swift; sourceTree = "<group>"; };
+		FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctor.swift; sourceTree = "<group>"; };
+		FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctorView.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A7 /* STTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STTService.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A9 /* TextRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextRouter.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		FE0026AA0026AA0026AA0001 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645AB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		663C34A9CC884E40AD59B711 /* FonosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosApp.swift; sourceTree = "<group>"; };
 		663C34A9CC884E40AD59B712 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -181,6 +202,8 @@
 		KB12001AA012001AA012001A /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		KB12002AA012002AA012002A /* KeyboardAudioService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardAudioService.swift; sourceTree = "<group>"; };
 		KB12003AA012003AA012003A /* KeyboardSTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardSTTService.swift; sourceTree = "<group>"; };
+		KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardIPC.swift; sourceTree = "<group>"; };
+		KBIPC002AA002AA002AA01A /* KeyboardIPCTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardIPCTests.swift; sourceTree = "<group>"; };
 		KB12004AA012004AA012004A /* FonosKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FonosKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		KB12006AA012006AA012006A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		KB12007AA012007AA012007A /* FonosKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FonosKeyboard.entitlements; sourceTree = "<group>"; };
@@ -199,6 +222,11 @@
 		WP01VON003AA003AA003001A /* NoteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteService.swift; sourceTree = "<group>"; };
 		WP01VON004AA004AA004001A /* NoteINV01ModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV01ModelTests.swift; sourceTree = "<group>"; };
 		FE0006AA0006AA0006AA0001 /* NoteINV14BackfillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV14BackfillTests.swift; sourceTree = "<group>"; };
+		FE0012AA0012AA0012AA0001 /* NoteINV12ExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV12ExportTests.swift; sourceTree = "<group>"; };
+		FE0016AA0016AA0016AA0001 /* RecordGestureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordGestureTests.swift; sourceTree = "<group>"; };
+		FE0017AA0017AA0017AA0001 /* VocabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabTests.swift; sourceTree = "<group>"; };
+		FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioImportTests.swift; sourceTree = "<group>"; };
+		FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctorTests.swift; sourceTree = "<group>"; };
 		WP01VON005AA005AA005001A /* NoteINV13ContainerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV13ContainerTests.swift; sourceTree = "<group>"; };
 		WP01VON006AA006AA006001A /* NoteQD03SyncFriendlyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteQD03SyncFriendlyTests.swift; sourceTree = "<group>"; };
 		WP03001AA003001AA003001A /* FonosSTT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosSTT.swift; sourceTree = "<group>"; };
@@ -240,6 +268,7 @@
 		WP10002AA010002AA010002A /* QD07SwiftLintTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QD07SwiftLintTests.swift; sourceTree = "<group>"; };
 		WP11001AA011001AA011001A /* ModeConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeConfig.swift; sourceTree = "<group>"; };
 		WP11002AA011002AA011002A /* ModelsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTab.swift; sourceTree = "<group>"; };
+		FE0020AA0020AA0020AA0001 /* VocabTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabTab.swift; sourceTree = "<group>"; };
 		WP11003AA011003AA011003A /* ModesTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModesTab.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -281,6 +310,7 @@
 				663C34A9CC884E40AD59B712 /* ContentView.swift */,
 				663C34A9CC884E40AD59B713 /* DictationView.swift */,
 				50BA9D99CDBC44ABA7E645A1 /* HistoryView.swift */,
+				FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */,
 				50BA9D99CDBC44ABA7E645A2 /* SettingsView.swift */,
 				WP07001AA007001AA007001A /* ModePicker.swift */,
 				WP08004AA008004AA008004A /* DestinationPicker.swift */,
@@ -299,6 +329,7 @@
 			children = (
 				50BA9D99CDBC44ABA7E645A4 /* DictationSession.swift */,
 				50BA9D99CDBC44ABA7E645A5 /* AppConfig.swift */,
+				FE0018AA0018AA0018AA0001 /* VocabBook.swift */,
 				AA01B001AA014D00AA014D11 /* Mode.swift */,
 				AA01B001AA014D00AA014D12 /* ModelProfile.swift */,
 				AA01B001AA014D00AA014D13 /* Destination.swift */,
@@ -349,9 +380,15 @@
 				WP04VON005AA005AA005001A /* NoteINV09IntentTests.swift */,
 				WP04VON006AA006AA006001A /* NoteINV10DeepLinkTests.swift */,
 				FE0006AA0006AA0006AA0001 /* NoteINV14BackfillTests.swift */,
+				FE0012AA0012AA0012AA0001 /* NoteINV12ExportTests.swift */,
+				FE0016AA0016AA0016AA0001 /* RecordGestureTests.swift */,
+				FE0017AA0017AA0017AA0001 /* VocabTests.swift */,
+				FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */,
+				FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */,
 				FE0007AA0007AA0007AA0001 /* NotebookPipelineTests.swift */,
 				FE0008AA0008AA0008AA0001 /* NoteINV15LLMNoteTests.swift */,
 				FE0009AA0009AA0009AA0001 /* SharedNotebookCatalogTests.swift */,
+				KBIPC002AA002AA002AA01A /* KeyboardIPCTests.swift */,
 			);
 			path = FonosAppTests;
 			sourceTree = "<group>";
@@ -371,6 +408,7 @@
 			isa = PBXGroup;
 			children = (
 				50BA9D99CDBC44ABA7E645AA /* Assets.xcassets */,
+				FE0026AA0026AA0026AA0001 /* Localizable.xcstrings */,
 				50BA9D99CDBC44ABA7E645AB /* Info.plist */,
 				AA01B001AA014D00AA014D18 /* FonosApp.entitlements */,
 			);
@@ -412,6 +450,9 @@
 				MP01001AA001001AA001001A /* ModelProbeService.swift */,
 				BG01000000000000000011 /* BackgroundRecordingService.swift */,
 				WP01VON003AA003AA003001A /* NoteService.swift */,
+				FE0019AA0019AA0019AA0001 /* VocabStore.swift */,
+				FE0022AA0022AA0022AA0001 /* ScenarioImporter.swift */,
+				FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */,
 				WP03VON001AA001AA001001A /* NoteViewModel.swift */,
 				FE0002AA0002AA0002AA0001 /* NotebookPipeline.swift */,
 				FE0004AA0004AA0004AA0001 /* SharedNotebookCatalog.swift */,
@@ -438,6 +479,7 @@
 				KB12001AA012001AA012001A /* KeyboardViewController.swift */,
 				KB12002AA012002AA012002A /* KeyboardAudioService.swift */,
 				KB12003AA012003AA012003A /* KeyboardSTTService.swift */,
+				KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */,
 				KB12006AA012006AA012006A /* Info.plist */,
 				KB12007AA012007AA012007A /* FonosKeyboard.entitlements */,
 			);
@@ -469,6 +511,7 @@
 				WP08002AA008002AA008002A /* ModesSection.swift */,
 				WP08003AA008003AA008003A /* DestinationsSection.swift */,
 				WP11002AA011002AA011002A /* ModelsTab.swift */,
+				FE0020AA0020AA0020AA0001 /* VocabTab.swift */,
 				WP11003AA011003AA011003A /* ModesTab.swift */,
 			);
 			path = SettingsView;
@@ -595,6 +638,7 @@
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
 			);
 			mainGroup = EB7F26921B15416BBDBF911D;
 			productRefGroup = 4BD34BCD0DE7417A847A0D6B /* Products */;
@@ -615,6 +659,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				663C34A9CC884E40AD59B70D /* Assets.xcassets in Resources */,
+				FE0026AA0026AA0026AA0002 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -667,9 +712,15 @@
 				WP04VON005AA005AA005001B /* NoteINV09IntentTests.swift in Sources */,
 				WP04VON006AA006AA006001B /* NoteINV10DeepLinkTests.swift in Sources */,
 				FE0006AA0006AA0006AA0002 /* NoteINV14BackfillTests.swift in Sources */,
+				FE0012AA0012AA0012AA0002 /* NoteINV12ExportTests.swift in Sources */,
+				FE0016AA0016AA0016AA0002 /* RecordGestureTests.swift in Sources */,
+				FE0017AA0017AA0017AA0002 /* VocabTests.swift in Sources */,
+				FE0021AA0021AA0021AA0002 /* ScenarioImportTests.swift in Sources */,
+				FE0023AA0023AA0023AA0002 /* SetupDoctorTests.swift in Sources */,
 				FE0007AA0007AA0007AA0002 /* NotebookPipelineTests.swift in Sources */,
 				FE0008AA0008AA0008AA0002 /* NoteINV15LLMNoteTests.swift in Sources */,
 				FE0009AA0009AA0009AA0002 /* SharedNotebookCatalogTests.swift in Sources */,
+				KBIPC002AA002AA002AA01B /* KeyboardIPCTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -685,6 +736,11 @@
 				663C34A9CC884E40AD59B706 /* Color+Hex.swift in Sources */,
 				663C34A9CC884E40AD59B707 /* DictationSession.swift in Sources */,
 				663C34A9CC884E40AD59B708 /* AppConfig.swift in Sources */,
+				FE0018AA0018AA0018AA0002 /* VocabBook.swift in Sources */,
+				FE0019AA0019AA0019AA0002 /* VocabStore.swift in Sources */,
+				FE0022AA0022AA0022AA0002 /* ScenarioImporter.swift in Sources */,
+				FE0024AA0024AA0024AA0002 /* SetupDoctor.swift in Sources */,
+				FE0025AA0025AA0025AA0002 /* SetupDoctorView.swift in Sources */,
 				663C34A9CC884E40AD59B709 /* AudioCaptureService.swift in Sources */,
 				663C34A9CC884E40AD59B70A /* STTService.swift in Sources */,
 				663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */,
@@ -707,6 +763,7 @@
 				WP08004AA008004AA008004B /* DestinationPicker.swift in Sources */,
 				WP11001AA011001AA011001B /* ModeConfig.swift in Sources */,
 				WP11002AA011002AA011002B /* ModelsTab.swift in Sources */,
+				FE0020AA0020AA0020AA0002 /* VocabTab.swift in Sources */,
 				WP11003AA011003AA011003B /* ModesTab.swift in Sources */,
 				WP09001AA009001AA009001B /* FonosWidget.swift in Sources */,
 				WP09002AA009002AA009002B /* FonosLiveActivity.swift in Sources */,
@@ -715,6 +772,7 @@
 				WP01VON001AA001AA001001B /* NoteContainer.swift in Sources */,
 				WP01VON002AA002AA002001B /* NoteEntry.swift in Sources */,
 				WP01VON003AA003AA003001B /* NoteService.swift in Sources */,
+				KBIPC001AA001AA001AA02B /* KeyboardIPC.swift in Sources */,
 				WP03VON001AA001AA001001B /* NoteViewModel.swift in Sources */,
 				WP03VON002AA002AA002001B /* NotesView.swift in Sources */,
 				WP03VON003AA003AA003001B /* NotebookDetailView.swift in Sources */,
@@ -736,6 +794,7 @@
 				KB12001AA012001AA012001B /* KeyboardViewController.swift in Sources */,
 				KB12002AA012002AA012002B /* KeyboardAudioService.swift in Sources */,
 				KB12003AA012003AA012003B /* KeyboardSTTService.swift in Sources */,
+				KBIPC001AA001AA001AA01B /* KeyboardIPC.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

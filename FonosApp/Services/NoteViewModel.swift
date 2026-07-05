@@ -60,6 +60,10 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
 
     var config: AppConfig = AppConfig()
 
+    /// Vocab books + mounts (P1-1): global ∪ notebook mounts feed STT biasing,
+    /// deterministic corrections, and the notebook LLM glossary.
+    var vocabStore = VocabStore()
+
     // MARK: - Init (production)
 
     init(noteService: NoteService, audioCapture: AudioCaptureService = AudioCaptureService()) {
@@ -82,8 +86,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
 
     private var resolvedSTT: any STTProvider {
         if let test = _testSTT { return test }
-        // Fall back to Apple on-device STT
-        return AppleSTT()
+        return STTResolver.resolve(config: config)
     }
 
     private var resolvedLLM: (any NoteLLMProvider)? {
@@ -178,14 +181,17 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             return
         }
         let resolved = NotebookPipeline.resolve(notebook)
+        let books = vocabStore.effectiveBooks(notebookID: containerId)
+        let terms = VocabApplier.collectTerms(books)
 
         do {
-            let rawText = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
+            let sttText = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
                 Task {
                     do {
                         let text = try await stt.transcribe(
                             audioData: audioData,
-                            language: resolved.sttLanguage
+                            language: resolved.sttLanguage,
+                            vocabulary: terms
                         )
                         cont.resume(returning: text)
                     } catch {
@@ -193,9 +199,16 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                     }
                 }
             }
+            let rawText = VocabApplier.applyRules(sttText, books: books)
 
             var processedText: String? = nil
-            if let llmConfig = resolved.llm, let llmProvider = llm {
+            if let baseLLMConfig = resolved.llm, let llmProvider = llm {
+                let glossary = VocabApplier.buildGlossaryBlock(terms: terms) ?? ""
+                let llmConfig = NotebookLLMConfig(
+                    systemPrompt: baseLLMConfig.systemPrompt + glossary,
+                    outputLanguage: baseLLMConfig.outputLanguage,
+                    modelOverride: baseLLMConfig.modelOverride
+                )
                 do {
                     let result = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
                         Task {

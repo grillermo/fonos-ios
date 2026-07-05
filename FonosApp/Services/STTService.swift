@@ -4,11 +4,115 @@ import os.log
 
 private let sttLog = Logger(subsystem: "com.fonos.ios", category: "STT")
 
+private final class SpeechRecognitionCompletion: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didFinish = false
+    private var task: SFSpeechRecognitionTask?
+    private let continuation: CheckedContinuation<String, any Error>
+
+    init(_ continuation: CheckedContinuation<String, any Error>) {
+        self.continuation = continuation
+    }
+
+    func setTask(_ task: SFSpeechRecognitionTask) {
+        lock.lock()
+        self.task = task
+        lock.unlock()
+    }
+
+    func succeed(_ text: String) {
+        finish {
+            if text.isEmpty {
+                continuation.resume(throwing: STTError.noTranscript)
+            } else {
+                continuation.resume(returning: text)
+            }
+        }
+    }
+
+    func fail(_ error: Error) {
+        finish {
+            continuation.resume(throwing: error)
+        }
+    }
+
+    func timeout() {
+        lock.lock()
+        guard !didFinish else {
+            lock.unlock()
+            return
+        }
+        didFinish = true
+        let task = task
+        lock.unlock()
+
+        task?.cancel()
+        continuation.resume(throwing: STTError.timeout)
+    }
+
+    private func finish(_ resume: () -> Void) {
+        lock.lock()
+        guard !didFinish else {
+            lock.unlock()
+            return
+        }
+        didFinish = true
+        lock.unlock()
+        resume()
+    }
+}
+
 // MARK: - STTProvider Protocol
 
 /// Protocol all STT provider implementations must conform to.
 protocol STTProvider {
     func transcribe(audioData: Data, language: String?) async throws -> String
+
+    /// Vocabulary-aware transcription: providers that support biasing
+    /// (Apple contextualStrings, Whisper prompt) override this; the default
+    /// implementation ignores the terms.
+    func transcribe(audioData: Data, language: String?, vocabulary: [String]) async throws -> String
+}
+
+extension STTProvider {
+    func transcribe(audioData: Data, language: String?, vocabulary: [String]) async throws -> String {
+        try await transcribe(audioData: audioData, language: language)
+    }
+}
+
+// MARK: - STTResolver
+
+/// Resolves the STT provider for an AppConfig. Shared by DictationViewModel
+/// and NoteViewModel so both surfaces honour the configured model profile.
+enum STTResolver {
+    static func resolve(config: AppConfig) -> any STTProvider {
+        let profileID = config.sttProfile
+        guard !profileID.isEmpty,
+              let profile = config.modelProfiles.first(where: { $0.id == profileID }) else {
+            sttLog.info("🔌 No STT profile configured, using Apple Speech")
+            return AppleSTT()
+        }
+        let key = (try? KeychainStore(service: "com.fonos.models").get(profile.id)) ?? ""
+        let baseURL = profile.baseURL ?? ""
+        sttLog.info("🔌 Resolving STT: provider=\(profile.provider), model=\(profile.modelID), baseURL=\(baseURL)")
+
+        switch profile.provider {
+        case "openai":
+            let url = baseURL.isEmpty ? "https://api.openai.com" : baseURL
+            return WhisperSTT(apiKey: key, baseURL: url, modelID: profile.modelID)
+        case "fonos":
+            let url = URL(string: baseURL.isEmpty ? "http://localhost:9880" : baseURL)
+                ?? URL(string: "http://localhost:9880")!
+            return FonosSTT(serverURL: url)
+        default:
+            // OMLX, Ollama, etc. with STT — use Whisper-compatible endpoint
+            if profile.hasSTT && !baseURL.isEmpty {
+                return WhisperSTT(apiKey: key, baseURL: baseURL, modelID: profile.modelID)
+            }
+            sttLog.warning("🔌 STT profile has no STT capability or empty URL, falling back to Apple")
+            return AppleSTT()
+        }
+    }
 }
 
 // MARK: - STTError
@@ -142,13 +246,17 @@ final class AppleSTT: STTProvider, @unchecked Sendable {
         try await transcribe(buffer: audioData, language: language)
     }
 
+    func transcribe(audioData: Data, language: String?, vocabulary: [String]) async throws -> String {
+        try await transcribe(buffer: audioData, language: language, vocabulary: vocabulary)
+    }
+
     // MARK: - Buffer-based transcription (test-facing API)
 
     /// Transcribes audio data, setting `lastUsedLocale` from the `language` parameter
     /// AND switching the underlying SFSpeechRecognizer to that locale so non-system
     /// languages (e.g. notebook configured for zh-CN on an en-US device) are
     /// actually recognized — not just recorded as "intended".
-    func transcribe(buffer audioData: Data, language: String?) async throws -> String {
+    func transcribe(buffer audioData: Data, language: String?, vocabulary: [String] = []) async throws -> String {
         let targetLocale = language.map { Locale(identifier: $0) } ?? .current
         lastUsedLocale = targetLocale
         // The previous bug: this line was missing. lastUsedLocale was being set
@@ -165,6 +273,9 @@ final class AppleSTT: STTProvider, @unchecked Sendable {
 
                 let request = SFSpeechAudioBufferRecognitionRequest()
                 request.shouldReportPartialResults = false
+                if !vocabulary.isEmpty {
+                    request.contextualStrings = vocabulary
+                }
 
                 // Append audio data to the request — this was missing!
                 // Convert WAV data to PCM buffer and feed it to the recognizer.
@@ -193,37 +304,29 @@ final class AppleSTT: STTProvider, @unchecked Sendable {
                 // Signal end of audio — without this, the recognizer waits forever
                 request.endAudio()
 
-                var hasResumed = false
-                _ = recognizer.recognize(request: request) { result, error in
-                    guard !hasResumed else { return }
+                let completion = SpeechRecognitionCompletion(continuation)
+                let task = recognizer.recognize(request: request) { result, error in
 
                     if let error {
-                        hasResumed = true
-                        continuation.resume(throwing: STTError.recognizerError(error.localizedDescription))
+                        completion.fail(STTError.recognizerError(error.localizedDescription))
                         return
                     }
 
                     if let result, result.isFinal {
-                        hasResumed = true
-                        let text = result.bestTranscription.formattedString
-                        if text.isEmpty {
-                            continuation.resume(throwing: STTError.noTranscript)
-                        } else {
-                            continuation.resume(returning: text)
-                        }
+                        completion.succeed(result.bestTranscription.formattedString)
                         return
                     }
 
                     // Mock fallback path for tests
                     if result == nil && error == nil {
-                        hasResumed = true
                         let transcript = recognizer.transcribeSync()
-                        if transcript.isEmpty {
-                            continuation.resume(throwing: STTError.noTranscript)
-                        } else {
-                            continuation.resume(returning: transcript)
-                        }
+                        completion.succeed(transcript)
                     }
+                }
+                completion.setTask(task)
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+                    completion.timeout()
                 }
             }
         }
@@ -250,6 +353,17 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
     }
 
     func transcribe(audioData: Data, language: String?) async throws -> String {
+        try await transcribe(audioData: audioData, language: language, prompt: nil)
+    }
+
+    func transcribe(audioData: Data, language: String?, vocabulary: [String]) async throws -> String {
+        let prompt = vocabulary.isEmpty
+            ? nil
+            : VocabApplier.buildSTTPrompt(base: "", terms: vocabulary)
+        return try await transcribe(audioData: audioData, language: language, prompt: prompt)
+    }
+
+    private func transcribe(audioData: Data, language: String?, prompt: String?) async throws -> String {
         let urlString = "\(baseURL)/v1/audio/transcriptions"
         guard let url = URL(string: urlString) else {
             throw STTError.badRequest
@@ -274,6 +388,9 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
                        mimeType: "audio/wav", data: audioData)
         if let language {
             appendFormField(&body, boundary: boundary, name: "language", value: language)
+        }
+        if let prompt, !prompt.isEmpty {
+            appendFormField(&body, boundary: boundary, name: "prompt", value: prompt)
         }
         body.append(Data("--\(boundary)--\r\n".utf8))
         request.httpBody = body

@@ -66,6 +66,22 @@ struct NotesView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .onAppear { reloadNotebooks() }
+            .navigationDestination(item: $selectedNotebook) { notebook in
+                NotebookDetailView(
+                    notebook: notebook,
+                    noteService: noteService,
+                    noteViewModel: noteViewModel
+                )
+            }
+            // fonos://note?notebook=<uuid> — open the requested notebook,
+            // falling back to Quick Note when no id is given.
+            .onReceive(NotificationCenter.default.publisher(for: .fonosOpenNotes)) { notification in
+                reloadNotebooks()
+                let requested = (notification.userInfo?["notebookId"] as? String)
+                    .flatMap(UUID.init(uuidString:))
+                    .flatMap { noteService.notebook(id: $0) }
+                selectedNotebook = requested ?? noteService.quickNoteNotebook()
+            }
             .sheet(isPresented: $showNewNotebookSheet, onDismiss: reloadNotebooks) {
                 NewNotebookSheet(
                     title: $newNotebookTitle,
@@ -143,7 +159,7 @@ private struct NotebookCard: View {
                 .multilineTextAlignment(.leading)
 
             HStack {
-                Text("\(entryCount) \(entryCount == 1 ? "entry" : "entries")")
+                Text(String(localized: "\(entryCount) entries"))
                     .font(.system(size: 11))
                     .foregroundColor(Color(hex: "#fafaf9").opacity(0.4))
                 Spacer()

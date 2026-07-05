@@ -18,7 +18,9 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
     // Continuous recorder — started in foreground, runs in background
     private var recorder: AVAudioRecorder?
     private var recordingStartTime: TimeInterval = 0
+    private var recordingStartDate = Date()
     private var isKeyboardRecording = false
+    private var activeSessionID: String?
 
     private static nonisolated(unsafe) let kbStart = "com.fonos.ios.kb.start" as CFString
     private static nonisolated(unsafe) let kbStop  = "com.fonos.ios.kb.stop" as CFString
@@ -62,17 +64,10 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
         startContinuousRecording()
 
         // Heartbeat — also checks recorder health
-        writeFile("kb_heartbeat", "\(Date().timeIntervalSince1970)")
+        updateHeartbeat()
         Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             guard let self else { return }
-            self.writeFile("kb_heartbeat", "\(Date().timeIntervalSince1970)")
-            // Try to resume if recorder died (resume works, new record doesn't from background)
-            if let rec = self.recorder, !rec.isRecording, !self.isKeyboardRecording {
-                if rec.record() {
-                    bgLog.info("🎙 BG: Recorder auto-resumed")
-                }
-                // If resume fails, will restart when app is foregrounded
-            }
+            self.updateHeartbeat()
         }
 
         // Restart recorder when app comes to foreground
@@ -112,7 +107,7 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
     // MARK: - Continuous Recording
 
     private func startContinuousRecording() {
-        guard let url = containerURL("kb_continuous.wav") else { return }
+        guard let url = containerURL(KeyboardIPC.FileName.continuousAudio) else { return }
         try? FileManager.default.removeItem(at: url)
 
         let settings: [String: Any] = [
@@ -142,21 +137,22 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
 
     private func onStart() {
         DispatchQueue.main.async { [self] in
+            activeSessionID = readFile(KeyboardIPC.FileName.sessionID)
             guard let rec = recorder, rec.isRecording else {
                 bgLog.error("🎙 BG: Recorder not active! Open Fonos app to restart.")
                 writeError("Recorder stopped. Open Fonos app, then try again.")
                 return
             }
 
-            guard !isKeyboardRecording else {
-                bgLog.warning("Already in keyboard recording")
-                return
+            rec.updateMeters()
+            if isKeyboardRecording {
+                bgLog.warning("🎙 BG: Previous keyboard recording was still active; resetting to new session")
             }
-
             recordingStartTime = rec.currentTime
+            recordingStartDate = Date()
             isKeyboardRecording = true
             writeStatus("recording")
-            bgLog.info("🎙 BG: ✅ Keyboard recording started at \(String(format: "%.1f", self.recordingStartTime))s")
+            bgLog.info("🎙 BG: ✅ Keyboard recording started at \(String(format: "%.2f", self.recordingStartTime))s, session=\((self.activeSessionID ?? "-").prefix(8))")
         }
     }
 
@@ -168,12 +164,17 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
         DispatchQueue.main.async { [self] in
             guard isKeyboardRecording, let rec = recorder else {
                 bgLog.warning("Not keyboard-recording, ignoring stop")
+                activeSessionID = readFile(KeyboardIPC.FileName.sessionID)
+                writeError("Recording state expired. Tap the mic and try again.")
                 return
             }
 
-            let endTime = rec.currentTime
+            rec.updateMeters()
+            let stopWallClock = Date()
+            let stopRecorderTime = rec.currentTime
             isKeyboardRecording = false
-            bgLog.info("🎙 BG: Stop. Segment: \(String(format: "%.1f", self.recordingStartTime))s → \(String(format: "%.1f", endTime))s")
+            let wallDuration = max(0, stopWallClock.timeIntervalSince(recordingStartDate))
+            bgLog.info("🎙 BG: Stop requested. Wall duration=\(String(format: "%.2f", wallDuration))s")
 
             // Background task for transcription
             bgTaskID = UIApplication.shared.beginBackgroundTask {
@@ -182,31 +183,61 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
 
             writeStatus("processing")
 
-            // Recorder keeps running — DON'T pause or stop it!
-            // Reading the file while recording is safe because WAV is sequential
-            // and we only read bytes up to endTime (already captured above).
-            guard let url = containerURL("kb_continuous.wav"),
-                  let fullData = try? Data(contentsOf: url) else {
-                writeError("Cannot read WAV")
-                endBackgroundTask()
-                return
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [self] in
+                finishStop(recorder: rec, stopRecorderTime: stopRecorderTime, wallDuration: wallDuration)
             }
+        }
+    }
 
-            let wavData = extractWAVSegment(fullData, from: recordingStartTime, to: endTime, sampleRate: 16000)
-            bgLog.info("🎙 BG: Extracted segment: \(wavData.count) bytes")
+    private func finishStop(recorder rec: AVAudioRecorder, stopRecorderTime: TimeInterval, wallDuration: TimeInterval) {
+        rec.updateMeters()
+        let endTime = max(stopRecorderTime, rec.currentTime)
+        let recorderDuration = endTime - recordingStartTime
+        bgLog.info("🎙 BG: Recorder segment: \(String(format: "%.2f", self.recordingStartTime))s → \(String(format: "%.2f", endTime))s, duration=\(String(format: "%.2f", recorderDuration))s")
 
-            guard wavData.count > 100 else {
-                writeError("Recording too short")
-                endBackgroundTask()
-                return
-            }
+        guard let url = containerURL(KeyboardIPC.FileName.continuousAudio),
+              let fullData = try? Data(contentsOf: url) else {
+            writeError("Cannot read audio")
+            endBackgroundTask()
+            return
+        }
 
-            // Save extracted segment for STT
-            if let segURL = containerURL("kb_recording.wav") {
-                try? wavData.write(to: segURL)
-            }
+        let byTail = extractWAVTail(fullData, duration: wallDuration + 0.25, sampleRate: 16000)
+        let byTime = extractWAVSegment(fullData, from: recordingStartTime, to: endTime, sampleRate: 16000)
+        let wavData = byTail.count > 100 ? byTail : byTime
+        let effectiveDuration = max(wallDuration, recorderDuration)
 
-            transcribeAndProcess(wavData: wavData)
+        bgLog.info("🎙 BG: Extracted segment bytes=\(wavData.count), byTime=\(byTime.count), byTail=\(byTail.count), full=\(fullData.count), recorderStillRunning=\(rec.isRecording)")
+
+        guard effectiveDuration >= 0.4, wavData.count > 100 else {
+            writeError("No audio captured. Open Fonos, then try again.")
+            endBackgroundTask()
+            return
+        }
+
+        // Save extracted segment for STT
+        if let segURL = containerURL(KeyboardIPC.FileName.segmentAudio) {
+            try? wavData.write(to: segURL)
+        }
+
+        transcribeAndProcess(wavData: wavData)
+    }
+
+    private func updateHeartbeat() {
+        let now = "\(Date().timeIntervalSince1970)"
+        guard let rec = recorder else {
+            writeFile(KeyboardIPC.FileName.heartbeat, "0")
+            return
+        }
+
+        if rec.isRecording {
+            writeFile(KeyboardIPC.FileName.heartbeat, now)
+        } else if !isKeyboardRecording, rec.record() {
+            bgLog.info("🎙 BG: Recorder auto-resumed")
+            writeFile(KeyboardIPC.FileName.heartbeat, now)
+        } else {
+            bgLog.warning("🎙 BG: Recorder not ready; heartbeat withheld")
+            writeFile(KeyboardIPC.FileName.heartbeat, "0")
         }
     }
 
@@ -222,7 +253,24 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
 
         guard startByte < endByte, startByte < data.count else { return Data() }
 
-        let pcmData = data[startByte..<endByte]
+        return buildWAV(from: data[startByte..<endByte], sampleRate: sampleRate)
+    }
+
+    private func extractWAVTail(_ data: Data, duration: TimeInterval, sampleRate: Int) -> Data {
+        let bytesPerSample = 2
+        let headerSize = 44
+        guard data.count > headerSize else { return Data() }
+
+        let bytesPerSecond = sampleRate * bytesPerSample
+        let availablePCMBytes = data.count - headerSize
+        let requestedBytes = max(bytesPerSample, Int(duration * Double(bytesPerSecond)))
+        let pcmByteCount = min(availablePCMBytes, requestedBytes)
+        let startByte = data.count - pcmByteCount
+        return buildWAV(from: data[startByte..<data.count], sampleRate: sampleRate)
+    }
+
+    private func buildWAV(from pcmData: Data.SubSequence, sampleRate: Int) -> Data {
+        let bytesPerSample = 2
         let dataSize = UInt32(pcmData.count)
 
         // Build WAV with proper header
@@ -279,11 +327,7 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
     // MARK: - Provider Resolution
 
     private func readAppConfig() -> AppConfig {
-        guard let data = UserDefaults.standard.data(forKey: "app_config"),
-              let config = try? JSONDecoder().decode(AppConfig.self, from: data) else {
-            return AppConfig()
-        }
-        return config
+        AppConfigStorage.load() ?? AppConfig()
     }
 
     private func resolveSTTProvider(config: AppConfig) -> any STTProvider {
@@ -312,6 +356,15 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
     }
 
     private func resolveMode(config: AppConfig) -> Mode {
+        if let modeConfig = config.activeModeConfig {
+            switch modeConfig.mode {
+            case .translate:
+                return .translate(targetLanguage: config.translateTargetLanguage)
+            default:
+                return modeConfig.mode
+            }
+        }
+
         switch config.activeModeID {
         case "polish": return .polish
         case "formal": return .formal
@@ -327,23 +380,36 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
         try? content.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    private func readFile(_ name: String) -> String? {
+        guard let url = containerURL(name) else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
     private func writeStatus(_ status: String) {
-        writeFile("kb_status", status)
+        writeFile(KeyboardIPC.FileName.status, status)
         bgLog.info("🎙 BG: status → \(status)")
     }
 
     private func writeFinal(_ text: String) {
-        writeFile("kb_final.txt", text)
-        writeFile("kb_status", "done")
+        writeFile(KeyboardIPC.FileName.final, text)
+        if let activeSessionID {
+            writeFile(KeyboardIPC.FileName.resultSessionID, activeSessionID)
+        }
+        writeFile(KeyboardIPC.FileName.status, "done")
         bgLog.info("🎙 BG: wrote result (\(text.count) chars)")
         postDarwin("com.fonos.ios.kb.result")
+        activeSessionID = nil
     }
 
     private func writeError(_ msg: String) {
-        writeFile("kb_error.txt", msg)
-        writeFile("kb_status", "error")
+        writeFile(KeyboardIPC.FileName.error, msg)
+        if let activeSessionID {
+            writeFile(KeyboardIPC.FileName.resultSessionID, activeSessionID)
+        }
+        writeFile(KeyboardIPC.FileName.status, "error")
         bgLog.info("🎙 BG: wrote error: \(msg)")
         postDarwin("com.fonos.ios.kb.result")
+        activeSessionID = nil
     }
 
     private func postDarwin(_ name: String) {

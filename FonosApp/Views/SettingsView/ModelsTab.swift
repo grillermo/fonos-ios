@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Models Tab
 
@@ -7,6 +8,9 @@ import SwiftUI
 struct ModelsTab: View {
     @Binding var config: AppConfig
 
+    @State private var showScenarioImporter = false
+    @State private var scenarioSummary: ScenarioImportSummary?
+    @State private var scenarioError: String?
     @State private var showAddModel = false
     @State private var editingProfile: ModelProfile?
     @State private var showProbe = false
@@ -29,9 +33,29 @@ struct ModelsTab: View {
         List {
             defaultServicesSection
             registeredModelsSection
+            scenarioImportSection
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        .fileImporter(isPresented: $showScenarioImporter, allowedContentTypes: [.json]) { result in
+            importScenario(result)
+        }
+        .alert("Scenario imported", isPresented: .init(
+            get: { scenarioSummary != nil },
+            set: { if !$0 { scenarioSummary = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(scenarioSummaryText)
+        }
+        .alert("Import failed", isPresented: .init(
+            get: { scenarioError != nil },
+            set: { if !$0 { scenarioError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(scenarioError ?? "")
+        }
         .sheet(isPresented: $showAddModel) {
             ModelProfileForm(onSave: { profile in
                 config.modelProfiles.append(profile)
@@ -74,6 +98,52 @@ struct ModelsTab: View {
                     }
                 }
             )
+        }
+    }
+
+    // MARK: - Scenario Import (P1-2)
+
+    private var scenarioImportSection: some View {
+        Section {
+            Button {
+                showScenarioImporter = true
+            } label: {
+                Label("Import Scenario", systemImage: "square.and.arrow.down")
+                    .foregroundColor(amber)
+            }
+            .listRowBackground(cardBg)
+        } footer: {
+            Text("Apply a scenario exported from Fonos desktop (models, dictation defaults, vocabulary). API keys are never included — set them per model after import.")
+                .font(.system(size: 12))
+                .foregroundColor(textDim)
+        }
+    }
+
+    private var scenarioSummaryText: String {
+        guard let s = scenarioSummary else { return "" }
+        var lines: [String] = []
+        if !s.name.isEmpty { lines.append("“\(s.name)”") }
+        lines.append("\(s.importedProfiles) model profile(s) imported")
+        if s.vocabBooksImported > 0 { lines.append("\(s.vocabBooksImported) vocab book(s) imported") }
+        if s.dictationApplied { lines.append("Dictation defaults applied") }
+        if !s.skippedSections.isEmpty {
+            lines.append("Skipped (not applicable on iOS): \(s.skippedSections.joined(separator: ", "))")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func importScenario(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let data = try Data(contentsOf: url)
+            let (newConfig, summary) = try ScenarioImporter.apply(
+                data: data, to: config, vocabStore: VocabStore())
+            config = newConfig
+            scenarioSummary = summary
+        } catch {
+            scenarioError = error.localizedDescription
         }
     }
 

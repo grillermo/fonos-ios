@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import SwiftData
 import os.log
 
 private let log = Logger(subsystem: "com.fonos.ios", category: "DictationViewModel")
@@ -27,13 +28,25 @@ enum DictationError: LocalizedError, Equatable {
 struct ProcessResult: Sendable {
     /// The processed or raw text.
     let text: String
+    /// The original STT transcript, before any LLM processing.
+    let rawTranscript: String
     /// True if LLM processing failed and we fell back to the raw STT transcript.
     let isRawFallback: Bool
 
-    init(text: String, isRawFallback: Bool = false) {
+    init(text: String, rawTranscript: String? = nil, isRawFallback: Bool = false) {
         self.text = text
+        self.rawTranscript = rawTranscript ?? text
         self.isRawFallback = isRawFallback
     }
+}
+
+// MARK: - RecordGestureAction
+
+/// What a press-and-hold gesture change should do to the recorder.
+enum RecordGestureAction: Equatable {
+    case start
+    case stop
+    case none
 }
 
 // MARK: - DictationViewModel
@@ -89,6 +102,14 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
     private let audioCapture: AudioCaptureService
     private var levelPollTimer: Timer?
 
+    /// SwiftData context for persisting completed sessions to History.
+    /// Set by ContentView; nil in unit tests that don't exercise persistence.
+    var modelContext: ModelContext?
+
+    /// Vocab books + mounts (P1-1). Feeds STT biasing, deterministic
+    /// corrections, and LLM glossaries in processAudio.
+    var vocabStore = VocabStore()
+
     /// AppConfig reference — read by resolveSTT/LLM to pick the right provider.
     /// Updated from ContentView when settings change.
     @Published var config: AppConfig = AppConfig()
@@ -115,35 +136,7 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
     /// Resolve the current STT provider from config. Falls back to Apple Speech.
     var sttProvider: any STTProvider {
         if let test = _testSTT { return test }
-
-        let profileID = config.sttProfile
-        if !profileID.isEmpty, let profile = config.modelProfiles.first(where: { $0.id == profileID }) {
-            let key = (try? KeychainStore(service: "com.fonos.models").get(profile.id)) ?? ""
-            let baseURL = profile.baseURL ?? ""
-            log.info("🔌 Resolving STT: provider=\(profile.provider), model=\(profile.modelID), baseURL=\(baseURL)")
-
-            switch profile.provider {
-            case "openai":
-                let url = baseURL.isEmpty ? "https://api.openai.com" : baseURL
-                log.info("🔌 → WhisperSTT(\(url), model=\(profile.modelID))")
-                return WhisperSTT(apiKey: key, baseURL: url, modelID: profile.modelID)
-            case "fonos":
-                let url = URL(string: baseURL.isEmpty ? "http://localhost:9880" : baseURL) ?? URL(string: "http://localhost:9880")!
-                log.info("🔌 → FonosSTT(\(url))")
-                return FonosSTT(serverURL: url)
-            default:
-                // For OMLX, Ollama, etc. with STT — use Whisper-compatible endpoint
-                if profile.hasSTT && !baseURL.isEmpty {
-                    log.info("🔌 → WhisperSTT(\(baseURL), model=\(profile.modelID)) [provider: \(profile.provider)]")
-                    return WhisperSTT(apiKey: key, baseURL: baseURL, modelID: profile.modelID)
-                }
-                log.warning("🔌 → STT profile found but no STT capability or empty URL, falling back to Apple")
-            }
-        } else {
-            log.info("🔌 No STT profile configured, using Apple Speech")
-        }
-        // Default: Apple on-device Speech Recognition
-        return AppleSTT()
+        return STTResolver.resolve(config: config)
     }
 
     /// Resolve the current LLM service from config. Returns nil if not configured.
@@ -198,6 +191,24 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         levelPollTimer?.invalidate()
         levelPollTimer = nil
         audioLevel = 0
+    }
+
+    // MARK: - Hold-to-record gesture logic
+
+    /// Decides how a hold-gesture change maps onto recorder actions.
+    /// Inert unless the configured record mode is `.hold`.
+    static func holdGestureAction(pressing: Bool,
+                                  state: RecordingState,
+                                  recordMode: RecordMode) -> RecordGestureAction {
+        guard recordMode == .hold else { return .none }
+        switch (pressing, state) {
+        case (true, .idle), (true, .result), (true, .error):
+            return .start
+        case (false, .recording):
+            return .stop
+        default:
+            return .none
+        }
     }
 
     // MARK: - Recording Control
@@ -268,10 +279,16 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
 
         // Stop engine and get WAV data
         let wavData = audioCapture.stopCapture()
+        log.info("⏹ Got WAV data: \(wavData?.count ?? 0) bytes")
+        finishRecording(wavData: wavData ?? Data())
+    }
 
-        let dataSize = wavData?.count ?? 0
+    /// Runs the STT → LLM pipeline on captured audio, updates UI state, and
+    /// persists the completed session to History. Split from stopRecording so
+    /// the post-capture pipeline is testable without audio hardware.
+    @MainActor
+    func finishRecording(wavData: Data) {
         let mode = self.currentMode
-        log.info("⏹ Got WAV data: \(dataSize) bytes, mode: \(mode.id)")
 
         if mode.requiresLLM && llmService == nil {
             // Show transcript only — no LLM configured
@@ -285,16 +302,17 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
                 log.info("🔄 Starting STT transcription...")
                 let sttLang = config.sttLanguage == "auto" ? nil : config.sttLanguage
                 let result = try await processAudio(
-                    wavData ?? Data(),
+                    wavData,
                     language: sttLang,
                     mode: mode
                 )
                 log.info("✅ Processing complete: \(result.text.prefix(50))...")
                 await MainActor.run {
                     recordingState = .result(
-                        transcript: result.text,
+                        transcript: result.rawTranscript,
                         processed: result.isRawFallback ? nil : result.text
                     )
+                    persistSession(result: result, mode: mode)
                 }
             } catch {
                 log.error("❌ Processing failed: \(error.localizedDescription)")
@@ -302,6 +320,26 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
                     recordingState = .error(message: error.localizedDescription)
                 }
             }
+        }
+    }
+
+    /// Inserts a DictationSession into History. No-op when modelContext is unset.
+    @MainActor
+    private func persistSession(result: ProcessResult, mode: Mode) {
+        guard let context = modelContext else { return }
+        let session = DictationSession(
+            date: Date(),
+            mode: mode.id,
+            inputText: result.rawTranscript,
+            outputText: result.text,
+            destination: config.autoSendDestination.isEmpty ? "clipboard" : config.autoSendDestination,
+            latencyMs: (sttLatency + llmLatency) * 1000
+        )
+        context.insert(session)
+        do {
+            try context.save()
+        } catch {
+            log.error("❌ Failed to persist session: \(error.localizedDescription)")
         }
     }
 
@@ -327,18 +365,37 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
     func processAudio(_ audioData: Data,
                       language: String?,
                       mode: Mode) async throws -> ProcessResult {
-        let rawTranscript = try await transcribeAudio(audioData, language: language)
+        // Vocab stages (P1-1): ① STT biasing ② deterministic corrections ③ LLM glossary
+        let books = vocabStore.effectiveBooks(modeID: mode.id)
+        let terms = VocabApplier.collectTerms(books)
+
+        let sttStart = Date()
+        let sttText = try await sttProvider.transcribe(
+            audioData: audioData, language: language, vocabulary: terms
+        )
+        let sttElapsed = Date().timeIntervalSince(sttStart)
+        await MainActor.run { sttLatency = sttElapsed }
+
+        let rawTranscript = VocabApplier.applyRules(sttText, books: books)
 
         // Raw mode or no LLM: return transcript directly
         guard mode.requiresLLM, let llm = llmService else {
             return ProcessResult(text: rawTranscript, isRawFallback: false)
         }
 
+        let llmStart = Date()
         do {
-            let processed = try await llm.process(text: rawTranscript, mode: mode)
-            return ProcessResult(text: processed, isRawFallback: false)
+            let processed = try await llm.process(
+                text: rawTranscript, mode: mode,
+                glossary: VocabApplier.buildGlossaryBlock(terms: terms)
+            )
+            let llmElapsed = Date().timeIntervalSince(llmStart)
+            await MainActor.run { llmLatency = llmElapsed }
+            return ProcessResult(text: processed, rawTranscript: rawTranscript, isRawFallback: false)
         } catch {
             // LLM failure — fall back to raw transcript
+            let llmElapsed = Date().timeIntervalSince(llmStart)
+            await MainActor.run { llmLatency = llmElapsed }
             return ProcessResult(text: rawTranscript, isRawFallback: true)
         }
     }

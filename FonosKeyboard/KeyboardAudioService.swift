@@ -31,6 +31,8 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
     // Strategy 2: App Group IPC (file-based — UserDefaults unreliable cross-process)
     private let groupID = "group.com.fonos.ios"
     private var pollTimer: Timer?
+    private var observersRegistered = false
+    private var sessionTracker = KeyboardIPCSessionTracker()
 
     private var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID)
@@ -59,6 +61,7 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
     ) {
         guard !isRecording else { completion(nil); return }
         diagnosticLog = []
+        sessionTracker.clear()
         onPartialResult = onPartial
         onStatusChange = onStatus
 
@@ -162,31 +165,67 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         }
 
         // Check heartbeat
-        let heartbeatStr = readFile("kb_heartbeat") ?? "0"
+        let heartbeatStr = readFile(KeyboardIPC.FileName.heartbeat) ?? "0"
         let heartbeat = Double(heartbeatStr) ?? 0
-        let age = Date().timeIntervalSince1970 - heartbeat
+        let now = Date().timeIntervalSince1970
+        let age = now - heartbeat
         diag("heartbeat: \(Int(age))s ago")
 
-        if heartbeat == 0 || age > 30 {
+        if !KeyboardIPC.isFreshHeartbeat(heartbeat, now: now) {
             completion(makeError("Fonos app not running.\nOpen Fonos app, keep it open, then try again."))
             return
         }
 
         // Clear old state
-        deleteFile("kb_status")
-        deleteFile("kb_partial.txt")
-        deleteFile("kb_final.txt")
-        deleteFile("kb_error.txt")
+        clearIPCFiles()
 
-        // Send start command
+        let sessionID = UUID().uuidString
+        sessionTracker.begin(sessionID: sessionID)
+        writeFile(KeyboardIPC.FileName.sessionID, sessionID)
+
+        registerObserversIfNeeded()
+
+        // Send start command after observers/session are in place.
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),
             CFNotificationName("com.fonos.ios.kb.start" as CFString),
             nil, nil, true
         )
-        diag("sent start notification")
+        diag("sent start notification, session=\(sessionID.prefix(8))")
 
-        // Register for Darwin notifications
+        // Poll files every 0.1s as backup for missed Darwin notifications.
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.pollFiles()
+        }
+
+        isRecording = true
+        activeStrategy = .appGroup
+        diag("✅ App Group, waiting for main app...")
+        completion(nil)
+
+        // Timeout: if no response in 5s
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            guard let self, self.isRecording, self.activeStrategy == .appGroup else { return }
+            let status = self.readFile(KeyboardIPC.FileName.status) ?? ""
+            if status != "recording" && status != "processing" && status != "done" {
+                let statusChange = self.onStatusChange
+                self.isRecording = false
+                self.cleanup()
+                statusChange?("error:Main app didn't respond. Open Fonos app and try again.")
+            }
+        }
+    }
+
+    private func clearIPCFiles() {
+        deleteFile(KeyboardIPC.FileName.status)
+        deleteFile(KeyboardIPC.FileName.partial)
+        deleteFile(KeyboardIPC.FileName.final)
+        deleteFile(KeyboardIPC.FileName.error)
+        deleteFile(KeyboardIPC.FileName.resultSessionID)
+    }
+
+    private func registerObserversIfNeeded() {
+        guard !observersRegistered else { return }
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         let observer = Unmanaged.passUnretained(self).toOpaque()
 
@@ -200,33 +239,12 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
             Unmanaged<KeyboardAudioService>.fromOpaque(obs).takeUnretainedValue().onResultReceived()
         }, "com.fonos.ios.kb.result" as CFString, nil, .deliverImmediately)
 
-        // Poll files every 0.3s (backup for missed notifications)
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-            self?.pollFiles()
-        }
-
-        isRecording = true
-        activeStrategy = .appGroup
-        diag("✅ App Group, waiting for main app...")
-        completion(nil)
-
-        // Timeout: if no response in 5s
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-            guard let self, self.isRecording, self.activeStrategy == .appGroup else { return }
-            let status = self.readFile("kb_status") ?? ""
-            if status != "recording" && status != "processing" && status != "done" {
-                self.isRecording = false
-                self.cleanup()
-                self.onStatusChange?("error:Main app didn't respond. Open Fonos app and try again.")
-            }
-        }
+        observersRegistered = true
     }
-
-    private var resultHandled = false
 
     private func onPartialReceived() {
         DispatchQueue.main.async { [self] in
-            if let text = readFile("kb_partial.txt"), !text.isEmpty {
+            if let text = readFile(KeyboardIPC.FileName.partial), !text.isEmpty {
                 onPartialResult?(text)
             }
         }
@@ -234,17 +252,23 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
 
     private func onResultReceived() {
         DispatchQueue.main.async { [self] in
-            guard !resultHandled else { return }
-            let status = readFile("kb_status") ?? ""
+            let resultSessionID = readFile(KeyboardIPC.FileName.resultSessionID)
+            guard sessionTracker.accepts(resultSessionID: resultSessionID) else {
+                if resultSessionID != nil {
+                    diag("ignored stale result for session=\((resultSessionID ?? "").prefix(8))")
+                }
+                return
+            }
+            let status = readFile(KeyboardIPC.FileName.status) ?? ""
 
             if status == "done" {
-                resultHandled = true
-                let text = readFile("kb_final.txt") ?? ""
+                sessionTracker.markResultHandled()
+                let text = readFile(KeyboardIPC.FileName.final) ?? ""
                 diag("✅ got result: \"\(text.prefix(40))...\"")
                 onStatusChange?("done:\(text)")
             } else if status == "error" {
-                resultHandled = true
-                let err = readFile("kb_error.txt") ?? "Unknown error"
+                sessionTracker.markResultHandled()
+                let err = readFile(KeyboardIPC.FileName.error) ?? "Unknown error"
                 diag("❌ got error: \(err)")
                 onStatusChange?("error:\(err)")
             }
@@ -252,11 +276,11 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
     }
 
     private func pollFiles() {
-        guard activeStrategy == .appGroup, !resultHandled else { return }
-        let status = readFile("kb_status") ?? ""
+        guard activeStrategy == .appGroup, sessionTracker.hasActiveSession else { return }
+        let status = readFile(KeyboardIPC.FileName.status) ?? ""
 
         if status == "recording" {
-            if let text = readFile("kb_partial.txt"), !text.isEmpty {
+            if let text = readFile(KeyboardIPC.FileName.partial), !text.isEmpty {
                 DispatchQueue.main.async { [self] in onPartialResult?(text) }
             }
         } else if status == "done" || status == "error" {
@@ -343,11 +367,12 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
     func cleanup() {
         pollTimer?.invalidate()
         pollTimer = nil
-        resultHandled = false
+        sessionTracker.clear()
 
         // Remove Darwin notification observers
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         CFNotificationCenterRemoveEveryObserver(center, Unmanaged.passUnretained(self).toOpaque())
+        observersRegistered = false
 
         onPartialResult = nil
         onStatusChange = nil

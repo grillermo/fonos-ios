@@ -64,10 +64,11 @@ final class LLMService: Sendable {
     /// - Parameters:
     ///   - text: The raw transcript to process.
     ///   - mode: The processing mode that defines the prompt.
+    ///   - glossary: Optional vocab glossary block appended to the system prompt.
     /// - Returns: The processed text from the LLM.
     /// - Throws: `LLMError` on failure (caller can fall back to raw transcript).
-    func process(text: String, mode: Mode) async throws -> String {
-        let messages = buildMessages(text: text, mode: mode)
+    func process(text: String, mode: Mode, glossary: String? = nil) async throws -> String {
+        let messages = buildMessages(text: text, mode: mode, glossary: glossary)
         let requestBody = buildRequestBody(messages: messages, mode: mode)
 
         guard let url = URL(string: "\(baseURL)/v1/chat/completions") else {
@@ -111,10 +112,10 @@ final class LLMService: Sendable {
 
     // MARK: - Private helpers
 
-    private func buildMessages(text: String, mode: Mode) -> [[String: String]] {
+    private func buildMessages(text: String, mode: Mode, glossary: String? = nil) -> [[String: String]] {
         let userContent = mode.applyTemplate(to: text)
         return [
-            ["role": "system", "content": mode.systemPrompt],
+            ["role": "system", "content": mode.systemPrompt + (glossary ?? "")],
             ["role": "user", "content": userContent]
         ]
     }

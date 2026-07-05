@@ -150,11 +150,11 @@ enum Mode: Codable, Equatable, Hashable, Sendable {
     /// Human-readable display name.
     var displayName: String {
         switch self {
-        case .raw: return "Raw"
-        case .polish: return "Polish"
-        case .formal: return "Formal"
-        case .translate(let lang): return "Translate (\(lang))"
-        case .custom: return "Custom"
+        case .raw: return String(localized: "Raw")
+        case .polish: return String(localized: "Polish")
+        case .formal: return String(localized: "Formal")
+        case .translate(let lang): return String(localized: "Translate (\(lang))")
+        case .custom: return String(localized: "Custom")
         }
     }
 

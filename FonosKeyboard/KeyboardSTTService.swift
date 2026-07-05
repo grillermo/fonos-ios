@@ -9,9 +9,7 @@ private let kbSTTLog = Logger(subsystem: "com.fonos.ios.keyboard", category: "Ke
 
 private enum ConfigKeys {
     static let configKey = "app_config"
-    // App Group requires paid developer account provisioning.
-    // For now, read from standard UserDefaults (same app container).
-    // When App Group is provisioned, add suiteName here.
+    static let appGroupID = "group.com.fonos.ios"
     static let keychainService = "com.fonos.models"
 }
 
@@ -92,18 +90,14 @@ final class KeyboardSTTService: @unchecked Sendable {
     // MARK: - Config Resolution
 
     private func resolveConfig() -> (provider: String, language: String?, apiKey: String, baseURL: String, modelID: String) {
-        // Keyboard extension runs in a separate process.
-        // Without App Group provisioning, we can't read the main app's UserDefaults.
-        // Fall back to Apple Speech (on-device, no config needed).
-        let configData = UserDefaults.standard.data(forKey: ConfigKeys.configKey)
+        let configData = UserDefaults(suiteName: ConfigKeys.appGroupID)?.data(forKey: ConfigKeys.configKey)
+            ?? UserDefaults.standard.data(forKey: ConfigKeys.configKey)
 
-        var sttProvider = "apple"
         var sttLanguage: String? = nil
         var sttProfileID = ""
 
         if let data = configData,
            let config = try? JSONDecoder().decode(MinimalConfig.self, from: data) {
-            sttProvider = config.sttProvider ?? "apple"
             sttProfileID = config.sttProfile ?? ""
             let lang = config.sttLanguage ?? "auto"
             sttLanguage = lang == "auto" ? nil : lang

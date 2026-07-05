@@ -65,7 +65,7 @@ struct ActivityCard: View {
                     Image(systemName: modeIcon)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Color(hex: "#fbbf24"))
-                    Text(modeName)
+                    Text(LocalizedStringKey(modeName))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Color(hex: "#fbbf24"))
                 }
@@ -94,7 +94,7 @@ struct ActivityCard: View {
                     Image(systemName: destinationIcon(session.destination))
                         .font(.system(size: 10))
                         .foregroundColor(Color(hex: "#fafaf9").opacity(0.35))
-                    Text(destinationLabel(session.destination))
+                    Text(LocalizedStringKey(destinationLabel(session.destination)))
                         .font(.system(size: 11))
                         .foregroundColor(Color(hex: "#fafaf9").opacity(0.35))
                 }

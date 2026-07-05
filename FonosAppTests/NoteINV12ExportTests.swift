@@ -55,6 +55,7 @@ private func makeTestEntry(
 
 // MARK: - Tests
 
+@MainActor
 struct NoteINV12ExportTests {
 
     // MARK: - Markdown format
@@ -152,7 +153,7 @@ struct NoteINV12ExportTests {
     func jsonIncludesEntriesArray() throws {
         let notebookId = UUID()
         let notebook = makeTestNotebook(id: notebookId)
-        let entry = makeTestEntry(containerId: notebookId, rawText: "json entry text")
+        let entry = makeTestEntry(rawText: "json entry text", containerId: notebookId)
         let service = NoteService()
         let jsonString = service.exportJSON(notebook: notebook, entries: [entry])
         let data = jsonString.data(using: .utf8)!
@@ -165,7 +166,7 @@ struct NoteINV12ExportTests {
     func jsonEntryContainsRawText() throws {
         let notebookId = UUID()
         let notebook = makeTestNotebook(id: notebookId)
-        let entry = makeTestEntry(containerId: notebookId, rawText: "the raw text value")
+        let entry = makeTestEntry(rawText: "the raw text value", containerId: notebookId)
         let service = NoteService()
         let jsonString = service.exportJSON(notebook: notebook, entries: [entry])
         let data = jsonString.data(using: .utf8)!
@@ -212,5 +213,49 @@ struct NoteINV12ExportTests {
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let idString = obj?["id"] as? String
         #expect(idString == notebookId.uuidString)
+    }
+}
+
+// MARK: - P0-4 (docs/ROADMAP.md): share-sheet export needs a temp file with a
+// sanitized filename; NotebookDetailView shares this URL.
+
+@MainActor
+struct NoteExportFileTests {
+
+    @Test("exportFileURL writes Markdown to a temp file named after the notebook")
+    func markdownTempFile() throws {
+        let notebook = makeTestNotebook(title: "Meeting Notes")
+        let service = NoteService()
+        let url = try service.exportFileURL(notebook: notebook, entries: [], format: .markdown)
+        #expect(url.lastPathComponent == "Meeting Notes.md")
+        let content = try String(contentsOf: url, encoding: .utf8)
+        #expect(content.contains("# Meeting Notes"))
+    }
+
+    @Test("exportFileURL writes JSON with .json extension")
+    func jsonTempFile() throws {
+        let notebook = makeTestNotebook(title: "Ideas")
+        let service = NoteService()
+        let url = try service.exportFileURL(notebook: notebook, entries: [], format: .json)
+        #expect(url.pathExtension == "json")
+        let data = try Data(contentsOf: url)
+        let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(obj?["title"] as? String == "Ideas")
+    }
+
+    @Test("exportFileURL sanitizes path-hostile characters in the notebook title")
+    func sanitizedFilename() throws {
+        let notebook = makeTestNotebook(title: "My Notes / Test:2026")
+        let service = NoteService()
+        let url = try service.exportFileURL(notebook: notebook, entries: [], format: .markdown)
+        #expect(url.lastPathComponent == "My Notes - Test-2026.md")
+    }
+
+    @Test("exportFileURL falls back to a generic name for empty titles")
+    func emptyTitleFallback() throws {
+        let notebook = makeTestNotebook(title: "///")
+        let service = NoteService()
+        let url = try service.exportFileURL(notebook: notebook, entries: [], format: .markdown)
+        #expect(url.lastPathComponent == "Notebook.md")
     }
 }

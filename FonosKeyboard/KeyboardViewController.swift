@@ -11,6 +11,7 @@ final class KeyboardViewController: UIInputViewController {
     private enum KeyboardState {
         case ready
         case recording
+        case processing
         case error(String)
         case done
     }
@@ -18,6 +19,28 @@ final class KeyboardViewController: UIInputViewController {
     private var keyboardState: KeyboardState = .ready {
         didSet { updateUI() }
     }
+
+    private struct KeyboardModeOption {
+        let id: String
+        let title: String
+        let symbolName: String
+    }
+
+    private struct MinimalConfig: Decodable {
+        var activeModeID: String?
+        var modeConfigs: [MinimalModeConfig]?
+    }
+
+    private struct MinimalModeConfig: Decodable {
+        var id: String
+        var name: String
+        var icon: String?
+    }
+
+    private let appGroupID = "group.com.fonos.ios"
+    private let configKey = "app_config"
+    private let keyboardModeOverrideKey = "kb_active_mode_id"
+    private var currentModeID = "raw"
 
     // MARK: - Services
 
@@ -29,6 +52,7 @@ final class KeyboardViewController: UIInputViewController {
     private let containerView = UIView()
     private let modeButton = UIButton(type: .system)
     private let micButton = UIButton(type: .custom)
+    private let processingIndicator = UIActivityIndicatorView(style: .medium)
     private let statusLabel = UILabel()
     private let switchButton = UIButton(type: .system)
 
@@ -43,16 +67,11 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
+        loadSelectedMode()
         updateUI()
 
-        // Log extension state for debugging
-        let perm = AVAudioSession.sharedInstance().recordPermission
-        let fullAccess = hasFullAccess
-        kbLog.info("🔑 KB viewDidLoad: fullAccess=\(fullAccess), micPermission=\(perm.rawValue) (0=undetermined, 1=denied, 2=granted)")
-        statusLabel.text = "Tap to dictate (mic:\(perm.rawValue) fa:\(fullAccess))"
-
         // Pre-request mic permission on load so dialog appears early
-        if fullAccess {
+        if hasFullAccess {
             AVAudioSession.sharedInstance().requestRecordPermission { [weak self] granted in
                 DispatchQueue.main.async {
                     kbLog.info("🔑 KB mic request result: \(granted)")
@@ -80,14 +99,11 @@ final class KeyboardViewController: UIInputViewController {
             containerView.heightAnchor.constraint(equalToConstant: 140),
         ])
 
-        // Mode button (left) — shows current mode, long-press to switch keyboard
-        modeButton.setTitle("✦ Dictate", for: .normal)
+        // Mode button (left) — shows current mode and opens a mode menu.
         modeButton.setTitleColor(amberColor, for: .normal)
         modeButton.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
         modeButton.translatesAutoresizingMaskIntoConstraints = false
-        modeButton.addTarget(self, action: #selector(modeTapped), for: .touchUpInside)
-        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(switchKeyboard(_:)))
-        modeButton.addGestureRecognizer(longPress)
+        modeButton.showsMenuAsPrimaryAction = true
         containerView.addSubview(modeButton)
 
         // Mic button (center)
@@ -97,11 +113,16 @@ final class KeyboardViewController: UIInputViewController {
         micButton.addTarget(self, action: #selector(micTapped), for: .touchUpInside)
         containerView.addSubview(micButton)
 
+        processingIndicator.color = .black
+        processingIndicator.hidesWhenStopped = true
+        processingIndicator.translatesAutoresizingMaskIntoConstraints = false
+        micButton.addSubview(processingIndicator)
+
         // Status label (bottom, full width)
         statusLabel.font = .systemFont(ofSize: 10, weight: .regular)
         statusLabel.textColor = .secondaryLabel
         statusLabel.textAlignment = .center
-        statusLabel.numberOfLines = 0  // unlimited — show full diagnostic
+        statusLabel.numberOfLines = 2
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(statusLabel)
 
@@ -125,6 +146,8 @@ final class KeyboardViewController: UIInputViewController {
             micButton.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 8),
             micButton.widthAnchor.constraint(equalToConstant: micSize),
             micButton.heightAnchor.constraint(equalToConstant: micSize),
+            processingIndicator.centerXAnchor.constraint(equalTo: micButton.centerXAnchor),
+            processingIndicator.centerYAnchor.constraint(equalTo: micButton.centerYAnchor),
 
             // Switch: top-right
             switchButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
@@ -136,8 +159,7 @@ final class KeyboardViewController: UIInputViewController {
             statusLabel.topAnchor.constraint(equalTo: micButton.bottomAnchor, constant: 6),
         ])
 
-        // Read mode name
-        modeButton.setTitle("✦ \(readModeName())", for: .normal)
+        refreshModeButton()
     }
 
     // MARK: - UI Update
@@ -146,55 +168,85 @@ final class KeyboardViewController: UIInputViewController {
         let symConfig = UIImage.SymbolConfiguration(pointSize: 22, weight: .bold)
         switch keyboardState {
         case .ready:
+            stopProcessingAnimation()
             micButton.backgroundColor = amberColor
             micButton.setImage(UIImage(systemName: "mic.fill", withConfiguration: symConfig), for: .normal)
             micButton.tintColor = .black
             micButton.isEnabled = true
-            statusLabel.text = "Tap to dictate (v3)"
+            micButton.isUserInteractionEnabled = true
+            micButton.accessibilityLabel = "Start dictation"
+            statusLabel.text = "Tap to dictate"
             statusLabel.textColor = .secondaryLabel
 
         case .recording:
+            stopProcessingAnimation()
             micButton.backgroundColor = redColor
             micButton.setImage(UIImage(systemName: "stop.fill", withConfiguration: symConfig), for: .normal)
             micButton.tintColor = .white
+            micButton.isEnabled = true
+            micButton.isUserInteractionEnabled = true
+            micButton.accessibilityLabel = "Stop dictation"
             statusLabel.text = "Recording... tap to stop"
             statusLabel.textColor = redColor
 
+        case .processing:
+            startProcessingAnimation()
+            micButton.backgroundColor = amberColor
+            micButton.setImage(nil, for: .normal)
+            micButton.tintColor = .black
+            micButton.isEnabled = true
+            micButton.isUserInteractionEnabled = false
+            micButton.accessibilityLabel = "Processing dictation"
+            statusLabel.text = "Processing"
+            statusLabel.textColor = amberColor
+
         case .error(let msg):
+            stopProcessingAnimation()
             micButton.backgroundColor = amberColor
             micButton.setImage(UIImage(systemName: "mic.fill", withConfiguration: symConfig), for: .normal)
             micButton.tintColor = .black
             micButton.isEnabled = true
+            micButton.isUserInteractionEnabled = true
+            micButton.accessibilityLabel = "Start dictation"
             statusLabel.text = msg
             statusLabel.textColor = redColor
 
         case .done:
+            stopProcessingAnimation()
             micButton.backgroundColor = amberColor
             micButton.setImage(UIImage(systemName: "mic.fill", withConfiguration: symConfig), for: .normal)
             micButton.tintColor = .black
             micButton.isEnabled = true
+            micButton.isUserInteractionEnabled = true
+            micButton.accessibilityLabel = "Start dictation"
             statusLabel.text = "✓ Text inserted"
             statusLabel.textColor = greenColor
         }
     }
 
+    private func startProcessingAnimation() {
+        processingIndicator.startAnimating()
+        guard micButton.layer.animation(forKey: "processingPulse") == nil else { return }
+
+        let pulse = CABasicAnimation(keyPath: "transform.scale")
+        pulse.fromValue = 0.96
+        pulse.toValue = 1.06
+        pulse.duration = 0.55
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        micButton.layer.add(pulse, forKey: "processingPulse")
+    }
+
+    private func stopProcessingAnimation() {
+        processingIndicator.stopAnimating()
+        micButton.layer.removeAnimation(forKey: "processingPulse")
+    }
+
     // MARK: - Actions
 
     @objc private func modeTapped() {
-        // Cycle through modes could be added later
-        // For now, show a hint about long-press
-        let prev = statusLabel.text
-        statusLabel.text = "Long-press to switch keyboard"
-        statusLabel.textColor = .secondaryLabel
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            self?.statusLabel.text = prev
-        }
-    }
-
-    @objc private func switchKeyboard(_ gesture: UILongPressGestureRecognizer) {
-        if gesture.state == .began {
-            advanceToNextInputMode()
-        }
+        refreshModeButton()
     }
 
     @objc private func dismissTapped() {
@@ -207,6 +259,8 @@ final class KeyboardViewController: UIInputViewController {
             startRecording()
         case .recording:
             stopAndTranscribe()
+        case .processing:
+            break
         }
     }
 
@@ -225,8 +279,10 @@ final class KeyboardViewController: UIInputViewController {
             onPartial: { [weak self] text in
                 // Live partial results (from App Group → main app's Apple Speech)
                 DispatchQueue.main.async {
-                    self?.statusLabel.text = text.isEmpty ? "Listening..." : text
-                    self?.statusLabel.textColor = .label
+                    guard let self,
+                          case .recording = self.keyboardState else { return }
+                    self.statusLabel.text = text.isEmpty ? "Listening..." : text
+                    self.statusLabel.textColor = .label
                 }
             },
             onStatus: { [weak self] status in
@@ -254,12 +310,10 @@ final class KeyboardViewController: UIInputViewController {
             completion: { [weak self] error in
                 guard let self else { return }
                 if let error {
-                    let log = self.audioService.diagnosticLog.joined(separator: " → ")
-                    self.keyboardState = .error("\(error.localizedDescription)\n[\(log)]")
+                    self.keyboardState = .error(error.localizedDescription)
                 } else {
-                    let strategy = self.audioService.activeStrategy == .direct ? "Direct" : "App Group"
                     self.keyboardState = .recording
-                    self.statusLabel.text = "Recording [\(strategy)]..."
+                    self.statusLabel.text = "Recording..."
                     self.statusLabel.textColor = self.redColor
                 }
             }
@@ -272,8 +326,7 @@ final class KeyboardViewController: UIInputViewController {
 
         if strategy == .direct {
             // Direct recording: transcribe locally
-            statusLabel.text = "Processing..."
-            statusLabel.textColor = .secondaryLabel
+            keyboardState = .processing
 
             audioService.transcribeDirectRecording(language: nil) { [weak self] text, error in
                 DispatchQueue.main.async {
@@ -291,13 +344,11 @@ final class KeyboardViewController: UIInputViewController {
             }
         } else {
             // App Group: main app is processing, show status
-            keyboardState = .ready  // allow re-tap
-            statusLabel.text = "Processing (main app)..."
-            statusLabel.textColor = .secondaryLabel
+            keyboardState = .processing
             // Result comes via onStatus callback — add timeout as safety
             DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
                 guard let self else { return }
-                if self.statusLabel.text?.contains("Processing") == true {
+                if case .processing = self.keyboardState {
                     self.keyboardState = .error("Timeout — check if Fonos app is open")
                     self.audioService.cleanup()
                 }
@@ -317,15 +368,82 @@ final class KeyboardViewController: UIInputViewController {
         hasFullAccess
     }
 
-    private func readModeName() -> String {
-        guard let data = UserDefaults.standard.data(forKey: "app_config") else {
-            return "Dictate"
+    private func sharedDefaults() -> UserDefaults? {
+        UserDefaults(suiteName: appGroupID)
+    }
+
+    private func loadSelectedMode() {
+        if let modeID = sharedDefaults()?.string(forKey: keyboardModeOverrideKey), !modeID.isEmpty {
+            currentModeID = modeID
+            return
         }
-        struct MinConfig: Decodable { var activeModeID: String? }
-        guard let config = try? JSONDecoder().decode(MinConfig.self, from: data) else {
-            return "Dictate"
+        if let data = sharedDefaults()?.data(forKey: configKey) ?? UserDefaults.standard.data(forKey: configKey),
+           let config = try? JSONDecoder().decode(MinimalConfig.self, from: data),
+           let modeID = config.activeModeID,
+           !modeID.isEmpty {
+            currentModeID = modeID
         }
-        let modeNames = ["raw": "Raw", "polish": "Polish", "formal": "Formal", "translate": "Translate"]
-        return modeNames[config.activeModeID ?? "raw"] ?? "Dictate"
+    }
+
+    private func refreshModeButton() {
+        let options = readModeOptions()
+        let selected = options.first { $0.id == currentModeID } ?? options[0]
+        let image = UIImage(systemName: selected.symbolName)
+        modeButton.setImage(image, for: .normal)
+        modeButton.setTitle(" \(selected.title)", for: .normal)
+        modeButton.tintColor = amberColor
+
+        let actions = options.map { option in
+            UIAction(
+                title: option.title,
+                image: UIImage(systemName: option.symbolName),
+                state: option.id == currentModeID ? .on : .off
+            ) { [weak self] _ in
+                self?.selectMode(option)
+            }
+        }
+        modeButton.menu = UIMenu(title: "", options: .singleSelection, children: actions)
+    }
+
+    private func selectMode(_ option: KeyboardModeOption) {
+        currentModeID = option.id
+        sharedDefaults()?.set(option.id, forKey: keyboardModeOverrideKey)
+        refreshModeButton()
+        statusLabel.text = "Tap to dictate"
+        statusLabel.textColor = .secondaryLabel
+    }
+
+    private func readModeOptions() -> [KeyboardModeOption] {
+        let fallback = [
+            KeyboardModeOption(id: "raw", title: "Raw", symbolName: "waveform"),
+            KeyboardModeOption(id: "polish", title: "Polish", symbolName: "sparkles"),
+            KeyboardModeOption(id: "formal", title: "Formal", symbolName: "briefcase"),
+            KeyboardModeOption(id: "translate", title: "Translate", symbolName: "globe")
+        ]
+
+        guard let data = sharedDefaults()?.data(forKey: configKey) ?? UserDefaults.standard.data(forKey: configKey),
+              let config = try? JSONDecoder().decode(MinimalConfig.self, from: data),
+              let modes = config.modeConfigs,
+              !modes.isEmpty else {
+            return fallback
+        }
+
+        return modes.map {
+            KeyboardModeOption(
+                id: $0.id,
+                title: $0.name,
+                symbolName: $0.icon ?? fallbackSymbol(for: $0.id)
+            )
+        }
+    }
+
+    private func fallbackSymbol(for modeID: String) -> String {
+        switch modeID {
+        case "raw": return "waveform"
+        case "polish": return "sparkles"
+        case "formal": return "briefcase"
+        case "translate": return "globe"
+        default: return "slider.horizontal.3"
+        }
     }
 }
