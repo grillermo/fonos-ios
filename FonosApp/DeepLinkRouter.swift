@@ -8,6 +8,11 @@ extension Notification.Name {
 
     /// Posted when the app receives a `fonos://note` deep link.
     static let fonosOpenNotes = Notification.Name("fonos.openNotes")
+
+    /// Posted when the app receives a `fonos://config?d=…` deep link (a shared
+    /// config bundle, e.g. from scanning a QR with the system Camera). userInfo
+    /// carries the raw payload under "payload"; the receiver decodes + previews.
+    static let fonosImportConfig = Notification.Name("com.fonos.ios.importConfig")
 }
 
 // MARK: - DeepLinkRouter
@@ -40,6 +45,15 @@ enum DeepLinkRouter {
                 name: .fonosOpenNotes,
                 object: nil,
                 userInfo: ["notebookId": notebookId as Any]
+            )
+
+        case "config":
+            // Pass the whole URL through; the receiver decodes tolerantly and
+            // shows a preview before applying anything.
+            NotificationCenter.default.post(
+                name: .fonosImportConfig,
+                object: nil,
+                userInfo: ["payload": url.absoluteString]
             )
 
         default:

@@ -83,9 +83,16 @@ struct ContentView: View {
 
     @StateObject private var dictationViewModel = DictationViewModel()
     @State private var selectedTab: AppTab = .dictate
+    @State private var pendingConfigImport: PendingConfigImport?
     private let modelContainer: ModelContainer
     private let noteService: NoteService
     @StateObject private var noteViewModel: NoteViewModel
+
+    private struct PendingConfigImport: Identifiable {
+        let id = UUID()
+        let data: Data
+        let summary: ScenarioImportSummary
+    }
 
     init(modelContainer: ModelContainer) {
         self.modelContainer = modelContainer
@@ -161,6 +168,33 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .fonosOpenNotes)) { _ in
             selectedTab = .notes
         }
+        // fonos://config?d=… — a shared config bundle (e.g. scanned QR). Decode
+        // and show a preview; never apply untrusted input silently.
+        .onReceive(NotificationCenter.default.publisher(for: .fonosImportConfig)) { notification in
+            guard let payload = notification.userInfo?["payload"] as? String,
+                  let data = try? ConfigBundleCodec.decode(payload),
+                  let summary = try? ScenarioImporter.preview(data: data) else { return }
+            pendingConfigImport = PendingConfigImport(data: data, summary: summary)
+        }
+        .sheet(item: $pendingConfigImport) { pending in
+            ConfigImportPreviewView(
+                summary: pending.summary,
+                onImport: {
+                    applyImportedConfig(pending.data)
+                    pendingConfigImport = nil
+                },
+                onCancel: { pendingConfigImport = nil }
+            )
+        }
+    }
+
+    /// Apply an imported config bundle to the live config, Notes VM, and storage.
+    private func applyImportedConfig(_ data: Data) {
+        guard let (newConfig, _) = try? ScenarioImporter.apply(
+            data: data, to: dictationViewModel.config, vocabStore: VocabStore()) else { return }
+        dictationViewModel.config = newConfig
+        noteViewModel.config = newConfig
+        AppConfigStorage.save(newConfig)
     }
 }
 

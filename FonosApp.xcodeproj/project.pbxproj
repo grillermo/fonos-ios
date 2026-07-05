@@ -18,8 +18,12 @@
 		FE0018AA0018AA0018AA0002 /* VocabBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0018AA0018AA0018AA0001 /* VocabBook.swift */; };
 		FE0019AA0019AA0019AA0002 /* VocabStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0019AA0019AA0019AA0001 /* VocabStore.swift */; };
 		FE0022AA0022AA0022AA0002 /* ScenarioImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0022AA0022AA0022AA0001 /* ScenarioImporter.swift */; };
+		FE0032AA0032AA0032AA02B /* ConfigSetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0032AA0032AA0032AA01A /* ConfigSetStore.swift */; };
+		FE0031AA0031AA0031AA02B /* ConfigBundleExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0031AA0031AA0031AA01A /* ConfigBundleExporter.swift */; };
+		FE0030AA0030AA0030AA02B /* ConfigBundleCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */; };
 		FE0024AA0024AA0024AA0002 /* SetupDoctor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */; };
 		FE0025AA0025AA0025AA0002 /* SetupDoctorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */; };
+		FE0034AA0034AA0034AA02B /* ConfigSharingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0034AA0034AA0034AA01A /* ConfigSharingViews.swift */; };
 		663C34A9CC884E40AD59B709 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */; };
 		663C34A9CC884E40AD59B70A /* STTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A7 /* STTService.swift */; };
 		663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */; };
@@ -71,6 +75,7 @@
 		FE0016AA0016AA0016AA0002 /* RecordGestureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0016AA0016AA0016AA0001 /* RecordGestureTests.swift */; };
 		FE0017AA0017AA0017AA0002 /* VocabTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0017AA0017AA0017AA0001 /* VocabTests.swift */; };
 		FE0021AA0021AA0021AA0002 /* ScenarioImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */; };
+		FE0033AA0033AA0033AA02B /* ConfigSharingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0033AA0033AA0033AA01A /* ConfigSharingTests.swift */; };
 		FE0023AA0023AA0023AA0002 /* SetupDoctorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */; };
 		FE0027AA0027AA0027AA0002 /* AppConfigStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0027AA0027AA0027AA0001 /* AppConfigStorageTests.swift */; };
 		WP01VON005AA005AA005001B /* NoteINV13ContainerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP01VON005AA005AA005001A /* NoteINV13ContainerTests.swift */; };
@@ -165,8 +170,12 @@
 		FE0018AA0018AA0018AA0001 /* VocabBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabBook.swift; sourceTree = "<group>"; };
 		FE0019AA0019AA0019AA0001 /* VocabStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabStore.swift; sourceTree = "<group>"; };
 		FE0022AA0022AA0022AA0001 /* ScenarioImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioImporter.swift; sourceTree = "<group>"; };
+		FE0032AA0032AA0032AA01A /* ConfigSetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigSetStore.swift; sourceTree = "<group>"; };
+		FE0031AA0031AA0031AA01A /* ConfigBundleExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigBundleExporter.swift; sourceTree = "<group>"; };
+		FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigBundleCodec.swift; sourceTree = "<group>"; };
 		FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctor.swift; sourceTree = "<group>"; };
 		FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctorView.swift; sourceTree = "<group>"; };
+		FE0034AA0034AA0034AA01A /* ConfigSharingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigSharingViews.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A7 /* STTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STTService.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
@@ -227,6 +236,7 @@
 		FE0016AA0016AA0016AA0001 /* RecordGestureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordGestureTests.swift; sourceTree = "<group>"; };
 		FE0017AA0017AA0017AA0001 /* VocabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabTests.swift; sourceTree = "<group>"; };
 		FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioImportTests.swift; sourceTree = "<group>"; };
+		FE0033AA0033AA0033AA01A /* ConfigSharingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigSharingTests.swift; sourceTree = "<group>"; };
 		FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctorTests.swift; sourceTree = "<group>"; };
 		FE0027AA0027AA0027AA0001 /* AppConfigStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfigStorageTests.swift; sourceTree = "<group>"; };
 		WP01VON005AA005AA005001A /* NoteINV13ContainerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV13ContainerTests.swift; sourceTree = "<group>"; };
@@ -313,6 +323,7 @@
 				663C34A9CC884E40AD59B713 /* DictationView.swift */,
 				50BA9D99CDBC44ABA7E645A1 /* HistoryView.swift */,
 				FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */,
+				FE0034AA0034AA0034AA01A /* ConfigSharingViews.swift */,
 				50BA9D99CDBC44ABA7E645A2 /* SettingsView.swift */,
 				WP07001AA007001AA007001A /* ModePicker.swift */,
 				WP08004AA008004AA008004A /* DestinationPicker.swift */,
@@ -386,6 +397,7 @@
 				FE0016AA0016AA0016AA0001 /* RecordGestureTests.swift */,
 				FE0017AA0017AA0017AA0001 /* VocabTests.swift */,
 				FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */,
+				FE0033AA0033AA0033AA01A /* ConfigSharingTests.swift */,
 				FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */,
 				FE0027AA0027AA0027AA0001 /* AppConfigStorageTests.swift */,
 				FE0007AA0007AA0007AA0001 /* NotebookPipelineTests.swift */,
@@ -455,6 +467,9 @@
 				WP01VON003AA003AA003001A /* NoteService.swift */,
 				FE0019AA0019AA0019AA0001 /* VocabStore.swift */,
 				FE0022AA0022AA0022AA0001 /* ScenarioImporter.swift */,
+				FE0032AA0032AA0032AA01A /* ConfigSetStore.swift */,
+				FE0031AA0031AA0031AA01A /* ConfigBundleExporter.swift */,
+				FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */,
 				FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */,
 				WP03VON001AA001AA001001A /* NoteViewModel.swift */,
 				FE0002AA0002AA0002AA0001 /* NotebookPipeline.swift */,
@@ -719,6 +734,7 @@
 				FE0016AA0016AA0016AA0002 /* RecordGestureTests.swift in Sources */,
 				FE0017AA0017AA0017AA0002 /* VocabTests.swift in Sources */,
 				FE0021AA0021AA0021AA0002 /* ScenarioImportTests.swift in Sources */,
+				FE0033AA0033AA0033AA02B /* ConfigSharingTests.swift in Sources */,
 				FE0023AA0023AA0023AA0002 /* SetupDoctorTests.swift in Sources */,
 				FE0027AA0027AA0027AA0002 /* AppConfigStorageTests.swift in Sources */,
 				FE0007AA0007AA0007AA0002 /* NotebookPipelineTests.swift in Sources */,
@@ -743,8 +759,12 @@
 				FE0018AA0018AA0018AA0002 /* VocabBook.swift in Sources */,
 				FE0019AA0019AA0019AA0002 /* VocabStore.swift in Sources */,
 				FE0022AA0022AA0022AA0002 /* ScenarioImporter.swift in Sources */,
+				FE0032AA0032AA0032AA02B /* ConfigSetStore.swift in Sources */,
+				FE0031AA0031AA0031AA02B /* ConfigBundleExporter.swift in Sources */,
+				FE0030AA0030AA0030AA02B /* ConfigBundleCodec.swift in Sources */,
 				FE0024AA0024AA0024AA0002 /* SetupDoctor.swift in Sources */,
 				FE0025AA0025AA0025AA0002 /* SetupDoctorView.swift in Sources */,
+				FE0034AA0034AA0034AA02B /* ConfigSharingViews.swift in Sources */,
 				663C34A9CC884E40AD59B709 /* AudioCaptureService.swift in Sources */,
 				663C34A9CC884E40AD59B70A /* STTService.swift in Sources */,
 				663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */,

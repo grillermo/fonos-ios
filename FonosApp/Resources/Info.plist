@@ -38,6 +38,8 @@
     </array>
     <key>NSMicrophoneUsageDescription</key>
     <string>Fonos needs microphone access to record your voice for dictation.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Fonos uses the camera to scan a config QR code so you can load a shared setup.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>Fonos uses speech recognition to transcribe your dictation.</string>
     <key>UILaunchScreen</key>

@@ -105,15 +105,23 @@ struct ModelsTab: View {
 
     private var scenarioImportSection: some View {
         Section {
+            NavigationLink {
+                ConfigSetsView(config: $config)
+            } label: {
+                Label("Config Sets & QR Sharing", systemImage: "qrcode")
+                    .foregroundColor(amber)
+            }
+            .listRowBackground(cardBg)
+
             Button {
                 showScenarioImporter = true
             } label: {
-                Label("Import Scenario", systemImage: "square.and.arrow.down")
+                Label("Import Scenario File", systemImage: "square.and.arrow.down")
                     .foregroundColor(amber)
             }
             .listRowBackground(cardBg)
         } footer: {
-            Text("Apply a scenario exported from Fonos desktop (models, dictation defaults, vocabulary). API keys are never included — set them per model after import.")
+            Text("Save your setup as a named config set and share it as a QR code (API keys stripped), or import one by scanning. “Import Scenario File” loads a scenario exported from Fonos desktop.")
                 .font(.system(size: 12))
                 .foregroundColor(textDim)
         }
