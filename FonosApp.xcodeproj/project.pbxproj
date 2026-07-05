@@ -21,6 +21,7 @@
 		FE0032AA0032AA0032AA02B /* ConfigSetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0032AA0032AA0032AA01A /* ConfigSetStore.swift */; };
 		FE0031AA0031AA0031AA02B /* ConfigBundleExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0031AA0031AA0031AA01A /* ConfigBundleExporter.swift */; };
 		FE0030AA0030AA0030AA02B /* ConfigBundleCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */; };
+		FE0035AA0035AA0035AA02B /* WAVSegment.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0035AA0035AA0035AA01A /* WAVSegment.swift */; };
 		FE0024AA0024AA0024AA0002 /* SetupDoctor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */; };
 		FE0025AA0025AA0025AA0002 /* SetupDoctorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */; };
 		FE0034AA0034AA0034AA02B /* ConfigSharingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0034AA0034AA0034AA01A /* ConfigSharingViews.swift */; };
@@ -76,6 +77,7 @@
 		FE0017AA0017AA0017AA0002 /* VocabTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0017AA0017AA0017AA0001 /* VocabTests.swift */; };
 		FE0021AA0021AA0021AA0002 /* ScenarioImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */; };
 		FE0033AA0033AA0033AA02B /* ConfigSharingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0033AA0033AA0033AA01A /* ConfigSharingTests.swift */; };
+		FE0036AA0036AA0036AA02B /* WAVSegmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0036AA0036AA0036AA01A /* WAVSegmentTests.swift */; };
 		FE0023AA0023AA0023AA0002 /* SetupDoctorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */; };
 		FE0027AA0027AA0027AA0002 /* AppConfigStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0027AA0027AA0027AA0001 /* AppConfigStorageTests.swift */; };
 		WP01VON005AA005AA005001B /* NoteINV13ContainerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP01VON005AA005AA005001A /* NoteINV13ContainerTests.swift */; };
@@ -173,6 +175,7 @@
 		FE0032AA0032AA0032AA01A /* ConfigSetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigSetStore.swift; sourceTree = "<group>"; };
 		FE0031AA0031AA0031AA01A /* ConfigBundleExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigBundleExporter.swift; sourceTree = "<group>"; };
 		FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigBundleCodec.swift; sourceTree = "<group>"; };
+		FE0035AA0035AA0035AA01A /* WAVSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WAVSegment.swift; sourceTree = "<group>"; };
 		FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctor.swift; sourceTree = "<group>"; };
 		FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctorView.swift; sourceTree = "<group>"; };
 		FE0034AA0034AA0034AA01A /* ConfigSharingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigSharingViews.swift; sourceTree = "<group>"; };
@@ -237,6 +240,7 @@
 		FE0017AA0017AA0017AA0001 /* VocabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabTests.swift; sourceTree = "<group>"; };
 		FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioImportTests.swift; sourceTree = "<group>"; };
 		FE0033AA0033AA0033AA01A /* ConfigSharingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigSharingTests.swift; sourceTree = "<group>"; };
+		FE0036AA0036AA0036AA01A /* WAVSegmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WAVSegmentTests.swift; sourceTree = "<group>"; };
 		FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctorTests.swift; sourceTree = "<group>"; };
 		FE0027AA0027AA0027AA0001 /* AppConfigStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfigStorageTests.swift; sourceTree = "<group>"; };
 		WP01VON005AA005AA005001A /* NoteINV13ContainerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV13ContainerTests.swift; sourceTree = "<group>"; };
@@ -398,6 +402,7 @@
 				FE0017AA0017AA0017AA0001 /* VocabTests.swift */,
 				FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */,
 				FE0033AA0033AA0033AA01A /* ConfigSharingTests.swift */,
+				FE0036AA0036AA0036AA01A /* WAVSegmentTests.swift */,
 				FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */,
 				FE0027AA0027AA0027AA0001 /* AppConfigStorageTests.swift */,
 				FE0007AA0007AA0007AA0001 /* NotebookPipelineTests.swift */,
@@ -470,6 +475,7 @@
 				FE0032AA0032AA0032AA01A /* ConfigSetStore.swift */,
 				FE0031AA0031AA0031AA01A /* ConfigBundleExporter.swift */,
 				FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */,
+				FE0035AA0035AA0035AA01A /* WAVSegment.swift */,
 				FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */,
 				WP03VON001AA001AA001001A /* NoteViewModel.swift */,
 				FE0002AA0002AA0002AA0001 /* NotebookPipeline.swift */,
@@ -735,6 +741,7 @@
 				FE0017AA0017AA0017AA0002 /* VocabTests.swift in Sources */,
 				FE0021AA0021AA0021AA0002 /* ScenarioImportTests.swift in Sources */,
 				FE0033AA0033AA0033AA02B /* ConfigSharingTests.swift in Sources */,
+				FE0036AA0036AA0036AA02B /* WAVSegmentTests.swift in Sources */,
 				FE0023AA0023AA0023AA0002 /* SetupDoctorTests.swift in Sources */,
 				FE0027AA0027AA0027AA0002 /* AppConfigStorageTests.swift in Sources */,
 				FE0007AA0007AA0007AA0002 /* NotebookPipelineTests.swift in Sources */,
@@ -762,6 +769,7 @@
 				FE0032AA0032AA0032AA02B /* ConfigSetStore.swift in Sources */,
 				FE0031AA0031AA0031AA02B /* ConfigBundleExporter.swift in Sources */,
 				FE0030AA0030AA0030AA02B /* ConfigBundleCodec.swift in Sources */,
+				FE0035AA0035AA0035AA02B /* WAVSegment.swift in Sources */,
 				FE0024AA0024AA0024AA0002 /* SetupDoctor.swift in Sources */,
 				FE0025AA0025AA0025AA0002 /* SetupDoctorView.swift in Sources */,
 				FE0034AA0034AA0034AA02B /* ConfigSharingViews.swift in Sources */,

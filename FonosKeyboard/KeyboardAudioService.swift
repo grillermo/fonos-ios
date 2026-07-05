@@ -33,6 +33,7 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
     private var pollTimer: Timer?
     private var observersRegistered = false
     private var sessionTracker = KeyboardIPCSessionTracker()
+    private var activeAppInstanceID: String?
 
     private var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID)
@@ -60,8 +61,8 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         completion: @escaping (Error?) -> Void
     ) {
         guard !isRecording else { completion(nil); return }
+        cleanup()
         diagnosticLog = []
-        sessionTracker.clear()
         onPartialResult = onPartial
         onStatusChange = onStatus
 
@@ -167,11 +168,12 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         // Check heartbeat
         let heartbeatStr = readFile(KeyboardIPC.FileName.heartbeat) ?? "0"
         let heartbeat = Double(heartbeatStr) ?? 0
+        let appInstanceID = readFile(KeyboardIPC.FileName.appInstanceID) ?? ""
         let now = Date().timeIntervalSince1970
         let age = now - heartbeat
-        diag("heartbeat: \(Int(age))s ago")
+        diag("heartbeat: \(String(format: "%.1f", age))s ago, app=\(appInstanceID.prefix(8))")
 
-        if !KeyboardIPC.isFreshHeartbeat(heartbeat, now: now) {
+        if !KeyboardIPC.hasLiveApp(heartbeat: heartbeat, appInstanceID: appInstanceID, now: now) {
             completion(makeError("Fonos app not running.\nOpen Fonos app, keep it open, then try again."))
             return
         }
@@ -181,6 +183,7 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
 
         let sessionID = UUID().uuidString
         sessionTracker.begin(sessionID: sessionID)
+        activeAppInstanceID = appInstanceID
         writeFile(KeyboardIPC.FileName.sessionID, sessionID)
 
         registerObserversIfNeeded()
@@ -203,15 +206,18 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         diag("✅ App Group, waiting for main app...")
         completion(nil)
 
-        // Timeout: if no response in 5s
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+        // Start ack: stale heartbeats can survive briefly after the app is killed.
+        // The current app process must acknowledge this exact session quickly.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
             guard let self, self.isRecording, self.activeStrategy == .appGroup else { return }
+            let ack = self.readFile(KeyboardIPC.FileName.startAckSessionID)
+            if ack == sessionID { return }
             let status = self.readFile(KeyboardIPC.FileName.status) ?? ""
             if status != "recording" && status != "processing" && status != "done" {
                 let statusChange = self.onStatusChange
                 self.isRecording = false
                 self.cleanup()
-                statusChange?("error:Main app didn't respond. Open Fonos app and try again.")
+                statusChange?("error:Fonos app is not connected. Open Fonos app, then try again.")
             }
         }
     }
@@ -221,6 +227,7 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         deleteFile(KeyboardIPC.FileName.partial)
         deleteFile(KeyboardIPC.FileName.final)
         deleteFile(KeyboardIPC.FileName.error)
+        deleteFile(KeyboardIPC.FileName.startAckSessionID)
         deleteFile(KeyboardIPC.FileName.resultSessionID)
     }
 
@@ -277,6 +284,26 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
 
     private func pollFiles() {
         guard activeStrategy == .appGroup, sessionTracker.hasActiveSession else { return }
+        let heartbeat = Double(readFile(KeyboardIPC.FileName.heartbeat) ?? "0") ?? 0
+        let appInstanceID = readFile(KeyboardIPC.FileName.appInstanceID) ?? ""
+        let statusChange = onStatusChange
+        if activeAppInstanceID != nil && !KeyboardIPC.isSameAppInstance(activeAppInstanceID, current: appInstanceID) {
+            diag("app instance changed while waiting: \((activeAppInstanceID ?? "-").prefix(8)) → \(appInstanceID.prefix(8))")
+            isRecording = false
+            cleanup()
+            statusChange?("error:Fonos app reconnected. Tap the mic and try again.")
+            return
+        }
+
+        if !KeyboardIPC.hasLiveApp(heartbeat: heartbeat, appInstanceID: appInstanceID,
+                                   now: Date().timeIntervalSince1970) {
+            diag("heartbeat stale while waiting for app response")
+            isRecording = false
+            cleanup()
+            statusChange?("error:Fonos app stopped. Open Fonos app, then try again.")
+            return
+        }
+
         let status = readFile(KeyboardIPC.FileName.status) ?? ""
 
         if status == "recording" {
@@ -368,6 +395,7 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         pollTimer?.invalidate()
         pollTimer = nil
         sessionTracker.clear()
+        activeAppInstanceID = nil
 
         // Remove Darwin notification observers
         let center = CFNotificationCenterGetDarwinNotifyCenter()
