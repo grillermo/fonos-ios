@@ -18,10 +18,12 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
     // Continuous recorder — started in foreground, runs in background
     private var recorder: AVAudioRecorder?
     private var recordingStartTime: TimeInterval = 0
+    private var recordingStartPCMByteOffset = 0
     private var recordingStartDate = Date()
     private var isKeyboardRecording = false
     private var sessionState = KeyboardIPCProducerSessionState()
     private let appInstanceID = UUID().uuidString
+    private var foregroundCaptureDepth = 0
 
     private static nonisolated(unsafe) let kbStart = "com.fonos.ios.kb.start" as CFString
     private static nonisolated(unsafe) let kbStop  = "com.fonos.ios.kb.stop" as CFString
@@ -75,6 +77,7 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
         // Restart recorder when app comes to foreground
         NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
+            guard self.foregroundCaptureDepth == 0 else { return }
             if self.recorder == nil || self.recorder?.isRecording != true {
                 bgLog.info("🎙 BG: App foregrounded, restarting recorder")
                 self.startContinuousRecording()
@@ -92,6 +95,7 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
                 bgLog.info("🎙 BG: Audio interrupted")
             } else if type == .ended {
                 bgLog.info("🎙 BG: Interruption ended")
+                guard self.foregroundCaptureDepth == 0 else { return }
                 try? AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
                 // Resume EXISTING recorder (don't create new — new fails from background)
                 if let rec = self.recorder, rec.record() {
@@ -135,6 +139,43 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
         }
     }
 
+    /// Pause the keyboard's continuous recorder while the foreground app uses
+    /// AVAudioEngine for its own dictation. This keeps app dictation audio out
+    /// of `kb_continuous.wav` and avoids dueling audio-session owners.
+    func pauseForForegroundCapture() {
+        runOnMainSync { [self] in
+            foregroundCaptureDepth += 1
+            guard foregroundCaptureDepth == 1 else { return }
+
+            isKeyboardRecording = false
+            sessionState = KeyboardIPCProducerSessionState()
+            recorder?.stop()
+            recorder = nil
+            writeFile(KeyboardIPC.FileName.heartbeat, "0")
+            clearKeyboardIPCResultFiles()
+            bgLog.info("🎙 BG: paused keyboard recorder for foreground capture")
+        }
+    }
+
+    /// Resume keyboard readiness after foreground app dictation releases the
+    /// audio session. Must be called while the app is foreground-capable.
+    func resumeAfterForegroundCapture() {
+        runOnMainSync { [self] in
+            guard foregroundCaptureDepth > 0 else { return }
+            foregroundCaptureDepth -= 1
+            guard foregroundCaptureDepth == 0 else { return }
+
+            try? AVAudioSession.sharedInstance().setCategory(
+                .playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothHFP]
+            )
+            try? AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
+            startContinuousRecording()
+            resetKeyboardIPCForRecorderRestart()
+            updateHeartbeat()
+            bgLog.info("🎙 BG: resumed keyboard recorder after foreground capture")
+        }
+    }
+
     // MARK: - Keyboard Start (just marks timestamp — recorder already running)
 
     private func onStart() {
@@ -152,13 +193,14 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
                 bgLog.warning("🎙 BG: Previous keyboard recording was still active; resetting to new session")
             }
             recordingStartTime = rec.currentTime
+            recordingStartPCMByteOffset = currentPCMByteCount()
             recordingStartDate = Date()
             isKeyboardRecording = true
             if let sessionID = sessionState.activeSessionID {
                 writeFile(KeyboardIPC.FileName.startAckSessionID, sessionID)
             }
             writeStatus("recording")
-            bgLog.info("🎙 BG: ✅ Keyboard recording started at \(String(format: "%.2f", self.recordingStartTime))s, session=\((self.sessionState.activeSessionID ?? "-").prefix(8))")
+            bgLog.info("🎙 BG: ✅ Keyboard recording started at \(String(format: "%.2f", self.recordingStartTime))s, pcmOffset=\(self.recordingStartPCMByteOffset), session=\((self.sessionState.activeSessionID ?? "-").prefix(8))")
         }
     }
 
@@ -177,6 +219,7 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
             rec.updateMeters()
             let sessionID = sessionState.captureForResult()
             let startRecorderTime = recordingStartTime
+            let startPCMByteOffset = recordingStartPCMByteOffset
             let stopWallClock = Date()
             let stopRecorderTime = rec.currentTime
             isKeyboardRecording = false
@@ -192,6 +235,7 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [self] in
                 finishStop(recorder: rec, sessionID: sessionID, startRecorderTime: startRecorderTime,
+                           startPCMByteOffset: startPCMByteOffset,
                            stopRecorderTime: stopRecorderTime, wallDuration: wallDuration,
                            bgTaskID: bgTaskID)
             }
@@ -199,7 +243,8 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
     }
 
     private func finishStop(recorder rec: AVAudioRecorder, sessionID: String?,
-                            startRecorderTime: TimeInterval, stopRecorderTime: TimeInterval,
+                            startRecorderTime: TimeInterval, startPCMByteOffset: Int,
+                            stopRecorderTime: TimeInterval,
                             wallDuration: TimeInterval, bgTaskID: UIBackgroundTaskIdentifier) {
         rec.updateMeters()
         let endTime = max(stopRecorderTime, rec.currentTime)
@@ -213,12 +258,16 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
             return
         }
 
+        let stopPCMByteOffset = WAVSegment.pcmByteCount(in: fullData)
+        let byBytes = WAVSegment.segment(fullData, fromPCMByteOffset: startPCMByteOffset,
+                                         toPCMByteOffset: stopPCMByteOffset, sampleRate: 16000)
         let byTail = WAVSegment.tail(fullData, duration: wallDuration + 0.25, sampleRate: 16000)
         let byTime = WAVSegment.segment(fullData, from: startRecorderTime, to: endTime, sampleRate: 16000)
-        let wavData = byTime.count > 100 ? byTime : byTail
-        let effectiveDuration = max(wallDuration, recorderDuration)
+        let wavData = byBytes.count > 100 ? byBytes : (byTime.count > 100 ? byTime : byTail)
+        let extractedDuration = WAVSegment.duration(of: wavData, sampleRate: 16000)
+        let effectiveDuration = max(extractedDuration, max(wallDuration, recorderDuration))
 
-        bgLog.info("🎙 BG: Extracted segment bytes=\(wavData.count), byTime=\(byTime.count), byTail=\(byTail.count), full=\(fullData.count), recorderStillRunning=\(rec.isRecording)")
+        bgLog.info("🎙 BG: Extracted segment bytes=\(wavData.count), byBytes=\(byBytes.count), byTime=\(byTime.count), byTail=\(byTail.count), pcm=\(startPCMByteOffset)→\(stopPCMByteOffset), duration=\(String(format: "%.2f", extractedDuration))s, full=\(fullData.count), recorderStillRunning=\(rec.isRecording)")
 
         guard effectiveDuration >= 0.4, wavData.count > 100 else {
             writeError("No audio captured. Open Fonos, then try again.", sessionID: sessionID)
@@ -236,6 +285,11 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
 
     private func updateHeartbeat() {
         let now = "\(Date().timeIntervalSince1970)"
+        guard foregroundCaptureDepth == 0 else {
+            writeFile(KeyboardIPC.FileName.heartbeat, "0")
+            return
+        }
+
         guard let rec = recorder else {
             writeFile(KeyboardIPC.FileName.heartbeat, "0")
             return
@@ -256,6 +310,14 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
 
     // WAV byte-slicing lives in WAVSegment (pure + unit-tested — it must read
     // the growing file to its real end, not the declared-0 data-chunk size).
+
+    private func currentPCMByteCount() -> Int {
+        guard let url = containerURL(KeyboardIPC.FileName.continuousAudio),
+              let data = try? Data(contentsOf: url) else {
+            return 0
+        }
+        return WAVSegment.pcmByteCount(in: data)
+    }
 
     // MARK: - Transcribe & Process
 
@@ -379,14 +441,22 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
     }
 
     private func resetKeyboardIPCForNewAppInstance() {
+        resetKeyboardIPCForRecorderRestart()
+        bgLog.info("🎙 BG: reset keyboard IPC, appInstance=\(self.appInstanceID.prefix(8))")
+    }
+
+    private func resetKeyboardIPCForRecorderRestart() {
         writeFile(KeyboardIPC.FileName.appInstanceID, appInstanceID)
+        clearKeyboardIPCResultFiles()
+    }
+
+    private func clearKeyboardIPCResultFiles() {
         deleteFile(KeyboardIPC.FileName.startAckSessionID)
         deleteFile(KeyboardIPC.FileName.resultSessionID)
         deleteFile(KeyboardIPC.FileName.status)
         deleteFile(KeyboardIPC.FileName.partial)
         deleteFile(KeyboardIPC.FileName.final)
         deleteFile(KeyboardIPC.FileName.error)
-        bgLog.info("🎙 BG: reset keyboard IPC, appInstance=\(self.appInstanceID.prefix(8))")
     }
 
     private func writeStatus(_ status: String) {
@@ -427,5 +497,13 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
     private func containerURL(_ filename: String) -> URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID)?
             .appendingPathComponent(filename)
+    }
+
+    private func runOnMainSync(_ work: @escaping () -> Void) {
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.sync(execute: work)
+        }
     }
 }

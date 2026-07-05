@@ -128,12 +128,14 @@ final class AudioCaptureService: @unchecked Sendable {
             return
         }
 
+        BackgroundRecordingService.shared.pauseForForegroundCapture()
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
             try session.setPreferredSampleRate(16_000)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
+            BackgroundRecordingService.shared.resumeAfterForegroundCapture()
             completion(AudioCaptureError.sessionSetupFailed(error))
             return
         }
@@ -147,6 +149,7 @@ final class AudioCaptureService: @unchecked Sendable {
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
         guard inputFormat.channelCount > 0, inputFormat.sampleRate > 0 else {
+            BackgroundRecordingService.shared.resumeAfterForegroundCapture()
             completion(AudioCaptureError.noInputAvailable)
             return
         }
@@ -162,6 +165,7 @@ final class AudioCaptureService: @unchecked Sendable {
             try engine.start()
         } catch {
             inputNode.removeTap(onBus: 0)
+            BackgroundRecordingService.shared.resumeAfterForegroundCapture()
             completion(AudioCaptureError.engineStartFailed(error))
             return
         }
@@ -175,7 +179,10 @@ final class AudioCaptureService: @unchecked Sendable {
     @MainActor
     @discardableResult
     func stopCapture() -> Data? {
-        guard isRecording else { return nil }
+        guard isRecording else {
+            BackgroundRecordingService.shared.resumeAfterForegroundCapture()
+            return nil
+        }
 
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
@@ -187,6 +194,7 @@ final class AudioCaptureService: @unchecked Sendable {
         }
 
         isRecording = false
+        BackgroundRecordingService.shared.resumeAfterForegroundCapture()
 
         guard let buffer = buildPCMBuffer() else { return nil }
         return try? Self.encodeToWAV(buffer: buffer)

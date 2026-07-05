@@ -31,13 +31,19 @@ private func fmtChunk(sampleRate: Int = 16000) -> [UInt8] {
 /// `pcmBytes` actual bytes — the live-recording shape when declaredDataSize=0.
 private func wav(declaredDataSize: UInt32, pcmBytes: Int,
                  extraChunkBeforeData: [UInt8] = []) -> Data {
+    wav(declaredDataSize: declaredDataSize,
+        pcm: [UInt8](repeating: 0x11, count: pcmBytes),
+        extraChunkBeforeData: extraChunkBeforeData)
+}
+
+private func wav(declaredDataSize: UInt32, pcm: [UInt8],
+                 extraChunkBeforeData: [UInt8] = []) -> Data {
     var body: [UInt8] = []
     body += Array("WAVE".utf8)
     body += fmtChunk()
     body += extraChunkBeforeData
     body += Array("data".utf8)
     body += u32le(declaredDataSize)
-    let pcm = [UInt8](repeating: 0x11, count: pcmBytes)
 
     var out: [UInt8] = Array("RIFF".utf8)
     out += u32le(UInt32(4 + body.count + pcm.count))
@@ -66,6 +72,29 @@ struct WAVSegmentTests {
         #expect(seg.count > 100)
         // 0.5s of 16-bit mono @16kHz = 16000 bytes PCM + 44 header.
         #expect(seg.count == 44 + 16000)
+    }
+
+    @Test("time slicing never emits half-sample PCM")
+    func timeSegmentAlignsToInt16Samples() {
+        let data = wav(declaredDataSize: 0, pcmBytes: 32000)   // 1.0s
+        let seg = WAVSegment.segment(data, from: 1.0 / 32000.0, to: 0.5 + 1.0 / 32000.0, sampleRate: 16000)
+        let range = WAVSegment.pcmRange(in: seg)
+        #expect(range.count == 16000)
+        #expect(range.count.isMultiple(of: 2))
+    }
+
+    @Test("PCM byte slicing extracts the new utterance")
+    func byteSegmentExtractsCurrentUtterance() {
+        let previousPCM = Array(repeating: UInt8(0x01), count: 6400)
+        let currentPCM = Array(repeating: UInt8(0x7f), count: 9600)
+        let data = wav(declaredDataSize: 0, pcm: previousPCM + currentPCM)
+
+        let seg = WAVSegment.segment(data, fromPCMByteOffset: previousPCM.count,
+                                     toPCMByteOffset: previousPCM.count + currentPCM.count,
+                                     sampleRate: 16000)
+        let range = WAVSegment.pcmRange(in: seg)
+        #expect(range.count == currentPCM.count)
+        #expect(Array(seg[range].prefix(8)) == Array(repeating: UInt8(0x7f), count: 8))
     }
 
     @Test("tail of a live recording returns the requested audio, not empty")
