@@ -294,17 +294,26 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
         let mode = resolveMode(config: config)
         let language = config.sttLanguage == "auto" ? nil : config.sttLanguage
 
-        bgLog.info("🎙 BG: STT=\(type(of: sttProvider)), mode=\(mode.displayName)")
+        // Vocab context (same pipeline as the Dictate/Notes surfaces): bias STT,
+        // apply deterministic corrections, and pass the glossary to the LLM.
+        let vocab = VocabStore().context(modeID: mode.id)
+        let promptHint = config.modeConfigs.first(where: { $0.id == mode.id })?.sttPrompt ?? ""
+
+        bgLog.info("🎙 BG: STT=\(type(of: sttProvider)), mode=\(mode.displayName), vocabTerms=\(vocab.terms.count)")
 
         Task {
             do {
-                let rawTranscript = try await sttProvider.transcribe(audioData: wavData, language: language)
+                let sttText = try await sttProvider.transcribe(
+                    audioData: wavData, language: language,
+                    vocabulary: vocab.terms, promptHint: promptHint
+                )
+                let rawTranscript = vocab.correct(sttText)
                 bgLog.info("🎙 BG: Transcript: \"\(rawTranscript.prefix(50))...\"")
 
                 var finalText = rawTranscript
                 if mode.requiresLLM, let llm = resolveLLMService(config: config) {
                     bgLog.info("🎙 BG: LLM (\(mode.displayName))...")
-                    finalText = (try? await llm.process(text: rawTranscript, mode: mode)) ?? rawTranscript
+                    finalText = (try? await llm.process(text: rawTranscript, mode: mode, glossary: vocab.glossary)) ?? rawTranscript
                 }
 
                 writeFinal(finalText)
@@ -355,8 +364,16 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
         return LLMService(apiKey: key, modelID: profile.modelID, baseURL: baseURL.isEmpty ? "https://api.openai.com" : baseURL)
     }
 
+    /// The background recorder only ever serves keyboard dictations, so it uses
+    /// the keyboard's own mode (kb_active_mode_id), falling back to the main
+    /// app's mode until the keyboard has picked one.
     private func resolveMode(config: AppConfig) -> Mode {
-        if let modeConfig = config.activeModeConfig {
+        let modeID = AppConfigStorage.resolveKeyboardMode(
+            override: AppConfigStorage.keyboardModeID(),
+            configActiveModeID: config.activeModeID
+        )
+
+        if let modeConfig = config.modeConfigs.first(where: { $0.id == modeID }) {
             switch modeConfig.mode {
             case .translate:
                 return .translate(targetLanguage: config.translateTargetLanguage)
@@ -365,10 +382,10 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
             }
         }
 
-        switch config.activeModeID {
+        switch modeID {
         case "polish": return .polish
         case "formal": return .formal
-        case "translate": return .translate(targetLanguage: config.translateTargetLanguage ?? "en")
+        case "translate": return .translate(targetLanguage: config.translateTargetLanguage)
         default: return .raw
         }
     }

@@ -72,6 +72,7 @@
 		FE0017AA0017AA0017AA0002 /* VocabTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0017AA0017AA0017AA0001 /* VocabTests.swift */; };
 		FE0021AA0021AA0021AA0002 /* ScenarioImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */; };
 		FE0023AA0023AA0023AA0002 /* SetupDoctorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */; };
+		FE0027AA0027AA0027AA0002 /* AppConfigStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0027AA0027AA0027AA0001 /* AppConfigStorageTests.swift */; };
 		WP01VON005AA005AA005001B /* NoteINV13ContainerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP01VON005AA005AA005001A /* NoteINV13ContainerTests.swift */; };
 		WP01VON006AA006AA006001B /* NoteQD03SyncFriendlyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP01VON006AA006AA006001A /* NoteQD03SyncFriendlyTests.swift */; };
 		WP03001AA003001AA003001B /* FonosSTT.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03001AA003001AA003001A /* FonosSTT.swift */; };
@@ -227,6 +228,7 @@
 		FE0017AA0017AA0017AA0001 /* VocabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabTests.swift; sourceTree = "<group>"; };
 		FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioImportTests.swift; sourceTree = "<group>"; };
 		FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctorTests.swift; sourceTree = "<group>"; };
+		FE0027AA0027AA0027AA0001 /* AppConfigStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfigStorageTests.swift; sourceTree = "<group>"; };
 		WP01VON005AA005AA005001A /* NoteINV13ContainerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV13ContainerTests.swift; sourceTree = "<group>"; };
 		WP01VON006AA006AA006001A /* NoteQD03SyncFriendlyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteQD03SyncFriendlyTests.swift; sourceTree = "<group>"; };
 		WP03001AA003001AA003001A /* FonosSTT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosSTT.swift; sourceTree = "<group>"; };
@@ -385,6 +387,7 @@
 				FE0017AA0017AA0017AA0001 /* VocabTests.swift */,
 				FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */,
 				FE0023AA0023AA0023AA0001 /* SetupDoctorTests.swift */,
+				FE0027AA0027AA0027AA0001 /* AppConfigStorageTests.swift */,
 				FE0007AA0007AA0007AA0001 /* NotebookPipelineTests.swift */,
 				FE0008AA0008AA0008AA0001 /* NoteINV15LLMNoteTests.swift */,
 				FE0009AA0009AA0009AA0001 /* SharedNotebookCatalogTests.swift */,
@@ -717,6 +720,7 @@
 				FE0017AA0017AA0017AA0002 /* VocabTests.swift in Sources */,
 				FE0021AA0021AA0021AA0002 /* ScenarioImportTests.swift in Sources */,
 				FE0023AA0023AA0023AA0002 /* SetupDoctorTests.swift in Sources */,
+				FE0027AA0027AA0027AA0002 /* AppConfigStorageTests.swift in Sources */,
 				FE0007AA0007AA0007AA0002 /* NotebookPipelineTests.swift in Sources */,
 				FE0008AA0008AA0008AA0002 /* NoteINV15LLMNoteTests.swift in Sources */,
 				FE0009AA0009AA0009AA0002 /* SharedNotebookCatalogTests.swift in Sources */,

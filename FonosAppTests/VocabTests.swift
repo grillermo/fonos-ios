@@ -262,14 +262,16 @@ struct VocabStoreTests {
 private final class VocabRecordingSTT: STTProvider, @unchecked Sendable {
     let transcript: String
     var receivedVocabulary: [String]?
+    var receivedPromptHint: String?
     init(transcript: String) { self.transcript = transcript }
 
     func transcribe(audioData: Data, language: String?) async throws -> String {
         transcript
     }
 
-    func transcribe(audioData: Data, language: String?, vocabulary: [String]) async throws -> String {
+    func transcribe(audioData: Data, language: String?, vocabulary: [String], promptHint: String) async throws -> String {
         receivedVocabulary = vocabulary
+        receivedPromptHint = promptHint
         return transcript
     }
 }
@@ -440,5 +442,85 @@ struct WhisperVocabPromptTests {
         let bodyText = String(data: WhisperPromptCaptureURLProtocol.lastBody ?? Data(),
                               encoding: .utf8) ?? ""
         #expect(!bodyText.contains("name=\"prompt\""))
+    }
+
+    // Desktop parity: the STT prompt folds the mode's prompt hint (base) with
+    // the vocab glossary (build_stt_prompt in fonos-core).
+    @Test("WhisperSTT folds the mode prompt hint and vocabulary into one prompt")
+    func whisperFoldsHintAndVocab() async throws {
+        WhisperPromptCaptureURLProtocol.lastBody = nil
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [WhisperPromptCaptureURLProtocol.self]
+        let stt = WhisperSTT(session: URLSession(configuration: config), apiKey: "sk-test")
+        _ = try await stt.transcribe(audioData: Data(count: 44), language: "en",
+                                     vocabulary: ["MRI"], promptHint: "Medical dictation.")
+        let bodyText = String(data: WhisperPromptCaptureURLProtocol.lastBody ?? Data(),
+                              encoding: .utf8) ?? ""
+        #expect(bodyText.contains("name=\"prompt\""))
+        #expect(bodyText.contains("Medical dictation. Vocabulary: MRI."))
+    }
+
+    @Test("WhisperSTT sends only the hint when there is no vocabulary")
+    func whisperHintOnly() async throws {
+        WhisperPromptCaptureURLProtocol.lastBody = nil
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [WhisperPromptCaptureURLProtocol.self]
+        let stt = WhisperSTT(session: URLSession(configuration: config), apiKey: "sk-test")
+        _ = try await stt.transcribe(audioData: Data(count: 44), language: "en",
+                                     vocabulary: [], promptHint: "Legal deposition.")
+        let bodyText = String(data: WhisperPromptCaptureURLProtocol.lastBody ?? Data(),
+                              encoding: .utf8) ?? ""
+        #expect(bodyText.contains("Legal deposition."))
+    }
+}
+
+// MARK: - VocabContext (shared pipeline helper used by all STT paths)
+
+struct VocabContextTests {
+
+    private func store() -> VocabStore {
+        let name = "vocab-context-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: name)!
+        d.removePersistentDomain(forName: name)
+        let s = VocabStore(defaults: d)
+        s.upsert(VocabBook(id: "tech", name: "Tech", terms: ["MySQL", "Kubernetes"],
+                           rules: [VocabRule(from: "my sequel", to: "MySQL")]))
+        s.setMounted(["tech"], forKey: VocabStore.globalMountKey)
+        return s
+    }
+
+    @Test("context(modeID:) collects terms from the effective books")
+    func contextCollectsTerms() {
+        let ctx = store().context(modeID: "raw")
+        #expect(ctx.terms == ["MySQL", "Kubernetes"])
+    }
+
+    @Test("context correction applies the mounted rules")
+    func contextCorrects() {
+        let ctx = store().context(modeID: nil)
+        #expect(ctx.correct("I use my sequel") == "I use MySQL")
+    }
+
+    @Test("context glossary is present with terms, nil without")
+    func contextGlossary() {
+        #expect(store().context(modeID: "raw").glossary?.contains("MySQL") == true)
+
+        let empty = VocabStore(defaults: UserDefaults(suiteName: "vc-empty-\(UUID().uuidString)")!)
+        #expect(empty.context(modeID: "raw").glossary == nil)
+    }
+
+    @Test("context(notebookID:) resolves global plus notebook mounts")
+    func contextNotebook() {
+        let name = "vc-nb-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: name)!
+        d.removePersistentDomain(forName: name)
+        let s = VocabStore(defaults: d)
+        let nb = UUID()
+        s.upsert(VocabBook(id: "g", name: "G", terms: ["Global"]))
+        s.upsert(VocabBook(id: "n", name: "N", terms: ["Notebook"]))
+        s.setMounted(["g"], forKey: VocabStore.globalMountKey)
+        s.setMounted(["n"], forKey: VocabStore.notebookMountKey(nb))
+        #expect(s.context(notebookID: nb).terms == ["Global", "Notebook"])
+        #expect(s.context(notebookID: UUID()).terms == ["Global"])
     }
 }

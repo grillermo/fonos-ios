@@ -181,8 +181,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             return
         }
         let resolved = NotebookPipeline.resolve(notebook)
-        let books = vocabStore.effectiveBooks(notebookID: containerId)
-        let terms = VocabApplier.collectTerms(books)
+        let vocab = vocabStore.context(notebookID: containerId)
 
         do {
             let sttText = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
@@ -191,7 +190,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                         let text = try await stt.transcribe(
                             audioData: audioData,
                             language: resolved.sttLanguage,
-                            vocabulary: terms
+                            vocabulary: vocab.terms
                         )
                         cont.resume(returning: text)
                     } catch {
@@ -199,11 +198,11 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                     }
                 }
             }
-            let rawText = VocabApplier.applyRules(sttText, books: books)
+            let rawText = vocab.correct(sttText)
 
             var processedText: String? = nil
             if let baseLLMConfig = resolved.llm, let llmProvider = llm {
-                let glossary = VocabApplier.buildGlossaryBlock(terms: terms) ?? ""
+                let glossary = vocab.glossary ?? ""
                 let llmConfig = NotebookLLMConfig(
                     systemPrompt: baseLLMConfig.systemPrompt + glossary,
                     outputLanguage: baseLLMConfig.outputLanguage,

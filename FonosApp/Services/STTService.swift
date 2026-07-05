@@ -68,15 +68,22 @@ private final class SpeechRecognitionCompletion: @unchecked Sendable {
 protocol STTProvider {
     func transcribe(audioData: Data, language: String?) async throws -> String
 
-    /// Vocabulary-aware transcription: providers that support biasing
-    /// (Apple contextualStrings, Whisper prompt) override this; the default
-    /// implementation ignores the terms.
-    func transcribe(audioData: Data, language: String?, vocabulary: [String]) async throws -> String
+    /// Vocabulary-aware transcription. `vocabulary` is the domain terms used
+    /// for biasing (Apple `contextualStrings`, Whisper prompt); `promptHint`
+    /// is the mode's Whisper prompt used as the prompt base (fonos-core
+    /// `build_stt_prompt`). Providers that support biasing override this; the
+    /// default ignores both.
+    func transcribe(audioData: Data, language: String?, vocabulary: [String], promptHint: String) async throws -> String
 }
 
 extension STTProvider {
-    func transcribe(audioData: Data, language: String?, vocabulary: [String]) async throws -> String {
+    func transcribe(audioData: Data, language: String?, vocabulary: [String], promptHint: String) async throws -> String {
         try await transcribe(audioData: audioData, language: language)
+    }
+
+    /// Convenience for callers that have no mode prompt hint.
+    func transcribe(audioData: Data, language: String?, vocabulary: [String]) async throws -> String {
+        try await transcribe(audioData: audioData, language: language, vocabulary: vocabulary, promptHint: "")
     }
 }
 
@@ -246,7 +253,9 @@ final class AppleSTT: STTProvider, @unchecked Sendable {
         try await transcribe(buffer: audioData, language: language)
     }
 
-    func transcribe(audioData: Data, language: String?, vocabulary: [String]) async throws -> String {
+    func transcribe(audioData: Data, language: String?, vocabulary: [String], promptHint: String) async throws -> String {
+        // Apple biases via contextualStrings (terms only); the prose promptHint
+        // is a Whisper concept and does not apply here.
         try await transcribe(buffer: audioData, language: language, vocabulary: vocabulary)
     }
 
@@ -356,11 +365,12 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
         try await transcribe(audioData: audioData, language: language, prompt: nil)
     }
 
-    func transcribe(audioData: Data, language: String?, vocabulary: [String]) async throws -> String {
-        let prompt = vocabulary.isEmpty
-            ? nil
-            : VocabApplier.buildSTTPrompt(base: "", terms: vocabulary)
-        return try await transcribe(audioData: audioData, language: language, prompt: prompt)
+    func transcribe(audioData: Data, language: String?, vocabulary: [String], promptHint: String) async throws -> String {
+        // Fold the mode's prompt hint (base) with the vocab glossary, matching
+        // fonos-core build_stt_prompt.
+        let composed = VocabApplier.buildSTTPrompt(base: promptHint, terms: vocabulary)
+        return try await transcribe(audioData: audioData, language: language,
+                                    prompt: composed.isEmpty ? nil : composed)
     }
 
     private func transcribe(audioData: Data, language: String?, prompt: String?) async throws -> String {

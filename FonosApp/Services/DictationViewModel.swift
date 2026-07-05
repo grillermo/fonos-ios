@@ -366,17 +366,17 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
                       language: String?,
                       mode: Mode) async throws -> ProcessResult {
         // Vocab stages (P1-1): ① STT biasing ② deterministic corrections ③ LLM glossary
-        let books = vocabStore.effectiveBooks(modeID: mode.id)
-        let terms = VocabApplier.collectTerms(books)
+        let vocab = vocabStore.context(modeID: mode.id)
+        let promptHint = config.modeConfigs.first(where: { $0.id == mode.id })?.sttPrompt ?? ""
 
         let sttStart = Date()
         let sttText = try await sttProvider.transcribe(
-            audioData: audioData, language: language, vocabulary: terms
+            audioData: audioData, language: language, vocabulary: vocab.terms, promptHint: promptHint
         )
         let sttElapsed = Date().timeIntervalSince(sttStart)
         await MainActor.run { sttLatency = sttElapsed }
 
-        let rawTranscript = VocabApplier.applyRules(sttText, books: books)
+        let rawTranscript = vocab.correct(sttText)
 
         // Raw mode or no LLM: return transcript directly
         guard mode.requiresLLM, let llm = llmService else {
@@ -387,7 +387,7 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         do {
             let processed = try await llm.process(
                 text: rawTranscript, mode: mode,
-                glossary: VocabApplier.buildGlossaryBlock(terms: terms)
+                glossary: vocab.glossary
             )
             let llmElapsed = Date().timeIntervalSince(llmStart)
             await MainActor.run { llmLatency = llmElapsed }

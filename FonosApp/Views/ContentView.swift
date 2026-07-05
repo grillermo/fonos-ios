@@ -1,6 +1,14 @@
 import SwiftUI
 import SwiftData
 
+/// Shared config storage for the main app, keyboard extension, and background
+/// recorder (all read/write the App Group container).
+///
+/// The main app's dictation mode (`config.activeModeID`) and the keyboard's
+/// dictation mode (`kb_active_mode_id`) are kept SEPARATE and persist
+/// independently: the keyboard can pick its own mode without the main app's
+/// Settings clobbering it, and vice versa. The keyboard override falls back to
+/// the main app's mode only until the keyboard picks one for the first time.
 enum AppConfigStorage {
     static let appGroupID = "group.com.fonos.ios"
     static let configKey = "app_config"
@@ -10,28 +18,60 @@ enum AppConfigStorage {
         UserDefaults(suiteName: appGroupID)
     }
 
+    // MARK: - Public API (real defaults)
+
     static func load() -> AppConfig? {
-        let data = sharedDefaults?.data(forKey: configKey)
-            ?? UserDefaults.standard.data(forKey: configKey)
-
-        guard let data,
-              var config = try? JSONDecoder().decode(AppConfig.self, from: data) else {
-            return nil
-        }
-
-        if let modeID = sharedDefaults?.string(forKey: keyboardModeOverrideKey),
-           !modeID.isEmpty {
-            config.activeModeID = modeID
-        }
-
-        return config
+        load(standard: .standard, shared: sharedDefaults)
     }
 
     static func save(_ config: AppConfig) {
+        save(config, standard: .standard, shared: sharedDefaults)
+    }
+
+    /// The keyboard's independently-chosen mode, or nil if it never picked one.
+    static func keyboardModeID() -> String? {
+        keyboardModeID(shared: sharedDefaults)
+    }
+
+    /// Persist the keyboard's chosen mode (owned by the keyboard extension UI).
+    static func setKeyboardModeID(_ modeID: String) {
+        setKeyboardModeID(modeID, shared: sharedDefaults)
+    }
+
+    // MARK: - Testable cores (injectable defaults)
+
+    static func load(standard: UserDefaults, shared: UserDefaults?) -> AppConfig? {
+        let data = shared?.data(forKey: configKey) ?? standard.data(forKey: configKey)
+        guard let data, let config = try? JSONDecoder().decode(AppConfig.self, from: data) else {
+            return nil
+        }
+        // Note: the keyboard mode override is deliberately NOT applied here — the
+        // main app uses its own activeModeID. The background recorder resolves the
+        // keyboard mode explicitly via resolveKeyboardMode(...).
+        return config
+    }
+
+    static func save(_ config: AppConfig, standard: UserDefaults, shared: UserDefaults?) {
         guard let data = try? JSONEncoder().encode(config) else { return }
-        UserDefaults.standard.set(data, forKey: configKey)
-        sharedDefaults?.set(data, forKey: configKey)
-        sharedDefaults?.set(config.activeModeID, forKey: keyboardModeOverrideKey)
+        standard.set(data, forKey: configKey)
+        shared?.set(data, forKey: configKey)
+        // Deliberately does NOT write keyboardModeOverrideKey — the keyboard owns it.
+    }
+
+    static func keyboardModeID(shared: UserDefaults?) -> String? {
+        let id = shared?.string(forKey: keyboardModeOverrideKey)
+        return (id?.isEmpty == false) ? id : nil
+    }
+
+    static func setKeyboardModeID(_ modeID: String, shared: UserDefaults?) {
+        shared?.set(modeID, forKey: keyboardModeOverrideKey)
+    }
+
+    /// Resolve the effective keyboard dictation mode id: the keyboard's own
+    /// choice if it made one, otherwise the main app's mode.
+    static func resolveKeyboardMode(override: String?, configActiveModeID: String) -> String {
+        if let override, !override.isEmpty { return override }
+        return configActiveModeID
     }
 }
 

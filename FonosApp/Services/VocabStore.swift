@@ -97,6 +97,40 @@ final class VocabStore: @unchecked Sendable {
         setMounted(ids, forKey: key)
     }
 
+    // MARK: - Vocab context (shared STT pipeline helper)
+
+    /// Everything a transcription path needs to apply a vocab: the resolved
+    /// books, the STT bias terms, deterministic correction, and the LLM
+    /// glossary. Built once per turn and reused by DictationViewModel,
+    /// NoteViewModel, and the keyboard's BackgroundRecordingService so all
+    /// three surfaces bias/correct identically.
+    struct Context {
+        let books: [VocabBook]
+        let terms: [String]
+
+        /// Apply the mounted correction rules to a transcript.
+        func correct(_ text: String) -> String {
+            VocabApplier.applyRules(text, books: books)
+        }
+
+        /// LLM glossary block (nil when there are no terms).
+        var glossary: String? {
+            VocabApplier.buildGlossaryBlock(terms: terms)
+        }
+    }
+
+    /// Vocab context for a dictation in the given mode.
+    func context(modeID: String?) -> Context {
+        let books = effectiveBooks(modeID: modeID)
+        return Context(books: books, terms: VocabApplier.collectTerms(books))
+    }
+
+    /// Vocab context for a voice note in the given notebook.
+    func context(notebookID: UUID?) -> Context {
+        let books = effectiveBooks(notebookID: notebookID)
+        return Context(books: books, terms: VocabApplier.collectTerms(books))
+    }
+
     // MARK: - Effective resolution
 
     /// Books for a dictation: global mounts plus the mode's mounts.
