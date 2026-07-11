@@ -8,6 +8,8 @@
     <string>$(PRODUCT_NAME)</string>
     <key>CFBundleDisplayName</key>
     <string>Fonos</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundleVersion</key>
     <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>CFBundleShortVersionString</key>
