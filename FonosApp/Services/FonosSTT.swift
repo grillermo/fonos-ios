@@ -23,6 +23,7 @@ final class FonosSTT: STTProvider, @unchecked Sendable {
     // MARK: - STTProvider
 
     func transcribe(audioData: Data, language: String?) async throws -> String {
+        try Task.checkCancellation()
         guard var components = URLComponents(
             url: serverURL.appendingPathComponent("transcribe"),
             resolvingAgainstBaseURL: false
@@ -58,6 +59,9 @@ final class FonosSTT: STTProvider, @unchecked Sendable {
         do {
             (data, response) = try await session.data(for: request)
         } catch let urlError as URLError {
+            if urlError.code == .cancelled || Task.isCancelled {
+                throw CancellationError()
+            }
             switch urlError.code {
             case .timedOut:
                 throw STTError.timeout
@@ -65,6 +69,7 @@ final class FonosSTT: STTProvider, @unchecked Sendable {
                 throw STTError.networkUnavailable
             }
         }
+        try Task.checkCancellation()
 
         guard let http = response as? HTTPURLResponse else {
             throw STTError.parseError

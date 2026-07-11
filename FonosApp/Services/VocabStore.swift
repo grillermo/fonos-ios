@@ -104,7 +104,7 @@ final class VocabStore: @unchecked Sendable {
     /// glossary. Built once per turn and reused by DictationViewModel,
     /// NoteViewModel, and the keyboard's BackgroundRecordingService so all
     /// three surfaces bias/correct identically.
-    struct Context {
+    struct Context: Sendable {
         let books: [VocabBook]
         let terms: [String]
 

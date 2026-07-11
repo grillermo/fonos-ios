@@ -68,6 +68,7 @@ final class LLMService: Sendable {
     /// - Returns: The processed text from the LLM.
     /// - Throws: `LLMError` on failure (caller can fall back to raw transcript).
     func process(text: String, mode: Mode, glossary: String? = nil) async throws -> String {
+        try Task.checkCancellation()
         let messages = buildMessages(text: text, mode: mode, glossary: glossary)
         let requestBody = buildRequestBody(messages: messages, mode: mode)
 
@@ -84,6 +85,9 @@ final class LLMService: Sendable {
         do {
             (data, response) = try await session.data(for: request)
         } catch let urlError as URLError {
+            if urlError.code == .cancelled || Task.isCancelled {
+                throw CancellationError()
+            }
             switch urlError.code {
             case .timedOut:
                 throw LLMError.timeout
@@ -93,6 +97,7 @@ final class LLMService: Sendable {
                 throw LLMError.networkUnavailable
             }
         }
+        try Task.checkCancellation()
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.parseError
@@ -171,6 +176,7 @@ extension LLMService {
     /// `Always respond in {lang}.` followed by a blank line to the system prompt.
     /// Prefix placement gives the strongest steering for chat models.
     func processNote(text: String, config: NotebookLLMConfig) async throws -> String {
+        try Task.checkCancellation()
         let composedSystem = Self.composeSystemPrompt(
             user: config.systemPrompt,
             outputLanguage: config.outputLanguage
@@ -202,12 +208,16 @@ extension LLMService {
         do {
             (data, response) = try await session.data(for: request)
         } catch let urlError as URLError {
+            if urlError.code == .cancelled || Task.isCancelled {
+                throw CancellationError()
+            }
             switch urlError.code {
             case .timedOut: throw LLMError.timeout
             case .notConnectedToInternet, .networkConnectionLost: throw LLMError.networkUnavailable
             default: throw LLMError.networkUnavailable
             }
         }
+        try Task.checkCancellation()
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.parseError

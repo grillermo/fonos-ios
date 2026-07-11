@@ -7,6 +7,7 @@ private let sttLog = Logger(subsystem: "com.fonos.ios", category: "STT")
 private final class SpeechRecognitionCompletion: @unchecked Sendable {
     private let lock = NSLock()
     private var didFinish = false
+    private var shouldCancelTaskOnInstall = false
     private var task: SFSpeechRecognitionTask?
     private let continuation: CheckedContinuation<String, any Error>
 
@@ -17,7 +18,11 @@ private final class SpeechRecognitionCompletion: @unchecked Sendable {
     func setTask(_ task: SFSpeechRecognitionTask) {
         lock.lock()
         self.task = task
+        let shouldCancel = shouldCancelTaskOnInstall
         lock.unlock()
+        if shouldCancel {
+            task.cancel()
+        }
     }
 
     func succeed(_ text: String) {
@@ -43,11 +48,33 @@ private final class SpeechRecognitionCompletion: @unchecked Sendable {
             return
         }
         didFinish = true
+        shouldCancelTaskOnInstall = true
         let task = task
         lock.unlock()
 
         task?.cancel()
         continuation.resume(throwing: STTError.timeout)
+    }
+
+    func cancel() {
+        lock.lock()
+        guard !didFinish else {
+            lock.unlock()
+            return
+        }
+        didFinish = true
+        shouldCancelTaskOnInstall = true
+        let task = task
+        lock.unlock()
+
+        task?.cancel()
+        continuation.resume(throwing: CancellationError())
+    }
+
+    var canStartRecognition: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !didFinish
     }
 
     private func finish(_ resume: () -> Void) {
@@ -62,10 +89,37 @@ private final class SpeechRecognitionCompletion: @unchecked Sendable {
     }
 }
 
+/// Connects task cancellation to a completion that is created inside the
+/// continuation body. It handles cancellation both before and after install.
+private final class SpeechRecognitionCancellationRelay: @unchecked Sendable {
+    private let lock = NSLock()
+    private var completion: SpeechRecognitionCompletion?
+    private var wasCancelled = false
+
+    func install(_ completion: SpeechRecognitionCompletion) {
+        lock.lock()
+        self.completion = completion
+        let shouldCancel = wasCancelled
+        lock.unlock()
+
+        if shouldCancel {
+            completion.cancel()
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        wasCancelled = true
+        let completion = completion
+        lock.unlock()
+        completion?.cancel()
+    }
+}
+
 // MARK: - STTProvider Protocol
 
 /// Protocol all STT provider implementations must conform to.
-protocol STTProvider {
+protocol STTProvider: Sendable {
     func transcribe(audioData: Data, language: String?) async throws -> String
 
     /// Vocabulary-aware transcription. `vocabulary` is the domain terms used
@@ -266,6 +320,7 @@ final class AppleSTT: STTProvider, @unchecked Sendable {
     /// languages (e.g. notebook configured for zh-CN on an en-US device) are
     /// actually recognized — not just recorded as "intended".
     func transcribe(buffer audioData: Data, language: String?, vocabulary: [String] = []) async throws -> String {
+        try Task.checkCancellation()
         let targetLocale = language.map { Locale(identifier: $0) } ?? .current
         lastUsedLocale = targetLocale
         // The previous bug: this line was missing. lastUsedLocale was being set
@@ -273,71 +328,79 @@ final class AppleSTT: STTProvider, @unchecked Sendable {
         // locale (.current), so per-notebook language overrides had no effect.
         recognizer.updateLocale(targetLocale)
 
-        return try await withCheckedThrowingContinuation { continuation in
-            recognizer.requestAuthorization { [recognizer = self.recognizer] status in
-                guard status == .authorized else {
-                    continuation.resume(throwing: STTError.permissionDenied)
-                    return
-                }
+        let cancellationRelay = SpeechRecognitionCancellationRelay()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let completion = SpeechRecognitionCompletion(continuation)
+                cancellationRelay.install(completion)
 
-                let request = SFSpeechAudioBufferRecognitionRequest()
-                request.shouldReportPartialResults = false
-                if !vocabulary.isEmpty {
-                    request.contextualStrings = vocabulary
-                }
+                recognizer.requestAuthorization { [recognizer = self.recognizer] status in
+                    guard status == .authorized else {
+                        completion.fail(STTError.permissionDenied)
+                        return
+                    }
+                    guard completion.canStartRecognition else { return }
 
-                // Append audio data to the request — this was missing!
-                // Convert WAV data to PCM buffer and feed it to the recognizer.
-                if audioData.count > 44 {
-                    // Try to decode WAV → PCM buffer
-                    if let pcmBuffer = try? AudioCaptureService.decodeWAV(data: audioData) {
-                        request.append(pcmBuffer)
-                    } else {
-                        // Fallback: try to create a buffer directly from raw PCM (skip WAV header)
-                        let pcmData = audioData.dropFirst(44)
-                        let sampleCount = pcmData.count / 2 // 16-bit samples
-                        if let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false),
-                           let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(sampleCount)) {
-                            buffer.frameLength = AVAudioFrameCount(sampleCount)
-                            if let int16Ptr = buffer.int16ChannelData {
-                                pcmData.withUnsafeBytes { rawBuf in
-                                    if let baseAddr = rawBuf.baseAddress {
-                                        memcpy(int16Ptr[0], baseAddr, pcmData.count)
+                    let request = SFSpeechAudioBufferRecognitionRequest()
+                    request.shouldReportPartialResults = false
+                    if !vocabulary.isEmpty {
+                        request.contextualStrings = vocabulary
+                    }
+
+                    // Append audio data to the request — this was missing!
+                    // Convert WAV data to PCM buffer and feed it to the recognizer.
+                    if audioData.count > 44 {
+                        // Try to decode WAV → PCM buffer
+                        if let pcmBuffer = try? AudioCaptureService.decodeWAV(data: audioData) {
+                            request.append(pcmBuffer)
+                        } else {
+                            // Fallback: try to create a buffer directly from raw PCM (skip WAV header)
+                            let pcmData = audioData.dropFirst(44)
+                            let sampleCount = pcmData.count / 2 // 16-bit samples
+                            if let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false),
+                               let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(sampleCount)) {
+                                buffer.frameLength = AVAudioFrameCount(sampleCount)
+                                if let int16Ptr = buffer.int16ChannelData {
+                                    pcmData.withUnsafeBytes { rawBuf in
+                                        if let baseAddr = rawBuf.baseAddress {
+                                            memcpy(int16Ptr[0], baseAddr, pcmData.count)
+                                        }
                                     }
+                                    request.append(buffer)
                                 }
                             }
-                            request.append(buffer)
                         }
                     }
-                }
-                // Signal end of audio — without this, the recognizer waits forever
-                request.endAudio()
+                    // Signal end of audio — without this, the recognizer waits forever
+                    request.endAudio()
 
-                let completion = SpeechRecognitionCompletion(continuation)
-                let task = recognizer.recognize(request: request) { result, error in
+                    let task = recognizer.recognize(request: request) { result, error in
 
-                    if let error {
-                        completion.fail(STTError.recognizerError(error.localizedDescription))
-                        return
+                        if let error {
+                            completion.fail(STTError.recognizerError(error.localizedDescription))
+                            return
+                        }
+
+                        if let result, result.isFinal {
+                            completion.succeed(result.bestTranscription.formattedString)
+                            return
+                        }
+
+                        // Mock fallback path for tests
+                        if result == nil && error == nil {
+                            let transcript = recognizer.transcribeSync()
+                            completion.succeed(transcript)
+                        }
                     }
+                    completion.setTask(task)
 
-                    if let result, result.isFinal {
-                        completion.succeed(result.bestTranscription.formattedString)
-                        return
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+                        completion.timeout()
                     }
-
-                    // Mock fallback path for tests
-                    if result == nil && error == nil {
-                        let transcript = recognizer.transcribeSync()
-                        completion.succeed(transcript)
-                    }
-                }
-                completion.setTask(task)
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
-                    completion.timeout()
                 }
             }
+        } onCancel: {
+            cancellationRelay.cancel()
         }
     }
 }
@@ -374,6 +437,7 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
     }
 
     private func transcribe(audioData: Data, language: String?, prompt: String?) async throws -> String {
+        try Task.checkCancellation()
         let urlString = "\(baseURL)/v1/audio/transcriptions"
         guard let url = URL(string: urlString) else {
             throw STTError.badRequest
@@ -409,10 +473,14 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
+            if error is CancellationError || Task.isCancelled {
+                throw CancellationError()
+            }
             let desc = (error as? URLError)?.localizedDescription ?? error.localizedDescription
             sttLog.error("🌐 ❌ Request failed: \(desc)")
             if let urlError = error as? URLError {
                 switch urlError.code {
+                case .cancelled: throw CancellationError()
                 case .timedOut: throw STTError.timeout
                 case .notConnectedToInternet, .networkConnectionLost: throw STTError.networkUnavailable
                 default: throw STTError.recognizerError("Request to \(urlString) failed: \(desc)")
@@ -420,6 +488,7 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
             }
             throw STTError.recognizerError("Request failed: \(desc)")
         }
+        try Task.checkCancellation()
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw STTError.parseError

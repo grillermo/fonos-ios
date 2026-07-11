@@ -28,6 +28,8 @@
 		663C34A9CC884E40AD59B709 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */; };
 		663C34A9CC884E40AD59B70A /* STTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A7 /* STTService.swift */; };
 		663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */; };
+		F10000000000000000000011 /* SpeechFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* SpeechFlow.swift */; };
+		F10000000000000000000012 /* SpeechFlowRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* SpeechFlowRunner.swift */; };
 		663C34A9CC884E40AD59B70C /* TextRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A9 /* TextRouter.swift */; };
 		663C34A9CC884E40AD59B70D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645AA /* Assets.xcassets */; };
 		FE0026AA0026AA0026AA0002 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FE0026AA0026AA0026AA0001 /* Localizable.xcstrings */; };
@@ -40,6 +42,7 @@
 		77D41ED5933B42BF9BE9C707 /* ConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C717 /* ConfigTests.swift */; };
 		77D41ED5933B42BF9BE9C708 /* HistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C718 /* HistoryTests.swift */; };
 		77D41ED5933B42BF9BE9C709 /* OfflineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C719 /* OfflineTests.swift */; };
+		F10000000000000000000013 /* SpeechFlowRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* SpeechFlowRunnerTests.swift */; };
 		AA01B001AA014D00AA014D01 /* Mode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01B001AA014D00AA014D11 /* Mode.swift */; };
 		AA01B001AA014D00AA014D02 /* ModelProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01B001AA014D00AA014D12 /* ModelProfile.swift */; };
 		AA01B001AA014D00AA014D03 /* Destination.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01B001AA014D00AA014D13 /* Destination.swift */; };
@@ -182,6 +185,8 @@
 		50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A7 /* STTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STTService.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
+		F10000000000000000000001 /* SpeechFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechFlow.swift; sourceTree = "<group>"; };
+		F10000000000000000000002 /* SpeechFlowRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechFlowRunner.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A9 /* TextRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextRouter.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FE0026AA0026AA0026AA0001 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
@@ -199,6 +204,7 @@
 		77D41ED5933B42BF9BE9C717 /* ConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C718 /* HistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C719 /* OfflineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineTests.swift; sourceTree = "<group>"; };
+		F10000000000000000000003 /* SpeechFlowRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechFlowRunnerTests.swift; sourceTree = "<group>"; };
 		AA01B001AA014D00AA014D11 /* Mode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mode.swift; sourceTree = "<group>"; };
 		AA01B001AA014D00AA014D12 /* ModelProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProfile.swift; sourceTree = "<group>"; };
 		AA01B001AA014D00AA014D13 /* Destination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Destination.swift; sourceTree = "<group>"; };
@@ -371,6 +377,7 @@
 				77D41ED5933B42BF9BE9C717 /* ConfigTests.swift */,
 				77D41ED5933B42BF9BE9C718 /* HistoryTests.swift */,
 				77D41ED5933B42BF9BE9C719 /* OfflineTests.swift */,
+				F10000000000000000000003 /* SpeechFlowRunnerTests.swift */,
 				AA01B001AA014D00AA014D15 /* INV06ModeTests.swift */,
 				AA01B001AA014D00AA014D16 /* INV09ConfigTests.swift */,
 				AA01B001AA014D00AA014D17 /* INV10HistoryTests.swift */,
@@ -464,6 +471,8 @@
 				50BA9D99CDBC44ABA7E645A7 /* STTService.swift */,
 				WP03001AA003001AA003001A /* FonosSTT.swift */,
 				50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */,
+				F10000000000000000000001 /* SpeechFlow.swift */,
+				F10000000000000000000002 /* SpeechFlowRunner.swift */,
 				50BA9D99CDBC44ABA7E645A9 /* TextRouter.swift */,
 				AA01B001AA014D00AA014D14 /* KeychainStore.swift */,
 				WP04000000000000000011 /* DictationViewModel.swift */,
@@ -710,6 +719,7 @@
 				77D41ED5933B42BF9BE9C707 /* ConfigTests.swift in Sources */,
 				77D41ED5933B42BF9BE9C708 /* HistoryTests.swift in Sources */,
 				77D41ED5933B42BF9BE9C709 /* OfflineTests.swift in Sources */,
+				F10000000000000000000013 /* SpeechFlowRunnerTests.swift in Sources */,
 				AA01B001AA014D00AA014D05 /* INV06ModeTests.swift in Sources */,
 				AA01B001AA014D00AA014D06 /* INV09ConfigTests.swift in Sources */,
 				AA01B001AA014D00AA014D07 /* INV10HistoryTests.swift in Sources */,
@@ -776,6 +786,8 @@
 				663C34A9CC884E40AD59B709 /* AudioCaptureService.swift in Sources */,
 				663C34A9CC884E40AD59B70A /* STTService.swift in Sources */,
 				663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */,
+				F10000000000000000000011 /* SpeechFlow.swift in Sources */,
+				F10000000000000000000012 /* SpeechFlowRunner.swift in Sources */,
 				663C34A9CC884E40AD59B70C /* TextRouter.swift in Sources */,
 				MP01001AA001001AA001001B /* ModelProbeService.swift in Sources */,
 				AA01B001AA014D00AA014D01 /* Mode.swift in Sources */,

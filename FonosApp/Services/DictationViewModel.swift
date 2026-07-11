@@ -28,15 +28,29 @@ enum DictationError: LocalizedError, Equatable {
 struct ProcessResult: Sendable {
     /// The processed or raw text.
     let text: String
-    /// The original STT transcript, before any LLM processing.
+    /// The deterministically corrected STT transcript passed to the LLM.
+    /// Kept under the legacy name for UI and History compatibility.
     let rawTranscript: String
-    /// True if LLM processing failed and we fell back to the raw STT transcript.
+    /// Text exactly as returned by the STT provider, before vocab correction.
+    let providerTranscript: String
+    /// True if LLM processing failed and we used the corrected transcript.
     let isRawFallback: Bool
+    /// True only when an LLM produced the final text.
+    let didProcessWithLLM: Bool
+    let timings: SpeechFlowTimings
 
-    init(text: String, rawTranscript: String? = nil, isRawFallback: Bool = false) {
+    init(text: String,
+         rawTranscript: String? = nil,
+         isRawFallback: Bool = false,
+         providerTranscript: String? = nil,
+         didProcessWithLLM: Bool = false,
+         timings: SpeechFlowTimings = .zero) {
         self.text = text
         self.rawTranscript = rawTranscript ?? text
+        self.providerTranscript = providerTranscript ?? rawTranscript ?? text
         self.isRawFallback = isRawFallback
+        self.didProcessWithLLM = didProcessWithLLM
+        self.timings = timings
     }
 }
 
@@ -101,6 +115,8 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
 
     private let audioCapture: AudioCaptureService
     private var levelPollTimer: Timer?
+    private var processingTask: Task<Void, Never>?
+    private var activeProcessingID: UUID?
 
     /// SwiftData context for persisting completed sessions to History.
     /// Set by ContentView; nil in unit tests that don't exercise persistence.
@@ -122,9 +138,9 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
 
     /// Test initialiser with explicit providers.
     private var _testSTT: (any STTProvider)?
-    private var _testLLM: LLMService?
+    private var _testLLM: (any SpeechFlowLLMProvider)?
     init(sttProvider: (any STTProvider)?,
-         llmService: LLMService? = nil,
+         llmService: (any SpeechFlowLLMProvider)? = nil,
          audioCapture: AudioCaptureService = AudioCaptureService()) {
         self._testSTT = sttProvider
         self._testLLM = llmService
@@ -140,7 +156,7 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
     }
 
     /// Resolve the current LLM service from config. Returns nil if not configured.
-    var llmService: LLMService? {
+    var llmService: (any SpeechFlowLLMProvider)? {
         if let test = _testLLM { return test }
 
         let profileID = config.llmProfile
@@ -252,6 +268,8 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
     private func doStartCapture() {
         log.info("🔴 doStartCapture() — starting engine on background thread")
 
+        cancelInFlightProcessing()
+
         // Set recording state immediately for responsive UI
         recordingState = .recording
         startLevelPolling()
@@ -289,6 +307,8 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
     @MainActor
     func finishRecording(wavData: Data) {
         let mode = self.currentMode
+        let modeScopeID = config.activeModeID
+        let sttLanguage = config.sttLanguage == "auto" ? nil : config.sttLanguage
 
         if mode.requiresLLM && llmService == nil {
             // Show transcript only — no LLM configured
@@ -296,31 +316,49 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         }
 
         recordingState = .processing
+        processingTask?.cancel()
+        let processingID = UUID()
+        activeProcessingID = processingID
 
-        Task {
-            do {
-                log.info("🔄 Starting STT transcription...")
-                let sttLang = config.sttLanguage == "auto" ? nil : config.sttLanguage
-                let result = try await processAudio(
-                    wavData,
-                    language: sttLang,
-                    mode: mode
-                )
-                log.info("✅ Processing complete: \(result.text.prefix(50))...")
-                await MainActor.run {
-                    recordingState = .result(
-                        transcript: result.rawTranscript,
-                        processed: result.isRawFallback ? nil : result.text
-                    )
-                    persistSession(result: result, mode: mode)
-                }
-            } catch {
-                log.error("❌ Processing failed: \(error.localizedDescription)")
-                await MainActor.run {
-                    recordingState = .error(message: error.localizedDescription)
+        processingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if activeProcessingID == processingID {
+                    activeProcessingID = nil
+                    processingTask = nil
                 }
             }
+
+            do {
+                log.info("🔄 Starting STT transcription...")
+                let result = try await processAudio(
+                    wavData,
+                    language: sttLanguage,
+                    mode: mode,
+                    scopeID: modeScopeID
+                )
+                guard activeProcessingID == processingID, !Task.isCancelled else { return }
+                log.info("✅ Processing complete: \(result.text.prefix(50))...")
+                recordingState = .result(
+                    transcript: result.rawTranscript,
+                    processed: result.didProcessWithLLM ? result.text : nil
+                )
+                persistSession(result: result, mode: mode)
+            } catch is CancellationError {
+                log.info("⏹ Processing cancelled")
+            } catch {
+                guard activeProcessingID == processingID else { return }
+                log.error("❌ Processing failed: \(error.localizedDescription)")
+                recordingState = .error(message: error.localizedDescription)
+            }
         }
+    }
+
+    @MainActor
+    private func cancelInFlightProcessing() {
+        activeProcessingID = nil
+        processingTask?.cancel()
+        processingTask = nil
     }
 
     /// Inserts a DictationSession into History. No-op when modelContext is unset.
@@ -333,7 +371,7 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
             inputText: result.rawTranscript,
             outputText: result.text,
             destination: config.autoSendDestination.isEmpty ? "clipboard" : config.autoSendDestination,
-            latencyMs: (sttLatency + llmLatency) * 1000
+            latencyMs: result.timings.total * 1000
         )
         context.insert(session)
         do {
@@ -361,42 +399,90 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
     }
 
     /// Transcribe audio and optionally apply LLM post-processing.
-    /// If LLM processing fails, falls back to the raw transcript.
+    /// If LLM processing fails, falls back to the corrected transcript.
     func processAudio(_ audioData: Data,
                       language: String?,
-                      mode: Mode) async throws -> ProcessResult {
-        // Vocab stages (P1-1): ① STT biasing ② deterministic corrections ③ LLM glossary
-        let vocab = vocabStore.context(modeID: mode.id)
-        let promptHint = config.modeConfigs.first(where: { $0.id == mode.id })?.sttPrompt ?? ""
-
-        let sttStart = Date()
-        let sttText = try await sttProvider.transcribe(
-            audioData: audioData, language: language, vocabulary: vocab.terms, promptHint: promptHint
+                      mode: Mode,
+                      scopeID: String? = nil) async throws -> ProcessResult {
+        let flow = await resolveSpeechFlow(
+            language: language,
+            mode: mode,
+            scopeID: scopeID
         )
-        let sttElapsed = Date().timeIntervalSince(sttStart)
-        await MainActor.run { sttLatency = sttElapsed }
 
-        let rawTranscript = vocab.correct(sttText)
-
-        // Raw mode or no LLM: return transcript directly
-        guard mode.requiresLLM, let llm = llmService else {
-            return ProcessResult(text: rawTranscript, isRawFallback: false)
+        try Task.checkCancellation()
+        let didResetMetrics = await MainActor.run {
+            guard !Task.isCancelled else { return false }
+            sttLatency = 0
+            llmLatency = 0
+            return true
         }
+        guard didResetMetrics else { throw CancellationError() }
 
-        let llmStart = Date()
-        do {
-            let processed = try await llm.process(
-                text: rawTranscript, mode: mode,
-                glossary: vocab.glossary
+        let flowResult = try await SpeechFlowRunner().run(
+            SpeechFlowInput(wavData: audioData),
+            using: flow
+        )
+
+        try Task.checkCancellation()
+        let didPublishMetrics = await MainActor.run {
+            guard !Task.isCancelled else { return false }
+            sttLatency = flowResult.timings.stt
+            llmLatency = flowResult.timings.llm ?? 0
+            return true
+        }
+        guard didPublishMetrics else { throw CancellationError() }
+
+        return ProcessResult(
+            text: flowResult.finalText,
+            rawTranscript: flowResult.correctedTranscript,
+            isRawFallback: flowResult.llmOutcome.isFallback,
+            providerTranscript: flowResult.providerTranscript,
+            didProcessWithLLM: flowResult.llmOutcome.producedProcessedText,
+            timings: flowResult.timings
+        )
+    }
+
+    /// Resolves mutable Settings/Keychain/vocab state as one MainActor
+    /// transaction, then hands a Sendable snapshot to the generic executor.
+    @MainActor
+    private func resolveSpeechFlow(
+        language: String?,
+        mode: Mode,
+        scopeID: String?
+    ) -> ResolvedSpeechFlow {
+        // `scopeID` stays distinct from Mode.id because custom ModeConfig ids
+        // are UUIDs while Mode.id collapses every custom mode to "custom".
+        let resolvedScopeID = scopeID ?? mode.id
+        let resolvedSTT = sttProvider
+        let resolvedLLM = llmService
+        let vocab = SpeechFlowVocabSnapshot(
+            context: vocabStore.context(modeID: resolvedScopeID)
+        )
+        let promptHint = config.modeConfigs
+            .first(where: { $0.id == resolvedScopeID })?
+            .sttPrompt ?? ""
+
+        let postprocess: ResolvedSpeechFlow.Postprocess
+        if !mode.requiresLLM {
+            postprocess = .none(.notRequested)
+        } else if let resolvedLLM {
+            postprocess = .llm(
+                .init(provider: resolvedLLM, mode: mode, failurePolicy: .useInput)
             )
-            let llmElapsed = Date().timeIntervalSince(llmStart)
-            await MainActor.run { llmLatency = llmElapsed }
-            return ProcessResult(text: processed, rawTranscript: rawTranscript, isRawFallback: false)
-        } catch {
-            // LLM failure — fall back to raw transcript
-            let llmElapsed = Date().timeIntervalSince(llmStart)
-            await MainActor.run { llmLatency = llmElapsed }
-            return ProcessResult(text: rawTranscript, isRawFallback: true)
+        } else {
+            postprocess = .none(.notConfigured)
         }
+
+        return ResolvedSpeechFlow(
+            flowID: "dictation:\(resolvedScopeID)",
+            stt: .init(
+                provider: resolvedSTT,
+                language: language,
+                promptHint: promptHint
+            ),
+            vocab: vocab,
+            postprocess: postprocess
+        )
     }
 }
