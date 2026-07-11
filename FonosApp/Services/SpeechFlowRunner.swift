@@ -10,7 +10,6 @@ struct SpeechFlowRunner: Sendable {
         using flow: ResolvedSpeechFlow,
         onEvent: SpeechFlowEventHandler? = nil
     ) async throws -> SpeechFlowResult {
-        let runStartedAt = clock.now
         var events: [SpeechFlowEvent] = []
 
         let runStarted = SpeechFlowEvent.runStarted(
@@ -19,6 +18,8 @@ struct SpeechFlowRunner: Sendable {
         )
         events.append(runStarted)
         await publish(runStarted, to: onEvent)
+        // Observer back-pressure is not provider execution time.
+        let runStartedAt = clock.now
 
         if Task.isCancelled {
             let duration = elapsed(since: runStartedAt)
@@ -34,13 +35,13 @@ struct SpeechFlowRunner: Sendable {
 
         // MARK: STT
 
-        let sttStartedAt = clock.now
         let sttStarted = SpeechFlowEvent.stepStarted(
             runID: input.runID,
             step: .stt
         )
         events.append(sttStarted)
         await publish(sttStarted, to: onEvent)
+        let sttStartedAt = clock.now
 
         let providerTranscript: String
         let sttDuration: TimeInterval
@@ -119,13 +120,13 @@ struct SpeechFlowRunner: Sendable {
             throw CancellationError()
         }
 
-        let correctionStartedAt = clock.now
         let correctionStarted = SpeechFlowEvent.stepStarted(
             runID: input.runID,
             step: .vocabCorrection
         )
         events.append(correctionStarted)
         await publish(correctionStarted, to: onEvent)
+        let correctionStartedAt = clock.now
 
         let correctedTranscript = flow.vocab.correct(providerTranscript)
         let correctionDuration = elapsed(since: correctionStartedAt)
@@ -184,13 +185,13 @@ struct SpeechFlowRunner: Sendable {
                 throw CancellationError()
             }
 
-            let llmStartedAt = clock.now
             let llmStarted = SpeechFlowEvent.stepStarted(
                 runID: input.runID,
                 step: .llm
             )
             events.append(llmStarted)
             await publish(llmStarted, to: onEvent)
+            let llmStartedAt = clock.now
 
             do {
                 let processedText = try await step.provider.process(
@@ -284,7 +285,8 @@ struct SpeechFlowRunner: Sendable {
             throw CancellationError()
         }
 
-        let totalDuration = elapsed(since: runStartedAt)
+        // Successful-run metrics describe Flow work, not UI/event observer back-pressure.
+        let totalDuration = sttDuration + correctionDuration + (llmDuration ?? 0)
         let terminal = SpeechFlowEvent.runSucceeded(
             runID: input.runID,
             duration: totalDuration

@@ -218,7 +218,7 @@ struct ModelsTab: View {
                     .listRowBackground(cardBg)
                     .listRowSeparatorTint(separator)
             } else {
-                ForEach(Array(config.modelProfiles.enumerated()), id: \.element.id) { index, profile in
+                ForEach(config.modelProfiles, id: \.id) { profile in
                     ModelProfileRow(
                         profile: profile,
                         isDefaultSTT: config.sttProfile == profile.id,
@@ -233,7 +233,7 @@ struct ModelsTab: View {
                     )
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
-                            deleteProfile(at: index, id: profile.id)
+                            deleteProfile(id: profile.id)
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
@@ -287,11 +287,8 @@ struct ModelsTab: View {
         config.modelProfiles.filter(\.hasLLM)
     }
 
-    private func deleteProfile(at index: Int, id: String) {
-        config.modelProfiles.remove(at: index)
-        // Clear defaults that reference the deleted profile
-        if config.sttProfile == id { config.sttProfile = "" }
-        if config.llmProfile == id { config.llmProfile = "" }
+    private func deleteProfile(id: String) {
+        config.removeModelProfile(id: id)
     }
 
     private func sectionHeader(_ title: String) -> some View {

@@ -14,13 +14,6 @@ struct DictationView: View {
         self.viewModel = viewModel
     }
 
-    private let modes: [Mode] = [.raw, .polish, .formal, .translate(targetLanguage: "English"), .custom(
-        systemPrompt: "You are a helpful assistant.",
-        userTemplate: "{text}",
-        temperature: 0.7,
-        maxTokens: 1024
-    )]
-
     var body: some View {
         ZStack {
             Color(hex: "#1a1917")
@@ -53,7 +46,12 @@ struct DictationView: View {
                 modelInfoLabel
                     .padding(.top, 12)
 
-                Spacer(minLength: 16)
+                // MARK: - Visible post-capture Flow
+                flowProgressView
+                    .padding(.top, 10)
+                    .padding(.horizontal, 20)
+
+                Spacer(minLength: 12)
 
                 // MARK: - Result / Error Area (scrollable)
                 ScrollView {
@@ -71,7 +69,7 @@ struct DictationView: View {
                 .frame(maxHeight: 240)
 
                 // MARK: - Latency
-                if viewModel.sttLatency > 0 || viewModel.llmLatency > 0 {
+                if viewModel.flowPresentation.timings != nil {
                     latencyView
                         .padding(.horizontal, 20)
                         .padding(.bottom, 4)
@@ -121,7 +119,7 @@ struct DictationView: View {
         switch viewModel.recordingState {
         case .idle:       return String(localized: "Ready")
         case .recording:  return String(localized: "Recording")
-        case .processing: return String(localized: "Processing")
+        case .processing: return activeFlowStatus
         case .result:     return String(localized: "Done")
         case .error:      return String(localized: "Error")
         }
@@ -132,23 +130,26 @@ struct DictationView: View {
     private var modePickerStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(modes, id: \.id) { mode in
-                    modeChip(mode)
+                ForEach(viewModel.config.modeConfigs, id: \.id) { modeConfig in
+                    modeChip(modeConfig)
                 }
             }
             .padding(.horizontal, 4)
         }
+        .allowsHitTesting(!isModeSelectionLocked)
+        .opacity(isModeSelectionLocked ? 0.65 : 1)
+        .animation(.easeOut(duration: 0.2), value: isModeSelectionLocked)
     }
 
-    private func modeChip(_ mode: Mode) -> some View {
-        let isSelected = viewModel.currentMode == mode
+    private func modeChip(_ modeConfig: ModeConfig) -> some View {
+        let isSelected = viewModel.config.activeModeID == modeConfig.id
         return Button {
-            viewModel.currentMode = mode
+            viewModel.selectMode(id: modeConfig.id)
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: mode.icon)
+                Image(systemName: modeConfig.icon)
                     .font(.system(size: 11, weight: .medium))
-                Text(modeChipTitle(mode))
+                Text(modeChipTitle(modeConfig))
                     .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
             }
             .lineLimit(1)
@@ -169,15 +170,24 @@ struct DictationView: View {
         }
         .buttonStyle(PlainButtonStyle())
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isSelected)
+        .accessibilityIdentifier("mode-\(modeConfig.id)")
     }
 
-    private func modeChipTitle(_ mode: Mode) -> String {
-        switch mode {
-        case .raw: return String(localized: "Raw")
-        case .polish: return String(localized: "Polish")
-        case .formal: return String(localized: "Formal")
-        case .translate: return String(localized: "Translate")
-        case .custom: return String(localized: "Custom")
+    private func modeChipTitle(_ modeConfig: ModeConfig) -> String {
+        guard modeConfig.isBuiltIn else { return modeConfig.name }
+        switch modeConfig.id {
+        case "raw": return String(localized: "Raw")
+        case "polish": return String(localized: "Polish")
+        case "formal": return String(localized: "Formal")
+        case "translate": return String(localized: "Translate")
+        default: return modeConfig.name
+        }
+    }
+
+    private var isModeSelectionLocked: Bool {
+        switch viewModel.recordingState {
+        case .recording, .processing: return true
+        case .idle, .result, .error: return false
         }
     }
 
@@ -215,7 +225,7 @@ struct DictationView: View {
         case .recording:
             return holdMode ? String(localized: "Release to stop") : String(localized: "Tap to stop")
         case .processing:
-            return String(localized: "Processing...")
+            return activeFlowStatus
         case .result:
             return holdMode ? String(localized: "Hold to record again") : String(localized: "Tap to record again")
         case .error:
@@ -247,7 +257,7 @@ struct DictationView: View {
             HStack(spacing: 4) {
                 Image(systemName: viewModel.currentMode.icon)
                     .font(.system(size: 9))
-                Text(viewModel.currentMode.displayName)
+                Text(activeModeDisplayName)
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                 if viewModel.currentMode.requiresLLM {
                     Text("·")
@@ -267,6 +277,173 @@ struct DictationView: View {
             .background(
                 Capsule().fill(Color(red: 134/255, green: 239/255, blue: 172/255).opacity(0.08))
             )
+        }
+    }
+
+    private var activeModeDisplayName: String {
+        guard let modeConfig = viewModel.config.activeModeConfig else {
+            return viewModel.currentMode.displayName
+        }
+        return modeChipTitle(modeConfig)
+    }
+
+    // MARK: - Flow Progress
+
+    private var flowProgressView: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Text("Voice flow")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(Color(hex: "#fafaf9").opacity(0.72))
+
+                Spacer(minLength: 8)
+
+                Text(activeFlowStatus)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(activeFlowStatusColor)
+                    .lineLimit(1)
+            }
+
+            HStack(spacing: 7) {
+                flowStage(.stt, title: "Transcribe")
+                flowConnector(after: .stt)
+                flowStage(.vocabCorrection, title: "Vocabulary")
+                flowConnector(after: .vocabCorrection)
+                flowStage(.llm, title: "AI")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 13)
+                .fill(Color(hex: "#fafaf9").opacity(0.035))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 13)
+                        .strokeBorder(Color(hex: "#fafaf9").opacity(0.07), lineWidth: 1)
+                )
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Flow progress")
+        .accessibilityValue(flowAccessibilityValue)
+        .accessibilityIdentifier("flow-progress")
+    }
+
+    private func flowStage(_ step: SpeechFlowStep, title: LocalizedStringKey) -> some View {
+        let state = displayedFlowState(for: step)
+        let appearance = flowAppearance(for: state)
+
+        return HStack(spacing: 5) {
+            Image(systemName: appearance.icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(appearance.color)
+                .symbolEffect(.pulse, options: .repeating, isActive: state == .running)
+
+            Text(title)
+                .font(.system(size: 10, weight: appearance.isEmphasized ? .semibold : .medium))
+                .foregroundColor(appearance.color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityIdentifier("flow-step-\(step.rawValue)")
+    }
+
+    private func flowConnector(after step: SpeechFlowStep) -> some View {
+        let state = displayedFlowState(for: step)
+        let isComplete: Bool
+        switch state {
+        case .succeeded, .fallback: isComplete = true
+        case .pending, .running, .failed, .cancelled, .skipped: isComplete = false
+        }
+
+        return Capsule()
+            .fill(isComplete ? Color(hex: "#86efac").opacity(0.55) : Color.white.opacity(0.18))
+            .frame(width: 14, height: 1)
+    }
+
+    private func displayedFlowState(for step: SpeechFlowStep) -> SpeechFlowPresentation.StepState {
+        if let state = viewModel.flowPresentation.state(for: step) {
+            return state
+        }
+        guard step == .llm else { return .pending }
+        if !viewModel.currentMode.requiresLLM {
+            return .skipped(.notRequested)
+        }
+        if viewModel.llmProviderName == nil {
+            return .skipped(.notConfigured)
+        }
+        return .pending
+    }
+
+    private func flowAppearance(
+        for state: SpeechFlowPresentation.StepState
+    ) -> (icon: String, color: Color, isEmphasized: Bool) {
+        switch state {
+        case .pending:
+            return ("circle", Color.white.opacity(0.48), false)
+        case .running:
+            return ("ellipsis.circle.fill", Color(hex: "#fbbf24"), true)
+        case .succeeded:
+            return ("checkmark.circle.fill", Color(hex: "#86efac"), true)
+        case .fallback:
+            return ("exclamationmark.circle.fill", Color(hex: "#fbbf24"), true)
+        case .failed:
+            return ("xmark.circle.fill", Color(hex: "#ef4444"), true)
+        case .cancelled:
+            return ("xmark.circle", Color.white.opacity(0.4), false)
+        case .skipped(let reason):
+            let color = reason == .notConfigured
+                ? Color(hex: "#fbbf24").opacity(0.72)
+                : Color.white.opacity(0.4)
+            return ("minus.circle", color, reason == .notConfigured)
+        }
+    }
+
+    private var activeFlowStatus: String {
+        switch viewModel.flowPresentation.phase {
+        case .idle:
+            return String(localized: "Ready")
+        case .running(let current):
+            switch current {
+            case .stt: return String(localized: "Transcribing…")
+            case .vocabCorrection: return String(localized: "Applying vocabulary…")
+            case .llm: return String(localized: "Processing with AI…")
+            case nil: return String(localized: "Preparing flow…")
+            }
+        case .succeeded:
+            return String(localized: "Flow complete")
+        case .degraded:
+            return String(localized: "Transcript fallback")
+        case .failed:
+            return String(localized: "Flow failed")
+        case .cancelled:
+            return String(localized: "Cancelled")
+        }
+    }
+
+    private var activeFlowStatusColor: Color {
+        switch viewModel.flowPresentation.phase {
+        case .running:
+            return Color(hex: "#fbbf24")
+        case .succeeded:
+            return Color(hex: "#86efac")
+        case .degraded:
+            return Color(hex: "#fbbf24")
+        case .failed:
+            return Color(hex: "#ef4444")
+        case .idle, .cancelled:
+            return Color.white.opacity(0.5)
+        }
+    }
+
+    private var flowAccessibilityValue: String {
+        switch viewModel.flowPresentation.phase {
+        case .idle: return String(localized: "Ready")
+        case .running: return activeFlowStatus
+        case .succeeded: return String(localized: "Flow complete")
+        case .degraded: return String(localized: "AI unavailable — transcript used")
+        case .failed: return String(localized: "Flow failed")
+        case .cancelled: return String(localized: "Cancelled")
         }
     }
 
@@ -324,9 +501,11 @@ struct DictationView: View {
                     Text("Copied!")
                         .font(.caption)
                         .foregroundColor(Color(hex: "#86efac"))
-                        .transition(.opacity)
+                    .transition(.opacity)
                 }
             }
+
+            flowOutcomeBadge
 
             Text(displayText)
                 .font(.system(size: 16))
@@ -372,6 +551,43 @@ struct DictationView: View {
         }
     }
 
+    private var flowOutcomeBadge: some View {
+        let outcome = flowOutcomeAppearance
+        return HStack(spacing: 6) {
+            Image(systemName: outcome.icon)
+                .font(.system(size: 10, weight: .semibold))
+            Text(outcome.text)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(2)
+        }
+        .foregroundColor(outcome.color)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(outcome.color.opacity(0.09))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Flow result")
+        .accessibilityValue(outcome.text)
+        .accessibilityIdentifier("flow-outcome")
+    }
+
+    private var flowOutcomeAppearance: (icon: String, text: String, color: Color) {
+        let green = Color(hex: "#86efac")
+        let amber = Color(hex: "#fbbf24")
+        switch viewModel.flowPresentation.llmOutcome {
+        case .some(.succeeded):
+            return ("sparkles", String(localized: "AI processing complete"), green)
+        case .some(.fellBackToInput):
+            return ("arrow.uturn.backward", String(localized: "AI unavailable — transcript used"), amber)
+        case .some(.skipped(.notConfigured)):
+            return ("exclamationmark.triangle.fill", String(localized: "No LLM configured — transcript used"), amber)
+        case .some(.skipped(.notRequested)), .none:
+            return ("text.badge.checkmark", String(localized: "Transcript ready"), green)
+        }
+    }
+
     // MARK: - Error Card
 
     private func errorCard(message: String) -> some View {
@@ -398,12 +614,16 @@ struct DictationView: View {
     // MARK: - Latency
 
     private var latencyView: some View {
-        HStack(spacing: 16) {
-            if viewModel.sttLatency > 0 {
-                latencyBadge(label: "STT", seconds: viewModel.sttLatency)
+        let timings = viewModel.flowPresentation.timings ?? .zero
+        return HStack(spacing: 16) {
+            if timings.stt > 0 {
+                latencyBadge(label: "STT", seconds: timings.stt)
             }
-            if viewModel.llmLatency > 0 {
-                latencyBadge(label: "LLM", seconds: viewModel.llmLatency)
+            if let llm = timings.llm, llm > 0 {
+                latencyBadge(label: "AI", seconds: llm)
+            }
+            if timings.total > 0 {
+                latencyBadge(label: String(localized: "Total"), seconds: timings.total)
             }
             Spacer()
         }
@@ -418,6 +638,7 @@ struct DictationView: View {
             Text("\(ms)ms")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(Color(hex: "#fbbf24").opacity(0.7))
+                .monospacedDigit()
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

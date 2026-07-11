@@ -324,14 +324,15 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
     private func transcribeAndProcess(wavData: Data, sessionID: String?,
                                       bgTaskID: UIBackgroundTaskIdentifier) {
         let config = readAppConfig()
-        let sttProvider = resolveSTTProvider(config: config)
-        let mode = resolveMode(config: config)
+        let modeID = resolveModeID(config: config)
+        let sttProvider = resolveSTTProvider(config: config, modeID: modeID)
+        let mode = resolveMode(config: config, modeID: modeID)
         let language = config.sttLanguage == "auto" ? nil : config.sttLanguage
 
         // Vocab context (same pipeline as the Dictate/Notes surfaces): bias STT,
         // apply deterministic corrections, and pass the glossary to the LLM.
-        let vocab = VocabStore().context(modeID: mode.id)
-        let promptHint = config.modeConfigs.first(where: { $0.id == mode.id })?.sttPrompt ?? ""
+        let vocab = VocabStore().context(modeID: modeID)
+        let promptHint = config.modeConfigs.first(where: { $0.id == modeID })?.sttPrompt ?? ""
 
         bgLog.info("🎙 BG: STT=\(type(of: sttProvider)), mode=\(mode.displayName), vocabTerms=\(vocab.terms.count)")
 
@@ -345,7 +346,8 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
                 bgLog.info("🎙 BG: Transcript: \"\(rawTranscript.prefix(50))...\"")
 
                 var finalText = rawTranscript
-                if mode.requiresLLM, let llm = resolveLLMService(config: config) {
+                if mode.requiresLLM,
+                   let llm = resolveLLMService(config: config, modeID: modeID) {
                     bgLog.info("🎙 BG: LLM (\(mode.displayName))...")
                     finalText = (try? await llm.process(text: rawTranscript, mode: mode, glossary: vocab.glossary)) ?? rawTranscript
                 }
@@ -372,24 +374,18 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
         AppConfigStorage.load() ?? AppConfig()
     }
 
-    private func resolveSTTProvider(config: AppConfig) -> any STTProvider {
-        let profileID = config.sttProfile
-        guard !profileID.isEmpty,
-              let profile = config.modelProfiles.first(where: { $0.id == profileID }) else {
-            return AppleSTT()
-        }
-        let key = (try? KeychainStore(service: "com.fonos.models").get(profile.id)) ?? ""
-        let baseURL = profile.baseURL ?? ""
-        if profile.hasSTT && !baseURL.isEmpty {
-            return WhisperSTT(apiKey: key, baseURL: baseURL, modelID: profile.modelID)
-        }
-        return AppleSTT()
+    private func resolveSTTProvider(config: AppConfig, modeID: String) -> any STTProvider {
+        STTResolver.resolve(
+            config: config,
+            profileID: config.effectiveSTTProfileID(forModeID: modeID)
+        )
     }
 
-    private func resolveLLMService(config: AppConfig) -> LLMService? {
-        let profileID = config.llmProfile
+    private func resolveLLMService(config: AppConfig, modeID: String) -> LLMService? {
+        let profileID = config.effectiveLLMProfileID(forModeID: modeID)
         guard !profileID.isEmpty,
-              let profile = config.modelProfiles.first(where: { $0.id == profileID }) else {
+              let profile = config.modelProfiles.first(where: { $0.id == profileID }),
+              profile.hasLLM else {
             return nil
         }
         let key = (try? KeychainStore(service: "com.fonos.models").get(profile.id)) ?? ""
@@ -400,12 +396,14 @@ final class BackgroundRecordingService: NSObject, @unchecked Sendable {
     /// The background recorder only ever serves keyboard dictations, so it uses
     /// the keyboard's own mode (kb_active_mode_id), falling back to the main
     /// app's mode until the keyboard has picked one.
-    private func resolveMode(config: AppConfig) -> Mode {
-        let modeID = AppConfigStorage.resolveKeyboardMode(
+    private func resolveModeID(config: AppConfig) -> String {
+        AppConfigStorage.resolveKeyboardMode(
             override: AppConfigStorage.keyboardModeID(),
             configActiveModeID: config.activeModeID
         )
+    }
 
+    private func resolveMode(config: AppConfig, modeID: String) -> Mode {
         if let modeConfig = config.modeConfigs.first(where: { $0.id == modeID }) {
             switch modeConfig.mode {
             case .translate:

@@ -146,10 +146,11 @@ extension STTProvider {
 /// Resolves the STT provider for an AppConfig. Shared by DictationViewModel
 /// and NoteViewModel so both surfaces honour the configured model profile.
 enum STTResolver {
-    static func resolve(config: AppConfig) -> any STTProvider {
-        let profileID = config.sttProfile
+    static func resolve(config: AppConfig, profileID overrideProfileID: String? = nil) -> any STTProvider {
+        let profileID = overrideProfileID ?? config.sttProfile
         guard !profileID.isEmpty,
-              let profile = config.modelProfiles.first(where: { $0.id == profileID }) else {
+              let profile = config.modelProfiles.first(where: { $0.id == profileID }),
+              profile.hasSTT else {
             sttLog.info("🔌 No STT profile configured, using Apple Speech")
             return AppleSTT()
         }

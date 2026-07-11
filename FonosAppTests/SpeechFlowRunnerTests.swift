@@ -105,6 +105,7 @@ private func makeSpeechFlow(
     stt: any STTProvider,
     llm: (any SpeechFlowLLMProvider)? = nil,
     failurePolicy: SpeechFlowLLMFailurePolicy = .useInput,
+    skipReason: SpeechFlowLLMSkipReason = .notRequested,
     books: [VocabBook] = [],
     language: String? = "en-US",
     promptHint: String = "Meeting vocabulary"
@@ -115,7 +116,7 @@ private func makeSpeechFlow(
             .init(provider: llm, mode: .polish, failurePolicy: failurePolicy)
         )
     } else {
-        postprocess = .none(.notRequested)
+        postprocess = .none(skipReason)
     }
 
     return ResolvedSpeechFlow(
@@ -141,7 +142,165 @@ private func isCancelledTerminal(_ event: SpeechFlowEvent?) -> Bool {
     return true
 }
 
+@MainActor
+private func waitForDictationResult(
+    _ viewModel: DictationViewModel,
+    maxYields: Int = 2_000
+) async {
+    for _ in 0..<maxYields {
+        switch viewModel.recordingState {
+        case .result:
+            return
+        case .error(let message):
+            Issue.record("Dictation ended in error: \(message)")
+            return
+        case .idle, .recording, .processing:
+            await Task.yield()
+        }
+    }
+    Issue.record("Timed out waiting for dictation result")
+}
+
 struct SpeechFlowRunnerTests {
+    @Test("Presentation reduces an LLM Flow in STT, vocabulary, LLM order")
+    func presentationLLMSuccessSequence() {
+        let runID = UUID()
+        let flow = makeSpeechFlow(
+            stt: SpeechFlowSTTDouble(.succeed("input")),
+            llm: SpeechFlowLLMDouble(.succeed("output"))
+        )
+        let events: [SpeechFlowEvent] = [
+            .runStarted(runID: runID, flowID: flow.flowID),
+            .stepStarted(runID: runID, step: .stt),
+            .stepFinished(runID: runID, step: .stt, outcome: .succeeded, duration: 0.11),
+            .stepStarted(runID: runID, step: .vocabCorrection),
+            .stepFinished(runID: runID, step: .vocabCorrection, outcome: .succeeded, duration: 0.02),
+            .stepStarted(runID: runID, step: .llm),
+            .stepFinished(runID: runID, step: .llm, outcome: .succeeded, duration: 0.23),
+            .runSucceeded(runID: runID, duration: 0.36)
+        ]
+
+        let startedSteps = events.compactMap { event -> SpeechFlowStep? in
+            guard case .stepStarted(_, let step) = event else { return nil }
+            return step
+        }
+        #expect(startedSteps == [.stt, .vocabCorrection, .llm])
+
+        var presentation = SpeechFlowPresentation(runID: runID, flow: flow)
+        for event in events {
+            presentation.apply(event)
+        }
+        #expect(presentation.phase == .succeeded)
+
+        let timings = SpeechFlowTimings(
+            stt: 0.11,
+            vocabCorrection: 0.02,
+            llm: 0.23,
+            total: 0.36
+        )
+        presentation.complete(
+            llmOutcome: .succeeded,
+            degradation: nil,
+            timings: timings
+        )
+
+        #expect(presentation.llmOutcome == .succeeded)
+        #expect(presentation.degradation == nil)
+        #expect(presentation.timings == timings)
+        #expect(presentation.phase == .succeeded)
+        #expect(presentation.state(for: .stt) == .succeeded(duration: 0.11))
+        #expect(presentation.state(for: .vocabCorrection) == .succeeded(duration: 0.02))
+        #expect(presentation.state(for: .llm) == .succeeded(duration: 0.23))
+    }
+
+    @Test("Presentation marks LLM fallback as a degraded successful Flow")
+    func presentationLLMFallback() {
+        let runID = UUID()
+        let flow = makeSpeechFlow(
+            stt: SpeechFlowSTTDouble(.succeed("input")),
+            llm: SpeechFlowLLMDouble(.fail)
+        )
+        var presentation = SpeechFlowPresentation(runID: runID, flow: flow)
+        let events: [SpeechFlowEvent] = [
+            .runStarted(runID: runID, flowID: flow.flowID),
+            .stepStarted(runID: runID, step: .stt),
+            .stepFinished(runID: runID, step: .stt, outcome: .succeeded, duration: 0.1),
+            .stepStarted(runID: runID, step: .vocabCorrection),
+            .stepFinished(runID: runID, step: .vocabCorrection, outcome: .succeeded, duration: 0.01),
+            .stepStarted(runID: runID, step: .llm),
+            .stepFinished(runID: runID, step: .llm, outcome: .fallback, duration: 0.2),
+            .runSucceeded(runID: runID, duration: 0.31)
+        ]
+        for event in events {
+            presentation.apply(event)
+        }
+
+        let timings = SpeechFlowTimings(
+            stt: 0.1,
+            vocabCorrection: 0.01,
+            llm: 0.2,
+            total: 0.31
+        )
+        presentation.complete(
+            llmOutcome: .fellBackToInput,
+            degradation: .llmFailedUsingInput,
+            timings: timings
+        )
+
+        #expect(presentation.phase == .degraded)
+        #expect(presentation.llmOutcome == .fellBackToInput)
+        #expect(presentation.degradation == .llmFailedUsingInput)
+        #expect(presentation.state(for: .llm) == .fallback(duration: 0.2))
+    }
+
+    @Test("Presentation distinguishes raw omission from a missing LLM provider")
+    func presentationSkipReasonsAreDistinct() {
+        let stt = SpeechFlowSTTDouble(.succeed("input"))
+        let raw = SpeechFlowPresentation(
+            runID: UUID(),
+            flow: makeSpeechFlow(stt: stt, skipReason: .notRequested)
+        )
+        let missing = SpeechFlowPresentation(
+            runID: UUID(),
+            flow: makeSpeechFlow(stt: stt, skipReason: .notConfigured)
+        )
+
+        #expect(raw.llmOutcome == .skipped(.notRequested))
+        #expect(raw.state(for: .llm) == .skipped(.notRequested))
+        #expect(missing.llmOutcome == .skipped(.notConfigured))
+        #expect(missing.state(for: .llm) == .skipped(.notConfigured))
+        #expect(raw != missing)
+    }
+
+    @Test("Presentation ignores stale run IDs and late events after a terminal event")
+    func presentationRejectsStaleAndLateEvents() {
+        let runID = UUID()
+        let flow = makeSpeechFlow(stt: SpeechFlowSTTDouble(.succeed("input")))
+        var presentation = SpeechFlowPresentation(runID: runID, flow: flow)
+        let initial = presentation
+
+        presentation.apply(.runStarted(runID: UUID(), flowID: "stale"))
+        presentation.apply(.stepStarted(runID: UUID(), step: .stt))
+        #expect(presentation == initial)
+
+        presentation.apply(.runStarted(runID: runID, flowID: flow.flowID))
+        presentation.apply(.stepStarted(runID: runID, step: .stt))
+        presentation.apply(
+            .stepFinished(
+                runID: runID,
+                step: .stt,
+                outcome: .succeeded,
+                duration: 0.1
+            )
+        )
+        presentation.apply(.runSucceeded(runID: runID, duration: 0.1))
+        let terminal = presentation
+
+        presentation.apply(.stepStarted(runID: runID, step: .vocabCorrection))
+        presentation.apply(.runFailed(runID: runID, step: .vocabCorrection, duration: 0.2))
+        #expect(presentation == terminal)
+    }
+
     @Test("Raw Flow preserves provider/corrected/final text and forwards frozen STT config")
     func rawFlowContract() async throws {
         let secretTranscript = "We deploy cube net ease with my sequel"
@@ -307,7 +466,7 @@ struct SpeechFlowRunnerTests {
             )
         }
 
-        for _ in 0..<200 where await llm.calls.isEmpty {
+        for _ in 0..<2_000 where await llm.calls.isEmpty {
             await Task.yield()
         }
         #expect(!(await llm.calls.isEmpty))
@@ -337,6 +496,120 @@ struct SpeechFlowRunnerTests {
 
         _ = try await vm.processAudio(Data(count: 44), language: nil, mode: .raw)
         #expect(vm.llmLatency == 0)
+    }
+
+    @Test("Dictation adapter publishes a successful LLM Flow outcome")
+    @MainActor
+    func dictationPresentationLLMSuccess() async {
+        let stt = SpeechFlowSTTDouble(.succeed("input"))
+        let llm = SpeechFlowLLMDouble(.succeed("polished"))
+        let vm = DictationViewModel(sttProvider: stt, llmService: llm)
+        vm.config.activeModeID = "polish"
+
+        vm.finishRecording(wavData: Data(count: 44))
+        await waitForDictationResult(vm)
+
+        #expect(vm.flowPresentation.phase == .succeeded)
+        #expect(vm.flowPresentation.llmOutcome == .succeeded)
+        #expect(vm.flowPresentation.degradation == nil)
+        #expect(vm.flowPresentation.timings != nil)
+        if case .succeeded = vm.flowPresentation.state(for: .llm) {
+            // Expected terminal step state.
+        } else {
+            Issue.record("Expected a successful LLM presentation step")
+        }
+    }
+
+    @Test("Dictation adapter publishes a degraded Flow after LLM fallback")
+    @MainActor
+    func dictationPresentationLLMFallback() async {
+        let stt = SpeechFlowSTTDouble(.succeed("corrected input"))
+        let llm = SpeechFlowLLMDouble(.fail)
+        let vm = DictationViewModel(sttProvider: stt, llmService: llm)
+        vm.config.activeModeID = "polish"
+
+        vm.finishRecording(wavData: Data(count: 44))
+        await waitForDictationResult(vm)
+
+        #expect(vm.flowPresentation.phase == .degraded)
+        #expect(vm.flowPresentation.llmOutcome == .fellBackToInput)
+        #expect(vm.flowPresentation.degradation == .llmFailedUsingInput)
+        if case .fallback = vm.flowPresentation.state(for: .llm) {
+            // Expected terminal step state.
+        } else {
+            Issue.record("Expected an LLM fallback presentation step")
+        }
+    }
+
+    @Test("Dictation adapter publishes a configured-missing skip without degradation")
+    @MainActor
+    func dictationPresentationMissingLLM() async {
+        let stt = SpeechFlowSTTDouble(.succeed("corrected input"))
+        let vm = DictationViewModel(sttProvider: stt)
+        vm.config.activeModeID = "polish"
+
+        vm.finishRecording(wavData: Data(count: 44))
+        await waitForDictationResult(vm)
+
+        #expect(vm.flowPresentation.phase == .succeeded)
+        #expect(vm.flowPresentation.llmOutcome == .skipped(.notConfigured))
+        #expect(vm.flowPresentation.degradation == nil)
+        #expect(vm.flowPresentation.state(for: .llm) == .skipped(.notConfigured))
+    }
+
+    @Test("Mode profile overrides win over app defaults and drive provider labels")
+    @MainActor
+    func modeProfileOverridesDriveProviderLabels() {
+        let globalSTT = ModelProfile(
+            id: "global-stt",
+            name: "Global STT",
+            provider: "openai",
+            modelID: "whisper-global",
+            capabilities: ["stt"]
+        )
+        let modeSTT = ModelProfile(
+            id: "mode-stt",
+            name: "Mode STT",
+            provider: "openai",
+            modelID: "whisper-mode",
+            capabilities: ["stt"]
+        )
+        let globalLLM = ModelProfile(
+            id: "global-llm",
+            name: "Global LLM",
+            provider: "openai",
+            modelID: "global-model",
+            capabilities: ["llm"]
+        )
+        let modeLLM = ModelProfile(
+            id: "mode-llm",
+            name: "Mode LLM",
+            provider: "openai",
+            modelID: "mode-model",
+            capabilities: ["llm"]
+        )
+        var config = AppConfig()
+        config.activeModeID = "polish"
+        config.sttProfile = globalSTT.id
+        config.llmProfile = globalLLM.id
+        config.modelProfiles = [globalSTT, modeSTT, globalLLM, modeLLM]
+        let polishIndex = config.modeConfigs.firstIndex(where: { $0.id == "polish" })
+        #expect(polishIndex != nil)
+        guard let polishIndex else { return }
+        config.modeConfigs[polishIndex].sttModelID = modeSTT.id
+        config.modeConfigs[polishIndex].llmModelID = modeLLM.id
+
+        #expect(config.effectiveSTTProfileID(forModeID: "polish") == modeSTT.id)
+        #expect(config.effectiveLLMProfileID(forModeID: "polish") == modeLLM.id)
+        #expect(config.effectiveSTTProfileID(forModeID: "raw") == globalSTT.id)
+        #expect(config.effectiveLLMProfileID(forModeID: "raw") == globalLLM.id)
+
+        let vm = DictationViewModel(
+            sttProvider: SpeechFlowSTTDouble(.succeed("input"))
+        )
+        vm.config = config
+        #expect(vm.sttProviderName == modeSTT.name)
+        #expect(vm.llmProviderName == modeLLM.name)
     }
 
     @Test("An LLM mode without a configured provider is an intentional skip, not fallback")
@@ -409,6 +682,64 @@ struct SpeechFlowRunnerTests {
         let call = await stt.calls.first
         #expect(call?.vocabulary == ["FonosFlow"])
         #expect(call?.promptHint == "Names from this project")
+    }
+
+    @Test("Selecting a custom mode preserves its ModeConfig UUID through the UI adapter")
+    @MainActor
+    func selectingCustomModePreservesUUID() async {
+        let customID = UUID().uuidString
+        let customMode = Mode.custom(
+            systemPrompt: "Polish this",
+            userTemplate: "{text}",
+            temperature: 0.2,
+            maxTokens: 256
+        )
+        let modeConfig = ModeConfig(
+            id: customID,
+            mode: customMode,
+            name: "My Mode",
+            icon: "sparkles",
+            description: "Test mode",
+            sttModelID: nil,
+            llmModelID: nil,
+            sttPrompt: "Project names",
+            sttTemperature: 0,
+            outputLanguage: "auto",
+            autoPaste: false,
+            isBuiltIn: false
+        )
+        let stt = SpeechFlowSTTDouble(.succeed("hello"))
+        let vm = DictationViewModel(sttProvider: stt)
+        vm.config.modeConfigs.append(modeConfig)
+
+        vm.selectMode(id: customID)
+        #expect(vm.config.activeModeID == customID)
+        #expect(vm.currentMode == customMode)
+
+        vm.finishRecording(wavData: Data(count: 44))
+        await waitForDictationResult(vm)
+
+        #expect(vm.flowPresentation.flowID == "dictation:\(customID)")
+        let call = await stt.calls.first
+        #expect(call?.promptHint == "Project names")
+    }
+
+    @Test("Selecting a new mode clears the previous result and its Flow metadata")
+    @MainActor
+    func selectingModeClearsPreviousResult() {
+        let vm = DictationViewModel(
+            sttProvider: SpeechFlowSTTDouble(.succeed("input"))
+        )
+        vm.recordingState = .result(transcript: "old result", processed: nil)
+        vm.sttLatency = 0.5
+
+        vm.selectMode(id: "polish")
+
+        #expect(vm.config.activeModeID == "polish")
+        #expect(vm.recordingState == .idle)
+        #expect(vm.flowPresentation == .idle)
+        #expect(vm.sttLatency == 0)
+        #expect(vm.llmLatency == 0)
     }
 }
 

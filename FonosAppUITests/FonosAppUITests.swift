@@ -55,11 +55,33 @@ final class FonosAppUITests: XCTestCase {
         app.buttons["Formal"].tap()
 
         XCTAssertTrue(app.staticTexts["Formal"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["No LLM"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["flow-progress"].waitForExistence(timeout: 3))
 
         XCTAssertTrue(app.buttons["Raw"].waitForExistence(timeout: 3))
         app.buttons["Raw"].tap()
         XCTAssertTrue(app.staticTexts["Raw"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
+    func testFlowSurfacesAreVisible() throws {
+        let app = launchApp()
+
+        let dictateFlow = app.descendants(matching: .any)["flow-progress"]
+        XCTAssertTrue(
+            dictateFlow.waitForExistence(timeout: 5),
+            "Expected the post-capture Flow strip on Dictate"
+        )
+
+        tapTab("Settings", in: app)
+        let modesButton = app.buttons["Modes"]
+        XCTAssertTrue(modesButton.waitForExistence(timeout: 3))
+        modesButton.tap()
+
+        let overview = app.descendants(matching: .any)["modes.voiceFlowOverview"]
+        XCTAssertTrue(
+            overview.waitForExistence(timeout: 3),
+            "Expected the Voice flow overview in Settings → Modes"
+        )
     }
 
     @MainActor

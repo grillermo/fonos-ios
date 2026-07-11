@@ -37,6 +37,9 @@ struct ProcessResult: Sendable {
     let isRawFallback: Bool
     /// True only when an LLM produced the final text.
     let didProcessWithLLM: Bool
+    /// Semantic LLM result used by the Flow UI.
+    let llmOutcome: SpeechFlowLLMOutcome
+    let degradation: SpeechFlowDegradation?
     let timings: SpeechFlowTimings
 
     init(text: String,
@@ -44,12 +47,17 @@ struct ProcessResult: Sendable {
          isRawFallback: Bool = false,
          providerTranscript: String? = nil,
          didProcessWithLLM: Bool = false,
+         llmOutcome: SpeechFlowLLMOutcome? = nil,
+         degradation: SpeechFlowDegradation? = nil,
          timings: SpeechFlowTimings = .zero) {
         self.text = text
         self.rawTranscript = rawTranscript ?? text
         self.providerTranscript = providerTranscript ?? rawTranscript ?? text
         self.isRawFallback = isRawFallback
         self.didProcessWithLLM = didProcessWithLLM
+        self.llmOutcome = llmOutcome
+            ?? (didProcessWithLLM ? .succeeded : (isRawFallback ? .fellBackToInput : .skipped(.notRequested)))
+        self.degradation = degradation
         self.timings = timings
     }
 }
@@ -83,26 +91,34 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
     @Published var audioLevel: Float = 0
     @Published var sttLatency: TimeInterval = 0
     @Published var llmLatency: TimeInterval = 0
+    @Published private(set) var flowPresentation: SpeechFlowPresentation = .idle
+
+    private var frozenSTTProviderName: String?
+    private var frozenLLMProviderName: String?
 
     /// Current mode — derived from config.activeModeID
     var currentMode: Mode {
-        get {
-            switch config.activeModeID {
-            case "raw": return .raw
-            case "polish": return .polish
-            case "formal": return .formal
-            case "translate": return .translate(targetLanguage: config.translateTargetLanguage)
-            default:
-                // Check custom modes
-                if let custom = config.modeConfigs.first(where: { $0.id == config.activeModeID }) {
-                    return custom.mode
-                }
-                return .raw
-            }
+        if config.activeModeID == "translate" {
+            return .translate(targetLanguage: config.translateTargetLanguage)
         }
-        set {
-            config.activeModeID = newValue.id
+        return config.activeModeConfig?.mode ?? .raw
+    }
+
+    /// Selects a concrete ModeConfig identity. This is required for custom
+    /// modes, whose `Mode.id` intentionally collapses to "custom".
+    @MainActor
+    func selectMode(id: String) {
+        guard config.modeConfigs.contains(where: { $0.id == id }) else { return }
+        guard !isRecording else { return }
+        if case .processing = recordingState { return }
+        config.activeModeID = id
+        switch recordingState {
+        case .result, .error:
+            recordingState = .idle
+        case .idle, .recording, .processing:
+            break
         }
+        resetFlowUI()
     }
 
     /// Convenience for views/tests: true when actively recording.
@@ -151,16 +167,39 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
 
     /// Resolve the current STT provider from config. Falls back to Apple Speech.
     var sttProvider: any STTProvider {
-        if let test = _testSTT { return test }
-        return STTResolver.resolve(config: config)
+        resolvedSTTProvider(scopeID: config.activeModeID)
     }
 
     /// Resolve the current LLM service from config. Returns nil if not configured.
     var llmService: (any SpeechFlowLLMProvider)? {
+        resolvedLLMProvider(scopeID: config.activeModeID)
+    }
+
+    /// Human-readable name of the current STT provider for UI display.
+    var sttProviderName: String {
+        if let frozenSTTProviderName { return frozenSTTProviderName }
+        return resolvedSTTProviderName(scopeID: config.activeModeID)
+    }
+
+    /// Human-readable name of the current LLM provider for UI display.
+    var llmProviderName: String? {
+        if let frozenLLMProviderName { return frozenLLMProviderName }
+        return resolvedLLMProviderName(scopeID: config.activeModeID)
+    }
+
+    private func resolvedSTTProvider(scopeID: String?) -> any STTProvider {
+        if let test = _testSTT { return test }
+        let profileID = config.effectiveSTTProfileID(forModeID: scopeID)
+        return STTResolver.resolve(config: config, profileID: profileID)
+    }
+
+    private func resolvedLLMProvider(scopeID: String?) -> (any SpeechFlowLLMProvider)? {
         if let test = _testLLM { return test }
 
-        let profileID = config.llmProfile
-        guard !profileID.isEmpty, let profile = config.modelProfiles.first(where: { $0.id == profileID }) else {
+        let profileID = config.effectiveLLMProfileID(forModeID: scopeID)
+        guard !profileID.isEmpty,
+              let profile = config.modelProfiles.first(where: { $0.id == profileID }),
+              profile.hasLLM else {
             return nil
         }
         let key = (try? KeychainStore(service: "com.fonos.models").get(profile.id)) ?? ""
@@ -172,19 +211,21 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         )
     }
 
-    /// Human-readable name of the current STT provider for UI display.
-    var sttProviderName: String {
-        let profileID = config.sttProfile
-        if !profileID.isEmpty, let profile = config.modelProfiles.first(where: { $0.id == profileID }) {
-            return profile.name
+    private func resolvedSTTProviderName(scopeID: String?) -> String {
+        let profileID = config.effectiveSTTProfileID(forModeID: scopeID)
+        guard !profileID.isEmpty,
+              let profile = config.modelProfiles.first(where: { $0.id == profileID }),
+              profile.hasSTT else {
+            return "Apple Speech"
         }
-        return "Apple Speech"
+        return profile.name
     }
 
-    /// Human-readable name of the current LLM provider for UI display.
-    var llmProviderName: String? {
-        let profileID = config.llmProfile
-        guard !profileID.isEmpty, let profile = config.modelProfiles.first(where: { $0.id == profileID }) else {
+    private func resolvedLLMProviderName(scopeID: String?) -> String? {
+        let profileID = config.effectiveLLMProfileID(forModeID: scopeID)
+        guard !profileID.isEmpty,
+              let profile = config.modelProfiles.first(where: { $0.id == profileID }),
+              profile.hasLLM else {
             return nil
         }
         return profile.name
@@ -237,6 +278,9 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
             return
         }
 
+        cancelInFlightProcessing()
+        resetFlowUI()
+
         let permission = audioCapture.micPermissionStatus()
         log.info("🎤 Mic permission status: \(String(describing: permission.rawValue))")
 
@@ -269,6 +313,7 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         log.info("🔴 doStartCapture() — starting engine on background thread")
 
         cancelInFlightProcessing()
+        resetFlowUI()
 
         // Set recording state immediately for responsive UI
         recordingState = .recording
@@ -309,16 +354,29 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         let mode = self.currentMode
         let modeScopeID = config.activeModeID
         let sttLanguage = config.sttLanguage == "auto" ? nil : config.sttLanguage
-
-        if mode.requiresLLM && llmService == nil {
-            // Show transcript only — no LLM configured
-            log.info("⚠️ Mode requires LLM but none configured, will use raw transcript")
-        }
-
-        recordingState = .processing
         processingTask?.cancel()
         let processingID = UUID()
+        let flow = resolveSpeechFlow(
+            language: sttLanguage,
+            mode: mode,
+            scopeID: modeScopeID
+        )
+
+        if case .none(.notConfigured) = flow.postprocess {
+            log.info("⚠️ Mode requires LLM but none configured, will use corrected transcript")
+        }
+
         activeProcessingID = processingID
+        frozenSTTProviderName = resolvedSTTProviderName(scopeID: modeScopeID)
+        if case .llm = flow.postprocess {
+            frozenLLMProviderName = resolvedLLMProviderName(scopeID: modeScopeID)
+        } else {
+            frozenLLMProviderName = nil
+        }
+        flowPresentation = SpeechFlowPresentation(runID: processingID, flow: flow)
+        sttLatency = 0
+        llmLatency = 0
+        recordingState = .processing
 
         processingTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -331,14 +389,21 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
 
             do {
                 log.info("🔄 Starting STT transcription...")
-                let result = try await processAudio(
+                let result = try await executeSpeechFlow(
                     wavData,
-                    language: sttLanguage,
-                    mode: mode,
-                    scopeID: modeScopeID
+                    flow: flow,
+                    runID: processingID,
+                    onEvent: { [weak self] event in
+                        await self?.receiveFlowEvent(event)
+                    }
                 )
                 guard activeProcessingID == processingID, !Task.isCancelled else { return }
                 log.info("✅ Processing complete: \(result.text.prefix(50))...")
+                flowPresentation.complete(
+                    llmOutcome: result.llmOutcome,
+                    degradation: result.degradation,
+                    timings: result.timings
+                )
                 recordingState = .result(
                     transcript: result.rawTranscript,
                     processed: result.didProcessWithLLM ? result.text : nil
@@ -359,6 +424,21 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         activeProcessingID = nil
         processingTask?.cancel()
         processingTask = nil
+    }
+
+    @MainActor
+    private func resetFlowUI() {
+        flowPresentation = .idle
+        frozenSTTProviderName = nil
+        frozenLLMProviderName = nil
+        sttLatency = 0
+        llmLatency = 0
+    }
+
+    @MainActor
+    private func receiveFlowEvent(_ event: SpeechFlowEvent) {
+        guard activeProcessingID == event.runID else { return }
+        flowPresentation.apply(event)
     }
 
     /// Inserts a DictationSession into History. No-op when modelContext is unset.
@@ -410,6 +490,20 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
             scopeID: scopeID
         )
 
+        return try await executeSpeechFlow(
+            audioData,
+            flow: flow,
+            runID: UUID()
+        )
+    }
+
+    private func executeSpeechFlow(
+        _ audioData: Data,
+        flow: ResolvedSpeechFlow,
+        runID: UUID,
+        onEvent: SpeechFlowEventHandler? = nil
+    ) async throws -> ProcessResult {
+
         try Task.checkCancellation()
         let didResetMetrics = await MainActor.run {
             guard !Task.isCancelled else { return false }
@@ -420,8 +514,9 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         guard didResetMetrics else { throw CancellationError() }
 
         let flowResult = try await SpeechFlowRunner().run(
-            SpeechFlowInput(wavData: audioData),
-            using: flow
+            SpeechFlowInput(runID: runID, wavData: audioData),
+            using: flow,
+            onEvent: onEvent
         )
 
         try Task.checkCancellation()
@@ -439,6 +534,8 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
             isRawFallback: flowResult.llmOutcome.isFallback,
             providerTranscript: flowResult.providerTranscript,
             didProcessWithLLM: flowResult.llmOutcome.producedProcessedText,
+            llmOutcome: flowResult.llmOutcome,
+            degradation: flowResult.degradation,
             timings: flowResult.timings
         )
     }
@@ -454,8 +551,8 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         // `scopeID` stays distinct from Mode.id because custom ModeConfig ids
         // are UUIDs while Mode.id collapses every custom mode to "custom".
         let resolvedScopeID = scopeID ?? mode.id
-        let resolvedSTT = sttProvider
-        let resolvedLLM = llmService
+        let resolvedSTT = resolvedSTTProvider(scopeID: resolvedScopeID)
+        let resolvedLLM = resolvedLLMProvider(scopeID: resolvedScopeID)
         let vocab = SpeechFlowVocabSnapshot(
             context: vocabStore.context(modeID: resolvedScopeID)
         )

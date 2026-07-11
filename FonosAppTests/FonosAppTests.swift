@@ -35,6 +35,56 @@ struct FonosAppTests {
         let llmModes = Mode.builtInModes.filter { $0.id != "raw" }
         #expect(llmModes.allSatisfy { $0.requiresLLM })
     }
+
+    @Test func removingModelClearsDefaultsAndModeOverrides() {
+        let profile = ModelProfile(
+            id: "shared-model",
+            name: "Shared Model",
+            provider: "openai",
+            modelID: "model",
+            capabilities: ["stt", "llm"]
+        )
+        var config = AppConfig()
+        config.modelProfiles = [profile]
+        config.sttProfile = profile.id
+        config.llmProfile = profile.id
+        config.modeConfigs[1].sttModelID = profile.id
+        config.modeConfigs[1].llmModelID = profile.id
+
+        config.removeModelProfile(id: profile.id)
+
+        #expect(config.modelProfiles.isEmpty)
+        #expect(config.sttProfile.isEmpty)
+        #expect(config.llmProfile.isEmpty)
+        #expect(config.modeConfigs.allSatisfy { $0.sttModelID != profile.id })
+        #expect(config.modeConfigs.allSatisfy { $0.llmModelID != profile.id })
+    }
+
+    @Test func danglingModeOverridesFallBackToAppDefaults() {
+        let stt = ModelProfile(
+            id: "default-stt",
+            name: "Default STT",
+            provider: "openai",
+            modelID: "whisper",
+            capabilities: ["stt"]
+        )
+        let llm = ModelProfile(
+            id: "default-llm",
+            name: "Default LLM",
+            provider: "openai",
+            modelID: "gpt",
+            capabilities: ["llm"]
+        )
+        var config = AppConfig()
+        config.modelProfiles = [stt, llm]
+        config.sttProfile = stt.id
+        config.llmProfile = llm.id
+        config.modeConfigs[1].sttModelID = "deleted-stt"
+        config.modeConfigs[1].llmModelID = "deleted-llm"
+
+        #expect(config.effectiveSTTProfileID(forModeID: "polish") == stt.id)
+        #expect(config.effectiveLLMProfileID(forModeID: "polish") == llm.id)
+    }
 }
 
 // P1-4 (docs/ROADMAP.md): EN/zh-Hans localization. The String Catalog must
@@ -60,6 +110,9 @@ struct LocalizationTests {
             ("Tap to dictate", "点按开始听写"),
             ("Save Correction", "保存纠正"),
             ("Import Scenario", "导入场景"),
+            ("Voice flow", "语音处理流程"),
+            ("Flow complete", "处理流程已完成"),
+            ("Transcript ready", "转写文本已就绪"),
         ]
         for (key, expected) in cases {
             let value = bundle.localizedString(forKey: key, value: nil, table: nil)

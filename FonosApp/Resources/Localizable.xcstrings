@@ -4,6 +4,436 @@
     "" : {
 
     },
+    "Active" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前使用"
+          }
+        }
+      }
+    },
+    "Active mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前模式"
+          }
+        }
+      }
+    },
+    "AI" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI"
+          }
+        }
+      }
+    },
+    "AI Processing" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 处理"
+          }
+        }
+      }
+    },
+    "AI processing complete" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 处理已完成"
+          }
+        }
+      }
+    },
+    "AI processing is not configured; transcript fallback will be used" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置 AI 处理；将回退到转写文本"
+          }
+        }
+      }
+    },
+    "AI processing is skipped for a raw transcript" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原始转写模式会跳过 AI 处理"
+          }
+        }
+      }
+    },
+    "AI unavailable — transcript used" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 不可用，已使用转写文本"
+          }
+        }
+      }
+    },
+    "All three steps are configured" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "三个步骤均已配置"
+          }
+        }
+      }
+    },
+    "Applying vocabulary…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在应用词汇…"
+          }
+        }
+      }
+    },
+    "Cancelled" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取消"
+          }
+        }
+      }
+    },
+    "Collapses flow details" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起流程详情"
+          }
+        }
+      }
+    },
+    "Deterministic corrections" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确定性校正"
+          }
+        }
+      }
+    },
+    "Main-app dictation follows a clear path. Speech is transcribed first, your vocabulary is applied deterministically, then AI processing runs only when the selected mode requests it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主 App 听写遵循清晰流程：先将语音转写为文字，再以确定性方式应用词汇，最后仅在所选模式需要时运行 AI 处理。"
+          }
+        }
+      }
+    },
+    "Expands flow details" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开流程详情"
+          }
+        }
+      }
+    },
+    "Flow complete" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理流程已完成"
+          }
+        }
+      }
+    },
+    "Flow failed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理流程失败"
+          }
+        }
+      }
+    },
+    "Flow progress" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "流程进度"
+          }
+        }
+      }
+    },
+    "Flow result" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "流程结果"
+          }
+        }
+      }
+    },
+    "Inactive mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非当前模式"
+          }
+        }
+      }
+    },
+    "Model not configured" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置模型"
+          }
+        }
+      }
+    },
+    "No LLM configured — transcript used" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置大语言模型，已使用转写文本"
+          }
+        }
+      }
+    },
+    "Not configured — transcript fallback" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置，已回退到转写文本"
+          }
+        }
+      }
+    },
+    "Preparing flow…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备处理流程…"
+          }
+        }
+      }
+    },
+    "Processing with AI…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在使用 AI 处理…"
+          }
+        }
+      }
+    },
+    "Read only" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只读"
+          }
+        }
+      }
+    },
+    "Skipped — raw transcript" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已跳过，使用原始转写文本"
+          }
+        }
+      }
+    },
+    "Speech" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音"
+          }
+        }
+      }
+    },
+    "Speech, then Vocabulary, then AI" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音、词汇，然后 AI"
+          }
+        }
+      }
+    },
+    "Speech-to-Text" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音转文字"
+          }
+        }
+      }
+    },
+    "Step 1: Speech-to-Text" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步骤 1：语音转文字"
+          }
+        }
+      }
+    },
+    "Step 2: Vocabulary" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步骤 2：词汇"
+          }
+        }
+      }
+    },
+    "Step 3: AI Processing" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步骤 3：AI 处理"
+          }
+        }
+      }
+    },
+    "Total" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总计"
+          }
+        }
+      }
+    },
+    "Transcribe" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "转写"
+          }
+        }
+      }
+    },
+    "Transcribing…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在转写…"
+          }
+        }
+      }
+    },
+    "Transcript fallback" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已回退到转写文本"
+          }
+        }
+      }
+    },
+    "Transcript ready" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "转写文本已就绪"
+          }
+        }
+      }
+    },
+    "Unavailable — Apple Speech fallback" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不可用，已回退到 Apple Speech"
+          }
+        }
+      }
+    },
+    "Use this mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用此模式"
+          }
+        }
+      }
+    },
+    "Vocabulary entries for this mode are applied after transcription and before AI processing." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此模式的词汇条目会在转写后、AI 处理前应用。"
+          }
+        }
+      }
+    },
+    "Vocabulary is applied automatically after transcription and before AI processing." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "词汇会在转写后、AI 处理前自动应用。"
+          }
+        }
+      }
+    },
+    "Voice flow" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音处理流程"
+          }
+        }
+      }
+    },
     "·" : {
       "comment" : "A period used to separate different pieces of information in a list.",
       "isCommentAutoGenerated" : true

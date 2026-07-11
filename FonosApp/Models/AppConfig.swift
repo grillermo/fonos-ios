@@ -66,4 +66,50 @@ struct AppConfig: Codable, Equatable {
     var activeModeConfig: ModeConfig? {
         modeConfigs.first(where: { $0.id == activeModeID })
     }
+
+    /// Resolves a mode-level STT profile override against the app default.
+    /// Empty imported overrides are treated as unset.
+    func effectiveSTTProfileID(forModeID modeID: String? = nil) -> String {
+        let resolvedModeID = modeID ?? activeModeID
+        if let override = modeConfigs
+            .first(where: { $0.id == resolvedModeID })?
+            .sttModelID?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !override.isEmpty,
+           modelProfiles.contains(where: { $0.id == override && $0.hasSTT }) {
+            return override
+        }
+        return sttProfile
+    }
+
+    /// Resolves a mode-level LLM profile override against the app default.
+    /// Empty imported overrides are treated as unset.
+    func effectiveLLMProfileID(forModeID modeID: String? = nil) -> String {
+        let resolvedModeID = modeID ?? activeModeID
+        if let override = modeConfigs
+            .first(where: { $0.id == resolvedModeID })?
+            .llmModelID?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !override.isEmpty,
+           modelProfiles.contains(where: { $0.id == override && $0.hasLLM }) {
+            return override
+        }
+        return llmProfile
+    }
+
+    /// Removes a model and every default/override reference to it so modes
+    /// cleanly fall back to the remaining app defaults.
+    mutating func removeModelProfile(id: String) {
+        modelProfiles.removeAll(where: { $0.id == id })
+        if sttProfile == id { sttProfile = "" }
+        if llmProfile == id { llmProfile = "" }
+        for index in modeConfigs.indices {
+            if modeConfigs[index].sttModelID == id {
+                modeConfigs[index].sttModelID = nil
+            }
+            if modeConfigs[index].llmModelID == id {
+                modeConfigs[index].llmModelID = nil
+            }
+        }
+    }
 }

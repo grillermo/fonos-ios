@@ -22,10 +22,42 @@ struct ModesTab: View {
     var body: some View {
         List {
             Section {
-                ForEach(Array(config.modeConfigs.enumerated()), id: \.element.id) { index, modeConfig in
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Image(systemName: "point.3.connected.trianglepath.dotted")
+                            .foregroundColor(amber)
+
+                        Text("Voice flow")
+                            .font(.headline)
+                            .foregroundColor(textPrimary)
+                    }
+
+                    Text("Main-app dictation follows a clear path. Speech is transcribed first, your vocabulary is applied deterministically, then AI processing runs only when the selected mode requests it.")
+                        .font(.subheadline)
+                        .foregroundColor(textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    ModeFlowStrip(
+                        requiresLLM: config.activeModeConfig?.mode.requiresLLM ?? false,
+                        hasLLM: config.activeModeConfig.map { llmModel(for: $0) != nil } ?? false,
+                        amber: amber,
+                        green: green,
+                        textDim: textDim
+                    )
+                }
+                .padding(.vertical, 6)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("modes.voiceFlowOverview")
+                .listRowBackground(cardBg)
+                .listRowSeparatorTint(separator)
+            }
+
+            Section {
+                ForEach(config.modeConfigs, id: \.id) { modeConfig in
                     ModeConfigRow(
                         modeConfig: modeConfig,
                         isExpanded: expandedID == modeConfig.id,
+                        isActive: config.activeModeID == modeConfig.id,
                         sttModel: sttModel(for: modeConfig),
                         llmModel: llmModel(for: modeConfig),
                         amber: amber,
@@ -41,6 +73,11 @@ struct ModesTab: View {
                         },
                         onEdit: {
                             editingModeConfig = modeConfig
+                        },
+                        onActivate: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                config.activeModeID = modeConfig.id
+                            }
                         }
                     )
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -110,20 +147,29 @@ struct ModesTab: View {
     }
 
     private func sttModel(for modeConfig: ModeConfig) -> ModelProfile? {
-        let id = modeConfig.sttModelID ?? config.sttProfile
-        return config.modelProfiles.first(where: { $0.id == id })
+        let id = config.effectiveSTTProfileID(forModeID: modeConfig.id)
+        if id.isEmpty {
+            return ModelProfile(
+                id: "apple-speech",
+                name: "Apple Speech",
+                provider: "apple",
+                modelID: "system",
+                capabilities: ["stt"]
+            )
+        }
+        return config.modelProfiles.first(where: { $0.id == id && $0.hasSTT })
     }
 
     private func llmModel(for modeConfig: ModeConfig) -> ModelProfile? {
-        let id = modeConfig.llmModelID ?? config.llmProfile
-        return config.modelProfiles.first(where: { $0.id == id })
+        let id = config.effectiveLLMProfileID(forModeID: modeConfig.id)
+        return config.modelProfiles.first(where: { $0.id == id && $0.hasLLM })
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
+    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title)
             .font(.system(size: 12, weight: .medium))
             .foregroundColor(textDim)
-            .textCase(nil)
+            .textCase(.uppercase)
     }
 }
 
@@ -132,6 +178,7 @@ struct ModesTab: View {
 private struct ModeConfigRow: View {
     let modeConfig: ModeConfig
     let isExpanded: Bool
+    let isActive: Bool
     let sttModel: ModelProfile?
     let llmModel: ModelProfile?
     let amber: Color
@@ -142,6 +189,7 @@ private struct ModeConfigRow: View {
     let separator: Color
     let onTap: () -> Void
     let onEdit: () -> Void
+    let onActivate: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -154,13 +202,25 @@ private struct ModeConfigRow: View {
 
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 8) {
-                            Text(modeConfig.name)
+                            Text(modeDisplayName)
                                 .foregroundColor(textPrimary)
-                                .font(.system(size: 15))
+                                .font(.body)
+
+                            if isActive {
+                                Text("Active")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundColor(Color.black.opacity(0.75))
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(
+                                        Capsule()
+                                            .fill(green)
+                                    )
+                            }
 
                             if modeConfig.isBuiltIn {
                                 Text("Built-in")
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.caption2.weight(.medium))
                                     .foregroundColor(textDim)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
@@ -171,9 +231,14 @@ private struct ModeConfigRow: View {
                             }
                         }
 
-                        Text(modeConfig.pipelineSummary(sttModel: sttModel, llmModel: llmModel))
-                            .font(.system(size: 12))
-                            .foregroundColor(textDim)
+                        ModeFlowStrip(
+                            requiresLLM: modeConfig.mode.requiresLLM,
+                            hasLLM: llmModel != nil,
+                            amber: amber,
+                            green: green,
+                            textDim: textDim
+                        )
+                        .padding(.top, 5)
                     }
 
                     Spacer()
@@ -185,6 +250,14 @@ private struct ModeConfigRow: View {
                 .padding(.vertical, 4)
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel(modeDisplayName)
+            .accessibilityValue(modeAccessibilityValue)
+            .accessibilityHint(
+                isExpanded
+                    ? String(localized: "Collapses flow details")
+                    : String(localized: "Expands flow details")
+            )
+            .accessibilityIdentifier("modes.mode.\(modeConfig.id)")
 
             // Expanded details
             if isExpanded {
@@ -200,44 +273,67 @@ private struct ModeConfigRow: View {
                             .foregroundColor(textDim)
                     }
 
-                    // Pipeline steps
-                    VStack(alignment: .leading, spacing: 8) {
+                    // Resolved flow steps
+                    VStack(alignment: .leading, spacing: 10) {
                         pipelineStep(
                             icon: "waveform",
-                            label: "STT",
-                            value: sttModel?.name ?? "Default",
-                            color: amber
+                            label: "Speech-to-Text",
+                            value: sttModel?.name ?? String(localized: "Unavailable — Apple Speech fallback"),
+                            color: sttModel == nil ? Color.orange : amber,
+                            statusIcon: sttModel == nil ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
                         )
 
-                        if modeConfig.mode.requiresLLM {
-                            pipelineStep(
-                                icon: "cpu",
-                                label: "LLM",
-                                value: llmModel?.name ?? "Default",
-                                color: green
-                            )
-                        }
+                        pipelineStep(
+                            icon: "text.badge.checkmark",
+                            label: "Vocabulary",
+                            value: String(localized: "Deterministic corrections"),
+                            color: green,
+                            statusIcon: "checkmark.circle.fill"
+                        )
+
+                        llmPipelineStep
                     }
 
-                    // Edit button (custom modes only)
-                    HStack {
-                        Spacer()
-                        Button(action: onEdit) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 12))
-                                Text("Edit")
-                                    .font(.system(size: 13, weight: .medium))
+                    HStack(spacing: 10) {
+                        if !isActive {
+                            Button(action: onActivate) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "checkmark.circle")
+                                    Text("Use this mode")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .foregroundColor(Color.black.opacity(0.75))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(green)
+                                )
                             }
-                            .foregroundColor(amber)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(amber.opacity(0.1))
-                            )
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityIdentifier("modes.use.\(modeConfig.id)")
                         }
-                        .buttonStyle(PlainButtonStyle())
+
+                        Spacer()
+
+                        if !modeConfig.isBuiltIn {
+                            Button(action: onEdit) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "pencil")
+                                    Text("Edit")
+                                        .font(.subheadline.weight(.medium))
+                                }
+                                .foregroundColor(amber)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(amber.opacity(0.1))
+                                )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityIdentifier("modes.edit.\(modeConfig.id)")
+                        }
                     }
                 }
                 .padding(.bottom, 8)
@@ -247,21 +343,173 @@ private struct ModeConfigRow: View {
         .listRowSeparatorTint(separator)
     }
 
-    private func pipelineStep(icon: String, label: String, value: String, color: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(color)
-                .frame(width: 16)
-
-            Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(color)
-
-            Text(value)
-                .font(.system(size: 12))
-                .foregroundColor(textDim)
+    @ViewBuilder
+    private var llmPipelineStep: some View {
+        if !modeConfig.mode.requiresLLM {
+            pipelineStep(
+                icon: "sparkles",
+                label: "AI Processing",
+                value: String(localized: "Skipped — raw transcript"),
+                color: textDim,
+                statusIcon: "minus.circle.fill"
+            )
+        } else if let llmModel {
+            pipelineStep(
+                icon: "sparkles",
+                label: "AI Processing",
+                value: llmModel.name,
+                color: green,
+                statusIcon: "checkmark.circle.fill"
+            )
+        } else {
+            pipelineStep(
+                icon: "sparkles",
+                label: "AI Processing",
+                value: String(localized: "Not configured — transcript fallback"),
+                color: Color.orange,
+                statusIcon: "exclamationmark.triangle.fill"
+            )
         }
+    }
+
+    private func pipelineStep(
+        icon: String,
+        label: LocalizedStringKey,
+        value: String,
+        color: Color,
+        statusIcon: String
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 9) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(color)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(color)
+
+                Text(value)
+                    .font(.subheadline)
+                    .foregroundColor(textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: statusIcon)
+                .font(.caption)
+                .foregroundColor(color)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(label))
+        .accessibilityValue(value)
+    }
+
+    private var modeDisplayName: String {
+        guard modeConfig.isBuiltIn else { return modeConfig.name }
+        switch modeConfig.id {
+        case "raw": return String(localized: "Raw")
+        case "polish": return String(localized: "Polish")
+        case "formal": return String(localized: "Formal")
+        case "translate": return String(localized: "Translate")
+        default: return modeConfig.name
+        }
+    }
+
+    private var modeAccessibilityValue: String {
+        let activity = isActive
+            ? String(localized: "Active mode")
+            : String(localized: "Inactive mode")
+        let flow: String
+        if !modeConfig.mode.requiresLLM {
+            flow = String(localized: "AI processing is skipped for a raw transcript")
+        } else if llmModel == nil {
+            flow = String(localized: "AI processing is not configured; transcript fallback will be used")
+        } else {
+            flow = String(localized: "All three steps are configured")
+        }
+        return "\(activity). \(flow)"
+    }
+}
+
+// MARK: - Flow Strip
+
+private struct ModeFlowStrip: View {
+    let requiresLLM: Bool
+    let hasLLM: Bool
+    let amber: Color
+    let green: Color
+    let textDim: Color
+
+    private var aiColor: Color {
+        if !requiresLLM { return textDim }
+        return hasLLM ? green : Color.orange
+    }
+
+    private var aiIcon: String {
+        if !requiresLLM { return "minus.circle" }
+        return hasLLM ? "sparkles" : "exclamationmark.triangle.fill"
+    }
+
+    private var accessibilityValue: String {
+        if !requiresLLM {
+            return String(localized: "AI processing is skipped for a raw transcript")
+        }
+        if !hasLLM {
+            return String(localized: "AI processing is not configured; transcript fallback will be used")
+        }
+        return String(localized: "All three steps are configured")
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 7) {
+                step(icon: "waveform", title: "Speech", color: amber)
+                connector(systemName: "chevron.right")
+                step(icon: "text.badge.checkmark", title: "Vocabulary", color: green)
+                connector(systemName: "chevron.right")
+                step(icon: aiIcon, title: "AI", color: aiColor)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                step(icon: "waveform", title: "Speech", color: amber)
+                connector(systemName: "chevron.down")
+                    .padding(.leading, 14)
+                step(icon: "text.badge.checkmark", title: "Vocabulary", color: green)
+                connector(systemName: "chevron.down")
+                    .padding(.leading, 14)
+                step(icon: aiIcon, title: "AI", color: aiColor)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Speech, then Vocabulary, then AI"))
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private func step(icon: String, title: LocalizedStringKey, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.semibold))
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(color.opacity(0.1))
+        )
+    }
+
+    private func connector(systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.caption2.weight(.bold))
+            .foregroundColor(textDim.opacity(0.7))
     }
 }
 
@@ -315,8 +563,8 @@ struct ModeConfigForm: View {
                 Form {
                     identitySection
                     sttSection
+                    vocabularySection
                     llmSection
-                    outputSection
                 }
                 .scrollContentBackground(.hidden)
             }
@@ -397,25 +645,47 @@ struct ModeConfigForm: View {
                     .tint(amber)
                     .listRowBackground(cardBg)
                     .font(.system(size: 14))
-
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("Temperature")
-                            .foregroundColor(textPrimary)
-                        Spacer()
-                        Text(String(format: "%.2f", sttTemperature))
-                            .foregroundColor(textDim)
-                            .monospacedDigit()
-                    }
-                    Slider(value: $sttTemperature, in: 0.0...1.0, step: 0.05)
-                        .tint(amber)
-                }
-                .listRowBackground(cardBg)
             }
             .foregroundColor(textDim)
             .listRowBackground(cardBg)
         } header: {
             formHeader("Step 1: Speech-to-Text")
+        }
+    }
+
+    // MARK: - Vocabulary Section
+
+    private var vocabularySection: some View {
+        Section {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "text.badge.checkmark")
+                    .foregroundColor(green)
+                    .frame(width: 22)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Deterministic corrections")
+                        .font(.body.weight(.medium))
+                        .foregroundColor(textPrimary)
+
+                    Text("Vocabulary entries for this mode are applied after transcription and before AI processing.")
+                        .font(.subheadline)
+                        .foregroundColor(textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "lock.fill")
+                    .font(.caption)
+                    .foregroundColor(textDim)
+                    .accessibilityLabel("Read only")
+            }
+            .padding(.vertical, 4)
+            .listRowBackground(cardBg)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("modeForm.vocabularyStep")
+        } header: {
+            formHeader("Step 2: Vocabulary")
         }
     }
 
@@ -490,39 +760,12 @@ struct ModeConfigForm: View {
                     .foregroundColor(textPrimary)
                     .listRowBackground(cardBg)
 
-                    Picker("Output Language", selection: $outputLanguage) {
-                        Text("Auto").tag("auto")
-                        Text("English").tag("en")
-                        Text("Spanish").tag("es")
-                        Text("French").tag("fr")
-                        Text("German").tag("de")
-                        Text("Japanese").tag("ja")
-                        Text("Chinese").tag("zh")
-                    }
-                    .foregroundColor(textPrimary)
-                    .listRowBackground(cardBg)
                 }
                 .foregroundColor(textDim)
                 .listRowBackground(cardBg)
             }
         } header: {
-            formHeader("Step 2: LLM Processing")
-        }
-    }
-
-    // MARK: - Output Section
-
-    private var outputSection: some View {
-        Section {
-            Toggle("Auto-paste Result", isOn: $autoPaste)
-                .tint(amber)
-                .foregroundColor(textPrimary)
-                .listRowBackground(cardBg)
-        } header: {
-            formHeader("Output")
-        } footer: {
-            Text("Automatically insert the result into the active text field.")
-                .foregroundColor(textDim)
+            formHeader("Step 3: AI Processing")
         }
     }
 
@@ -533,11 +776,11 @@ struct ModeConfigForm: View {
         !icon.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    private func formHeader(_ title: String) -> some View {
-        Text(title.uppercased())
+    private func formHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title)
             .font(.system(size: 12, weight: .medium))
             .foregroundColor(textDim)
-            .textCase(nil)
+            .textCase(.uppercase)
     }
 
     private func populateFromInitial() {
