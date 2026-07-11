@@ -85,8 +85,43 @@ final class FonosAppUITests: XCTestCase {
     }
 
     @MainActor
-    private func launchApp() -> XCUIApplication {
+    func testCaptureAppStoreScreenshots() throws {
+        guard let outputDir = ProcessInfo.processInfo.environment["FONOS_SCREENSHOT_DIR"],
+              !outputDir.isEmpty else {
+            throw XCTSkip("Set FONOS_SCREENSHOT_DIR to generate App Store screenshots.")
+        }
+
+        try FileManager.default.createDirectory(
+            at: URL(fileURLWithPath: outputDir), withIntermediateDirectories: true
+        )
+
+        let app = launchApp(screenshotMode: true)
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Demo Whisper STT"].waitForExistence(timeout: 3))
+
+        capture("01-dictate", outputDir: outputDir)
+
+        tapTab("History", in: app)
+        XCTAssertTrue(app.staticTexts["Please send the launch checklist to Maya and ask her to review the privacy labels before Friday."].waitForExistence(timeout: 3))
+        capture("02-history", outputDir: outputDir)
+
+        tapTab("Notes", in: app)
+        XCTAssertTrue(app.staticTexts["Launch Notes"].waitForExistence(timeout: 3))
+        capture("03-notes", outputDir: outputDir)
+
+        tapTab("Settings", in: app)
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Demo Whisper STT"].waitForExistence(timeout: 3))
+        capture("04-settings", outputDir: outputDir)
+    }
+
+    @MainActor
+    private func launchApp(screenshotMode: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
+        if screenshotMode {
+            app.launchEnvironment["FONOS_SCREENSHOT_MODE"] = "1"
+        }
         app.launch()
         return app
     }
@@ -96,5 +131,16 @@ final class FonosAppUITests: XCTestCase {
         let button = app.tabBars.buttons[title]
         XCTAssertTrue(button.waitForExistence(timeout: 5), "Expected \(title) tab")
         button.tap()
+    }
+
+    @MainActor
+    private func capture(_ name: String, outputDir: String) {
+        let screenshot = XCUIScreen.main.screenshot()
+        let url = URL(fileURLWithPath: outputDir).appendingPathComponent("\(name).png")
+        do {
+            try screenshot.pngRepresentation.write(to: url, options: [.atomic])
+        } catch {
+            XCTFail("Failed to write \(url.path): \(error)")
+        }
     }
 }

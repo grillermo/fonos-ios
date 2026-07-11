@@ -13,9 +13,15 @@ struct FonosApp: App {
         BackgroundRecordingService.shared.register()
         do {
             try Self.ensureSharedApplicationSupportDirectory()
-            modelContainer = try ModelContainer(
-                for: DictationSession.self, NoteContainer.self, NoteEntry.self
+            let schema = Schema([DictationSession.self, NoteContainer.self, NoteEntry.self])
+#if DEBUG
+            let configuration = ModelConfiguration(
+                isStoredInMemoryOnly: ScreenshotDemoData.isEnabled
             )
+#else
+            let configuration = ModelConfiguration()
+#endif
+            modelContainer = try ModelContainer(for: schema, configurations: [configuration])
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }

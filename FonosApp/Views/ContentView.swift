@@ -150,8 +150,21 @@ struct ContentView: View {
             if let saved = AppConfigStorage.load() {
                 dictationViewModel.config = saved
             }
+#if DEBUG
+            if ScreenshotDemoData.isEnabled {
+                dictationViewModel.config = ScreenshotDemoData.seed(
+                    modelContainer: modelContainer
+                )
+            }
+#endif
             noteViewModel.config = dictationViewModel.config
+#if DEBUG
+            if !ScreenshotDemoData.isEnabled {
+                AppConfigStorage.save(dictationViewModel.config)
+            }
+#else
             AppConfigStorage.save(dictationViewModel.config)
+#endif
         }
         // fonos://record — widget tap or "Dictate with Fonos" App Intent (spec Flow 2)
         .onReceive(NotificationCenter.default.publisher(for: .fonosStartRecording)) { notification in
@@ -202,3 +215,147 @@ struct ContentView: View {
     ContentView()
         .modelContainer(for: [DictationSession.self, NoteContainer.self, NoteEntry.self], inMemory: true)
 }
+
+#if DEBUG
+enum ScreenshotDemoData {
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.environment["FONOS_SCREENSHOT_MODE"] == "1"
+    }
+
+    @MainActor
+    static func seed(modelContainer: ModelContainer) -> AppConfig {
+        let context = modelContainer.mainContext
+        var seededConfig = seedConfig()
+        seedHistoryIfNeeded(in: context)
+        seedNotesIfNeeded(in: context)
+        seededConfig.activeModeID = seededConfig.activeModeID.isEmpty ? "polish" : seededConfig.activeModeID
+        return seededConfig
+    }
+
+    private static func seedConfig() -> AppConfig {
+        // Screenshot mode must never inherit model names, endpoints, or other
+        // state from the simulator's real persisted configuration.
+        var seeded = AppConfig()
+        let stt = ModelProfile(
+            id: "demo-whisper-stt",
+            name: "Demo Whisper STT",
+            provider: "custom",
+            modelID: "whisper-large-v3",
+            baseURL: "https://api.example.com",
+            capabilities: ["stt"]
+        )
+        let llm = ModelProfile(
+            id: "demo-gpt-llm",
+            name: "Demo GPT LLM",
+            provider: "openai",
+            modelID: "gpt-4o-mini",
+            baseURL: "https://api.openai.com",
+            capabilities: ["llm"]
+        )
+        seeded.modelProfiles = [stt, llm]
+        seeded.sttProfile = stt.id
+        seeded.llmProfile = llm.id
+        seeded.activeModeID = "polish"
+        seeded.translateTargetLanguage = "English"
+        return seeded
+    }
+
+    @MainActor
+    private static func seedHistoryIfNeeded(in context: ModelContext) {
+        let existing = (try? context.fetch(FetchDescriptor<DictationSession>())) ?? []
+        guard existing.isEmpty else { return }
+        let now = Date()
+        let sessions = [
+            DictationSession(
+                date: now.addingTimeInterval(-8 * 60),
+                mode: "polish",
+                inputText: "um can you send the launch checklist to maya and ask her to review the privacy labels before friday",
+                outputText: "Please send the launch checklist to Maya and ask her to review the privacy labels before Friday.",
+                destination: "clipboard",
+                latencyMs: 820
+            ),
+            DictationSession(
+                date: now.addingTimeInterval(-38 * 60),
+                mode: "formal",
+                inputText: "hey thanks for the quick pass i fixed the keyboard issue and will send a new build tonight",
+                outputText: "Thank you for the quick review. I fixed the keyboard issue and will send a new build tonight.",
+                destination: "messages",
+                latencyMs: 1040
+            ),
+            DictationSession(
+                date: now.addingTimeInterval(-96 * 60),
+                mode: "translate",
+                inputText: "我们明天上午同步一下发布材料和截图顺序",
+                outputText: "Let's sync tomorrow morning on the release materials and screenshot order.",
+                destination: "share",
+                latencyMs: 1180
+            )
+        ]
+        sessions.forEach(context.insert)
+        try? context.save()
+    }
+
+    @MainActor
+    private static func seedNotesIfNeeded(in context: ModelContext) {
+        let existing = (try? context.fetch(FetchDescriptor<NoteContainer>())) ?? []
+        guard existing.isEmpty else { return }
+        let now = Date()
+        let notebooks = [
+            NoteContainer(
+                title: "Launch Notes",
+                processingMode: "polish",
+                createdAt: now.addingTimeInterval(-5 * 24 * 60 * 60),
+                updatedAt: now.addingTimeInterval(-12 * 60),
+                systemPrompt: "Turn voice notes into concise launch-ready action items."
+            ),
+            NoteContainer(
+                title: "Meeting Recaps",
+                processingMode: "summarize",
+                createdAt: now.addingTimeInterval(-8 * 24 * 60 * 60),
+                updatedAt: now.addingTimeInterval(-54 * 60),
+                systemPrompt: "Summarize decisions, owners, and next steps."
+            ),
+            NoteContainer(
+                title: "Ideas",
+                processingMode: "raw",
+                createdAt: now.addingTimeInterval(-14 * 24 * 60 * 60),
+                updatedAt: now.addingTimeInterval(-2 * 60 * 60),
+                systemPrompt: ""
+            )
+        ]
+        notebooks.forEach(context.insert)
+
+        let entries = [
+            NoteEntry(
+                createdAt: now.addingTimeInterval(-12 * 60),
+                rawText: "Need final screenshots, privacy labels, review notes, and one clean TestFlight build before submission.",
+                processedText: "Release prep: finalize screenshots, complete privacy labels, confirm review notes, and upload one clean TestFlight build.",
+                containerId: notebooks[0].id,
+                mode: "polish",
+                durationMs: 9200,
+                language: "en-US"
+            ),
+            NoteEntry(
+                createdAt: now.addingTimeInterval(-54 * 60),
+                rawText: "The main question is whether keyboard dictation should require the app to stay open during review.",
+                processedText: "Decision: explain in review notes that the keyboard extension communicates with the main app for dictation.",
+                containerId: notebooks[1].id,
+                mode: "summarize",
+                durationMs: 12800,
+                language: "en-US"
+            ),
+            NoteEntry(
+                createdAt: now.addingTimeInterval(-2 * 60 * 60),
+                rawText: "Maybe add a quick mode switch on the keyboard after 1.0 so translation and polish are easier to reach.",
+                processedText: nil,
+                containerId: notebooks[2].id,
+                mode: "raw",
+                durationMs: 7400,
+                language: "en-US"
+            )
+        ]
+        entries.forEach(context.insert)
+        try? context.save()
+    }
+}
+#endif

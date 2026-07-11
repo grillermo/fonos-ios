@@ -2244,7 +2244,6 @@
       }
     },
     "Translate" : {
-      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

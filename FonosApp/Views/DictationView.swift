@@ -145,14 +145,15 @@ struct DictationView: View {
         return Button {
             viewModel.currentMode = mode
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Image(systemName: mode.icon)
-                    .font(.system(size: 12, weight: .medium))
-                Text(mode.displayName)
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .font(.system(size: 11, weight: .medium))
+                Text(modeChipTitle(mode))
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
             }
+            .lineLimit(1)
             .foregroundColor(isSelected ? Color(hex: "#1a1917") : Color(hex: "#fafaf9").opacity(0.7))
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 12)
@@ -168,6 +169,16 @@ struct DictationView: View {
         }
         .buttonStyle(PlainButtonStyle())
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isSelected)
+    }
+
+    private func modeChipTitle(_ mode: Mode) -> String {
+        switch mode {
+        case .raw: return String(localized: "Raw")
+        case .polish: return String(localized: "Polish")
+        case .formal: return String(localized: "Formal")
+        case .translate: return String(localized: "Translate")
+        case .custom: return String(localized: "Custom")
+        }
     }
 
     // MARK: - Record Button Section
