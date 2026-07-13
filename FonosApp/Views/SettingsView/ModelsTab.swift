@@ -9,6 +9,7 @@ struct ModelsTab: View {
     @Binding var config: AppConfig
 
     @State private var showScenarioImporter = false
+    @State private var pendingScenarioImport: PendingScenarioImport?
     @State private var scenarioSummary: ScenarioImportSummary?
     @State private var scenarioError: String?
     @State private var showAddModel = false
@@ -20,6 +21,8 @@ struct ModelsTab: View {
     @State private var probeResult: ModelProbeService.ProbeResult?
     @State private var probing = false
     @State private var probeError: String?
+    @State private var reviewingConsentProfile: ModelProfile?
+    @State private var consentRevision = 0
 
     private let amber = Color(hex: "#fbbf24")
     private let green = Color(hex: "#86efac")
@@ -29,16 +32,33 @@ struct ModelsTab: View {
     private let cardBorder = Color.white.opacity(0.04)
     private let separator = Color.white.opacity(0.04)
 
+    private struct PendingScenarioImport: Identifiable {
+        let id = UUID()
+        let data: Data
+        let summary: ScenarioImportSummary
+    }
+
     var body: some View {
         List {
             defaultServicesSection
             registeredModelsSection
+            remoteAIConsentSection
             scenarioImportSection
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .fileImporter(isPresented: $showScenarioImporter, allowedContentTypes: [.json]) { result in
             importScenario(result)
+        }
+        .sheet(item: $pendingScenarioImport) { pending in
+            ConfigImportPreviewView(
+                summary: pending.summary,
+                onImport: {
+                    applyScenario(pending.data)
+                    pendingScenarioImport = nil
+                },
+                onCancel: { pendingScenarioImport = nil }
+            )
         }
         .alert("Scenario imported", isPresented: .init(
             get: { scenarioSummary != nil },
@@ -78,7 +98,10 @@ struct ModelsTab: View {
                             provider: model.provider,
                             modelID: model.id,
                             baseURL: model.baseURL,  // URL from the model itself — guaranteed correct
-                            capabilities: model.capabilities
+                            capabilities: model.capabilities,
+                            sttAPI: model.capabilities.contains("stt") && model.provider == "openrouter"
+                                ? "chat"
+                                : nil
                         )
                         print("✅ Adding model: \(profile.name), baseURL=\(profile.baseURL ?? "nil"), caps=\(profile.capabilities)")
                         config.modelProfiles.append(profile)
@@ -95,11 +118,31 @@ struct ModelsTab: View {
                 onSave: { updated in
                     if let idx = config.modelProfiles.firstIndex(where: { $0.id == profile.id }) {
                         config.modelProfiles[idx] = updated
+                        revokeUnusedConsent(afterReplacing: profile, with: updated)
                     }
                 }
             )
         }
+        .alert(
+            "Allow Remote AI Processing?",
+            isPresented: Binding(
+                get: { reviewingConsentProfile != nil },
+                set: { if !$0 { reviewingConsentProfile = nil } }
+            ),
+            presenting: reviewingConsentProfile
+        ) { profile in
+            Button("Not Now", role: .cancel) {}
+            Button("Allow") {
+                RemoteAIConsentStore.grant(for: profile)
+                consentRevision += 1
+            }
+        } message: { profile in
+            Text(RemoteAIConsentStore.disclosure(for: profile))
+        }
     }
+}
+
+extension ModelsTab {
 
     // MARK: - Scenario Import (P1-2)
 
@@ -121,6 +164,8 @@ struct ModelsTab: View {
             }
             .listRowBackground(cardBg)
         } footer: {
+            // Keep this as one literal so String Catalog extraction preserves the exact key.
+            // swiftlint:disable:next line_length
             Text("Save your setup as a named config set and share it as a QR code (API keys stripped), or import one by scanning. “Import Scenario File” loads a scenario exported from Fonos desktop.")
                 .font(.system(size: 12))
                 .foregroundColor(textDim)
@@ -134,6 +179,14 @@ struct ModelsTab: View {
         lines.append("\(s.importedProfiles) model profile(s) imported")
         if s.vocabBooksImported > 0 { lines.append("\(s.vocabBooksImported) vocab book(s) imported") }
         if s.dictationApplied { lines.append("Dictation defaults applied") }
+        if s.noRunnableWorkflow {
+            lines.append("No runnable microphone recipe remains; active recipe cleared")
+        } else if s.activeWorkflowAdjusted {
+            let label = s.selectedWorkflowName.isEmpty
+                ? s.selectedWorkflowID
+                : "\(s.selectedWorkflowName) (\(s.selectedWorkflowID))"
+            lines.append("Active recipe adjusted to \(label)")
+        }
         if !s.skippedSections.isEmpty {
             lines.append("Skipped (not applicable on iOS): \(s.skippedSections.joined(separator: ", "))")
         }
@@ -146,8 +199,22 @@ struct ModelsTab: View {
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         do {
             let data = try Data(contentsOf: url)
+            pendingScenarioImport = PendingScenarioImport(
+                data: data,
+                summary: try ScenarioImporter.preview(data: data)
+            )
+        } catch {
+            scenarioError = error.localizedDescription
+        }
+    }
+
+    private func applyScenario(_ data: Data) {
+        do {
             let (newConfig, summary) = try ScenarioImporter.apply(
-                data: data, to: config, vocabStore: VocabStore())
+                data: data,
+                to: config,
+                vocabStore: VocabStore()
+            )
             config = newConfig
             scenarioSummary = summary
         } catch {
@@ -277,6 +344,64 @@ struct ModelsTab: View {
         }
     }
 
+    private var remoteAIConsentSection: some View {
+        Section {
+            ForEach(profilesBlockedByTransport) { profile in
+                HStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.shield.fill")
+                        .foregroundColor(.red)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("HTTPS required for \(profile.name)")
+                            .foregroundColor(textPrimary)
+                        Text(profile.effectiveBaseURL)
+                            .font(.caption)
+                            .foregroundColor(textDim)
+                    }
+                }
+                .listRowBackground(cardBg)
+            }
+
+            if profilesNeedingConsent.isEmpty && profilesBlockedByTransport.isEmpty {
+                Label("Configured endpoints are ready", systemImage: "checkmark.shield.fill")
+                    .foregroundColor(green)
+                    .listRowBackground(cardBg)
+            } else if !profilesNeedingConsent.isEmpty {
+                ForEach(profilesNeedingConsent) { profile in
+                    Button {
+                        reviewingConsentProfile = profile
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "hand.raised.fill")
+                                .foregroundColor(amber)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Review \(profile.name)")
+                                    .foregroundColor(textPrimary)
+                                if let identity = RemoteAIConsentStore.identity(for: profile) {
+                                    Text("\(identity.providerDisplayName) · \(identity.origin)")
+                                        .font(.caption)
+                                        .foregroundColor(textDim)
+                                }
+                            }
+                            Spacer()
+                            Text("Required")
+                                .font(.caption.weight(.semibold))
+                                .foregroundColor(amber)
+                        }
+                    }
+                    .listRowBackground(cardBg)
+                }
+            }
+        } header: {
+            sectionHeader("Remote AI Data Sharing")
+        } footer: {
+            // Keep this as one literal so String Catalog extraction preserves the exact key.
+            // swiftlint:disable:next line_length
+            Text("Fonos blocks voice and text requests to a configured endpoint until you review the recipient and allow that destination. Permissions can be withdrawn under General → Privacy & Data Sharing.")
+                .font(.system(size: 12))
+                .foregroundColor(textDim)
+        }
+    }
+
     // MARK: - Helpers
 
     private var sttModels: [ModelProfile] {
@@ -287,8 +412,42 @@ struct ModelsTab: View {
         config.modelProfiles.filter(\.hasLLM)
     }
 
+    private var profilesNeedingConsent: [ModelProfile] {
+        _ = consentRevision
+        return config.modelProfiles.filter {
+            RemoteAITransportPolicy.allows($0.effectiveBaseURL)
+                && !RemoteAIConsentStore.isAuthorized(for: $0)
+        }
+    }
+
+    private var profilesBlockedByTransport: [ModelProfile] {
+        config.modelProfiles.filter {
+            !RemoteAITransportPolicy.allows($0.effectiveBaseURL)
+        }
+    }
+
     private func deleteProfile(id: String) {
+        let deleted = config.modelProfiles.first(where: { $0.id == id })
+        try? KeychainStore(service: "com.fonos.models").delete(id)
         config.removeModelProfile(id: id)
+        if let deleted,
+           let deletedIdentity = RemoteAIConsentStore.identity(for: deleted),
+           !config.modelProfiles.contains(where: {
+               RemoteAIConsentStore.identity(for: $0) == deletedIdentity
+           }) {
+            RemoteAIConsentStore.revoke(for: deleted)
+            consentRevision += 1
+        }
+    }
+
+    private func revokeUnusedConsent(afterReplacing old: ModelProfile, with updated: ModelProfile) {
+        guard let oldIdentity = RemoteAIConsentStore.identity(for: old),
+              oldIdentity != RemoteAIConsentStore.identity(for: updated),
+              !config.modelProfiles.contains(where: {
+                  $0.id != updated.id && RemoteAIConsentStore.identity(for: $0) == oldIdentity
+              }) else { return }
+        RemoteAIConsentStore.revoke(for: old)
+        consentRevision += 1
     }
 
     private func sectionHeader(_ title: String) -> some View {
@@ -395,6 +554,7 @@ private struct ModelProfileRow: View {
     private func providerDisplayName(_ provider: String) -> String {
         switch provider {
         case "openai":    return "OpenAI"
+        case "openrouter": return "OpenRouter"
         case "anthropic": return "Anthropic"
         case "google":    return "Google"
         case "ollama":    return "Ollama"
@@ -407,6 +567,12 @@ private struct ModelProfileRow: View {
 }
 
 // MARK: - Model Profile Form
+
+private struct ModelProviderOption {
+    let id: String
+    let label: String
+    let icon: String
+}
 
 /// Sheet for adding or editing a model profile.
 struct ModelProfileForm: View {
@@ -425,6 +591,8 @@ struct ModelProfileForm: View {
     @State private var apiKey: String = ""
     @State private var hasStt: Bool = false
     @State private var hasLlm: Bool = true
+    @State private var sttAPI: String = "whisper"
+    @State private var pendingConsentProfile: ModelProfile?
 
     private let amber = Color(hex: "#fbbf24")
     private let green = Color(hex: "#86efac")
@@ -433,14 +601,15 @@ struct ModelProfileForm: View {
     private let textDim = Color(hex: "#fafaf9").opacity(0.5)
     private let cardBg = Color.white.opacity(0.06)
 
-    private let providers: [(id: String, label: String, icon: String)] = [
-        ("openai", "OpenAI", "brain"),
-        ("anthropic", "Anthropic", "sparkle"),
-        ("google", "Google", "magnifyingglass.circle"),
-        ("ollama", "Ollama", "server.rack"),
-        ("lmstudio", "LM Studio", "laptopcomputer"),
-        ("omlx", "OMLX", "apple.terminal"),
-        ("custom", "Custom", "network")
+    private let providers: [ModelProviderOption] = [
+        ModelProviderOption(id: "openai", label: "OpenAI", icon: "brain"),
+        ModelProviderOption(id: "openrouter", label: "OpenRouter", icon: "arrow.triangle.branch"),
+        ModelProviderOption(id: "anthropic", label: "Anthropic", icon: "sparkle"),
+        ModelProviderOption(id: "google", label: "Google", icon: "magnifyingglass.circle"),
+        ModelProviderOption(id: "ollama", label: "Ollama", icon: "server.rack"),
+        ModelProviderOption(id: "lmstudio", label: "LM Studio", icon: "laptopcomputer"),
+        ModelProviderOption(id: "omlx", label: "OMLX", icon: "apple.terminal"),
+        ModelProviderOption(id: "custom", label: "Custom", icon: "network")
     ]
 
     private let keychainModels = KeychainStore(service: "com.fonos.models")
@@ -471,8 +640,7 @@ struct ModelProfileForm: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        save()
-                        dismiss()
+                        requestSave()
                     }
                     .foregroundColor(amber)
                     .disabled(!canSave)
@@ -486,6 +654,22 @@ struct ModelProfileForm: View {
             if initialProfile == nil {
                 baseURL = defaultBaseURL(for: selectedProvider)
             }
+        }
+        .alert(
+            "Allow Remote AI Processing?",
+            isPresented: Binding(
+                get: { pendingConsentProfile != nil },
+                set: { if !$0 { pendingConsentProfile = nil } }
+            ),
+            presenting: pendingConsentProfile
+        ) { profile in
+            Button("Not Now", role: .cancel) {}
+            Button("Allow & Save") {
+                RemoteAIConsentStore.grant(for: profile)
+                commitSave(profile)
+            }
+        } message: { profile in
+            Text(RemoteAIConsentStore.disclosure(for: profile))
         }
     }
 
@@ -557,6 +741,16 @@ struct ModelProfileForm: View {
                 .foregroundColor(textPrimary)
                 .listRowBackground(cardBg)
 
+            if hasStt {
+                Picker("STT API", selection: $sttAPI) {
+                    Text("Whisper audio endpoint").tag("whisper")
+                    Text("Chat with input_audio").tag("chat")
+                }
+                .pickerStyle(.navigationLink)
+                .foregroundColor(textPrimary)
+                .listRowBackground(cardBg)
+            }
+
             Toggle("Language Model (LLM)", isOn: $hasLlm)
                 .tint(green)
                 .foregroundColor(textPrimary)
@@ -574,7 +768,14 @@ struct ModelProfileForm: View {
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&
         !modelID.trimmingCharacters(in: .whitespaces).isEmpty &&
-        (hasStt || hasLlm)
+        (hasStt || hasLlm) &&
+        RemoteAIEndpointIdentity(
+            provider: selectedProvider,
+            baseURL: baseURL.isEmpty ? defaultBaseURL(for: selectedProvider) : baseURL
+        ) != nil &&
+        RemoteAITransportPolicy.allows(
+            baseURL.isEmpty ? defaultBaseURL(for: selectedProvider) : baseURL
+        )
     }
 
     private func formHeader(_ title: String) -> some View {
@@ -587,6 +788,7 @@ struct ModelProfileForm: View {
     private func defaultBaseURL(for provider: String) -> String {
         switch provider {
         case "openai":    return "https://api.openai.com"
+        case "openrouter": return "https://openrouter.ai/api/v1"
         case "anthropic": return "https://api.anthropic.com"
         case "google":    return "https://generativelanguage.googleapis.com"
         case "ollama":    return "http://localhost:11434"
@@ -607,11 +809,21 @@ struct ModelProfileForm: View {
         baseURL = profile.baseURL ?? defaultBaseURL(for: profile.provider)
         hasStt = profile.hasSTT
         hasLlm = profile.hasLLM
+        sttAPI = profile.effectiveSTTAPI
         // Load API key from Keychain
         apiKey = (try? keychainModels.get(profile.id)) ?? ""
     }
 
-    private func save() {
+    private func requestSave() {
+        let profile = makeProfile()
+        if RemoteAIConsentStore.isAuthorized(for: profile) {
+            commitSave(profile)
+        } else {
+            pendingConsentProfile = profile
+        }
+    }
+
+    private func makeProfile() -> ModelProfile {
         var capabilities: [String] = []
         if hasStt { capabilities.append("stt") }
         if hasLlm { capabilities.append("llm") }
@@ -623,20 +835,25 @@ struct ModelProfileForm: View {
             profileID = "\(selectedProvider)-\(Int(Date().timeIntervalSince1970))"
         }
 
-        // Save API key to Keychain
-        if !apiKey.isEmpty {
-            try? keychainModels.set(apiKey, forKey: profileID)
-        }
-
-        let profile = ModelProfile(
+        return ModelProfile(
             id: profileID,
             name: name.trimmingCharacters(in: .whitespaces),
             provider: selectedProvider,
             modelID: modelID.trimmingCharacters(in: .whitespaces),
             baseURL: baseURL.isEmpty ? nil : baseURL,
-            capabilities: capabilities
+            capabilities: capabilities,
+            sttAPI: hasStt ? sttAPI : nil
         )
+    }
+
+    private func commitSave(_ profile: ModelProfile) {
+        // The credential remains in Keychain and is never placed in AppConfig
+        // or the remote-AI consent record.
+        if !apiKey.isEmpty {
+            try? keychainModels.set(apiKey, forKey: profile.id)
+        }
         onSave(profile)
+        dismiss()
     }
 }
 
@@ -690,6 +907,12 @@ private struct ProviderButton: View {
 
 // MARK: - Probe Sheet
 
+private struct ProbeProviderOption {
+    let id: String
+    let label: String
+    let defaultURL: String
+}
+
 /// Sheet for probing an endpoint to discover available models.
 private struct ProbeSheet: View {
     @Binding var probeURL: String
@@ -703,6 +926,7 @@ private struct ProbeSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedModels: Set<String> = []
     @State private var modelCapabilities: [String: Set<String>] = [:]  // modelID → user-chosen caps
+    @State private var pendingConsentModels: [ModelProbeService.DiscoveredModel] = []
 
     private let amber = Color(hex: "#fbbf24")
     private let green = Color(hex: "#86efac")
@@ -710,11 +934,12 @@ private struct ProbeSheet: View {
     private let textPrimary = Color(hex: "#fafaf9")
     private let textDim = Color(hex: "#fafaf9").opacity(0.5)
 
-    private let probeProviders: [(id: String, label: String, defaultURL: String)] = [
-        ("omlx", "OMLX", "http://localhost:8000"),
-        ("ollama", "Ollama", "http://localhost:11434"),
-        ("lmstudio", "LM Studio", "http://localhost:1234"),
-        ("custom", "Custom", ""),
+    private let probeProviders: [ProbeProviderOption] = [
+        ProbeProviderOption(id: "omlx", label: "OMLX", defaultURL: "http://localhost:8000"),
+        ProbeProviderOption(id: "ollama", label: "Ollama", defaultURL: "http://localhost:11434"),
+        ProbeProviderOption(id: "lmstudio", label: "LM Studio", defaultURL: "http://localhost:1234"),
+        ProbeProviderOption(id: "openrouter", label: "OpenRouter", defaultURL: "https://openrouter.ai/api/v1"),
+        ProbeProviderOption(id: "custom", label: "Custom", defaultURL: "")
     ]
 
     var body: some View {
@@ -889,8 +1114,7 @@ private struct ProbeSheet: View {
                                 // Filter out models with no capabilities chosen
                                 let valid = resolved.filter { !$0.capabilities.isEmpty }
                                 guard !valid.isEmpty else { return }
-                                onAddModels(valid, probeKey)
-                                dismiss()
+                                requestAdd(valid)
                             } label: {
                                 let validCount = validModelCount(in: result)
                                 HStack {
@@ -927,6 +1151,25 @@ private struct ProbeSheet: View {
             if probeURL.isEmpty {
                 probeURL = probeProviders.first?.defaultURL ?? ""
             }
+        }
+        .alert(
+            "Allow Remote AI Processing?",
+            isPresented: Binding(
+                get: { !pendingConsentModels.isEmpty },
+                set: { if !$0 { pendingConsentModels = [] } }
+            ),
+            presenting: pendingConsentProfile
+        ) { profile in
+            Button("Not Now", role: .cancel) {}
+            Button("Allow & Add") {
+                RemoteAIConsentStore.grant(for: profile)
+                let models = pendingConsentModels
+                pendingConsentModels = []
+                onAddModels(models, probeKey)
+                dismiss()
+            }
+        } message: { profile in
+            Text(RemoteAIConsentStore.disclosure(for: profile))
         }
     }
 
@@ -969,6 +1212,37 @@ private struct ProbeSheet: View {
             if model.autoDetected { return !model.capabilities.isEmpty }
             return !(modelCapabilities[model.id, default: []].isEmpty)
         }.count
+    }
+
+    private var pendingConsentProfile: ModelProfile? {
+        guard let first = pendingConsentModels.first else { return nil }
+        let capabilities = Set(pendingConsentModels.flatMap(\.capabilities))
+        return ModelProfile(
+            id: "consent-preview",
+            name: first.provider.capitalized,
+            provider: first.provider,
+            modelID: first.id,
+            baseURL: first.baseURL,
+            capabilities: Array(capabilities)
+        )
+    }
+
+    private func requestAdd(_ models: [ModelProbeService.DiscoveredModel]) {
+        guard let first = models.first else { return }
+        let preview = ModelProfile(
+            id: "consent-preview",
+            name: first.provider.capitalized,
+            provider: first.provider,
+            modelID: first.id,
+            baseURL: first.baseURL,
+            capabilities: Array(Set(models.flatMap(\.capabilities)))
+        )
+        if RemoteAIConsentStore.isAuthorized(for: preview) {
+            onAddModels(models, probeKey)
+            dismiss()
+        } else {
+            pendingConsentModels = models
+        }
     }
 
     private func toggleModel(_ id: String) {

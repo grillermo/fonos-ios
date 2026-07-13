@@ -4,6 +4,27 @@ import os.log
 
 private let log = Logger(subsystem: "com.fonos.ios", category: "AudioCapture")
 
+private final class AudioCaptureConverterInput: @unchecked Sendable {
+    private let buffer: AVAudioPCMBuffer
+    private var wasProvided = false
+
+    init(buffer: AVAudioPCMBuffer) {
+        self.buffer = buffer
+    }
+
+    func next(
+        status: UnsafeMutablePointer<AVAudioConverterInputStatus>
+    ) -> AVAudioBuffer? {
+        guard !wasProvided else {
+            status.pointee = .noDataNow
+            return nil
+        }
+        wasProvided = true
+        status.pointee = .haveData
+        return buffer
+    }
+}
+
 // MARK: - Errors
 
 enum AudioCaptureError: Error, LocalizedError {
@@ -12,6 +33,8 @@ enum AudioCaptureError: Error, LocalizedError {
     case permissionDenied
     case noInputAvailable
     case notRecording
+    case captureAlreadyActive
+    case startCancelled
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +43,8 @@ enum AudioCaptureError: Error, LocalizedError {
         case .permissionDenied: return "Microphone permission is required. Please enable it in Settings."
         case .noInputAvailable: return "No audio input available"
         case .notRecording: return "Not currently recording"
+        case .captureAlreadyActive: return "Audio capture is already starting or recording"
+        case .startCancelled: return "Audio capture start was cancelled"
         }
     }
 }
@@ -38,6 +63,41 @@ enum WAVError: Error, LocalizedError {
     }
 }
 
+struct AudioCaptureStartToken: Hashable, Sendable {
+    fileprivate let id: UUID
+
+    init(id: UUID = UUID()) {
+        self.id = id
+    }
+}
+
+/// Narrow capture seam used by DictationViewModel. Tests can control the
+/// asynchronous start completion without constructing AVAudioEngine hardware.
+protocol AudioCapturing: AnyObject, Sendable {
+    var currentAudioLevel: Float { get }
+    var isRecording: Bool { get }
+    var isStarting: Bool { get }
+    func micPermissionStatus() -> AVAudioSession.RecordPermission
+    func requestMicPermission() async -> Bool
+    @discardableResult
+    func startCapture(
+        onInterruption: @escaping @Sendable () -> Void,
+        completion: @escaping @Sendable (Error?) -> Void
+    ) -> AudioCaptureStartToken
+    @MainActor
+    @discardableResult
+    func stopCapture() -> Data?
+}
+
+extension AudioCapturing {
+    @discardableResult
+    func startCapture(
+        completion: @escaping @Sendable (Error?) -> Void
+    ) -> AudioCaptureStartToken {
+        startCapture(onInterruption: {}, completion: completion)
+    }
+}
+
 // MARK: - AudioCaptureService
 
 /// Records audio using AVAudioEngine and produces 16kHz 16-bit mono PCM buffers.
@@ -47,7 +107,7 @@ enum WAVError: Error, LocalizedError {
 /// - `captureFormat`, `isRecording`, `encodeToWAV`, and `decodeWAV` are intentionally
 ///   nonisolated so tests can call them synchronously without MainActor context.
 /// - Internal state mutations happen on the main actor via DispatchQueue.main or Task.
-final class AudioCaptureService: @unchecked Sendable {
+final class AudioCaptureService: AudioCapturing, @unchecked Sendable {
     // MARK: - Public Properties
 
     /// The capture format: 16kHz, 16-bit integer PCM, mono.
@@ -63,8 +123,21 @@ final class AudioCaptureService: @unchecked Sendable {
         return format
     }()
 
-    /// True while recording.
-    private(set) var isRecording: Bool = false
+    /// True only after AVAudioEngine has really started.
+    var isRecording: Bool {
+        lifecycleLock.withLock {
+            guard case .recording = activeCapture?.phase else { return false }
+            return true
+        }
+    }
+
+    /// True while asynchronous session/engine setup is still in flight.
+    var isStarting: Bool {
+        lifecycleLock.withLock {
+            guard case .starting = activeCapture?.phase else { return false }
+            return true
+        }
+    }
 
     /// Current audio level (0.0-1.0), written from audio thread. Read from main thread via polling.
     nonisolated(unsafe) private(set) var currentAudioLevel: Float = 0
@@ -73,6 +146,33 @@ final class AudioCaptureService: @unchecked Sendable {
 
     private let engine = AVAudioEngine()
     private let lock = NSLock()
+    private let converterLock = NSLock()
+    private let lifecycleLock = NSLock()
+    private let captureQueue = DispatchQueue(
+        label: "com.fonos.ios.audio-capture-lifecycle",
+        qos: .userInitiated
+    )
+
+    private enum CapturePhase: Equatable {
+        case starting
+        case recording
+    }
+
+    private struct ActiveCapture {
+        let token: AudioCaptureStartToken
+        var phase: CapturePhase
+        let onInterruption: @Sendable () -> Void
+    }
+
+    private var activeCapture: ActiveCapture?
+
+    /// These flags are confined to `captureQueue` and make teardown
+    /// idempotent across cancellation, setup failure, interruption and stop.
+    private var inputTapInstalled = false
+    private var audioSessionActive = false
+    private var foregroundCapturePaused = false
+    private var converter: AVAudioConverter?
+    private var converterOutputBuffer: AVAudioPCMBuffer?
 
     /// Ring buffer storing raw Int16 PCM samples (16kHz mono = 16000 samples/sec)
     /// Max 60 seconds = 960_000 samples
@@ -100,239 +200,238 @@ final class AudioCaptureService: @unchecked Sendable {
 
     /// Check current microphone permission status.
     nonisolated func micPermissionStatus() -> AVAudioSession.RecordPermission {
-        AVAudioSession.sharedInstance().recordPermission
+        // Keep the existing protocol type so capture test doubles remain simple,
+        // while sourcing the permission from the iOS 17 API. Both enums use the
+        // same four-character raw values for their three permission states.
+        let rawValue = UInt(AVAudioApplication.shared.recordPermission.rawValue)
+        guard let permission = AVAudioSession.RecordPermission(rawValue: rawValue) else {
+            preconditionFailure("AVAudioApplication returned an unknown record-permission value")
+        }
+        return permission
     }
 
     /// Request microphone permission. Call only when status is .undetermined.
     func requestMicPermission() async -> Bool {
         await withCheckedContinuation { continuation in
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            AVAudioApplication.requestRecordPermission { granted in
                 continuation.resume(returning: granted)
             }
         }
     }
 
     /// Start audio capture. Must be called AFTER mic permission is granted.
-    /// Runs engine setup on a background queue to avoid blocking the main thread.
-    func startCapture(completion: @escaping @Sendable (Error?) -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async { [self] in
-            self._startCaptureSync(completion: completion)
+    /// The token is committed to `.recording` only after `engine.start()`
+    /// succeeds. `stopCapture()` invalidates it synchronously, so a queued
+    /// setup can never resurrect capture after the user has stopped.
+    @discardableResult
+    func startCapture(
+        onInterruption: @escaping @Sendable () -> Void = {},
+        completion: @escaping @Sendable (Error?) -> Void
+    ) -> AudioCaptureStartToken {
+        let token = AudioCaptureStartToken()
+        let accepted = lifecycleLock.withLock { () -> Bool in
+            guard activeCapture == nil else { return false }
+            activeCapture = ActiveCapture(
+                token: token,
+                phase: .starting,
+                onInterruption: onInterruption
+            )
+            return true
         }
+        guard accepted else {
+            captureQueue.async {
+                completion(AudioCaptureError.captureAlreadyActive)
+            }
+            return token
+        }
+
+        // This bridge may hop synchronously to MainActor. Do it before the
+        // lifecycle queue starts so a MainActor stop can never deadlock while
+        // waiting for a queue that is itself waiting for MainActor.
+        BackgroundRecordingService.shared.pauseForForegroundCapture()
+        captureQueue.async { [self] in
+            foregroundCapturePaused = true
+            _startCaptureSync(token: token, completion: completion)
+        }
+        return token
     }
 
-    /// Internal synchronous engine setup — runs on background thread.
-    private func _startCaptureSync(completion: @escaping @Sendable (Error?) -> Void) {
-        log.info("🎙 startCapture() on background thread")
-        guard !isRecording else {
-            completion(nil)
+    /// Internal synchronous engine setup, serialized with every teardown.
+    private func _startCaptureSync(
+        token: AudioCaptureStartToken,
+        completion: @escaping @Sendable (Error?) -> Void
+    ) {
+        log.info("🎙 startCapture() on lifecycle queue")
+        guard isCurrentStart(token) else {
+            finishStart(token: token, error: .startCancelled, completion: completion)
             return
         }
 
-        BackgroundRecordingService.shared.pauseForForegroundCapture()
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setCategory(
+                .playAndRecord,
+                mode: .default,
+                options: [.defaultToSpeaker, .allowBluetoothHFP]
+            )
             try session.setPreferredSampleRate(16_000)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
+            audioSessionActive = true
         } catch {
-            BackgroundRecordingService.shared.resumeAfterForegroundCapture()
-            completion(AudioCaptureError.sessionSetupFailed(error))
+            finishStart(
+                token: token,
+                error: .sessionSetupFailed(error),
+                completion: completion
+            )
             return
         }
 
-        if engine.isRunning {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
+        guard isCurrentStart(token) else {
+            finishStart(token: token, error: .startCancelled, completion: completion)
+            return
         }
+
+        if inputTapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            inputTapInstalled = false
+        }
+        if engine.isRunning { engine.stop() }
 
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
-
         guard inputFormat.channelCount > 0, inputFormat.sampleRate > 0 else {
-            BackgroundRecordingService.shared.resumeAfterForegroundCapture()
-            completion(AudioCaptureError.noInputAvailable)
+            finishStart(token: token, error: .noInputAvailable, completion: completion)
             return
         }
 
         resetRingBuffer()
+        resetConversionResources()
         engine.prepare()
-
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: nil) { [weak self] buffer, _ in
             self?.processTapBuffer(buffer)
+        }
+        inputTapInstalled = true
+
+        guard isCurrentStart(token) else {
+            finishStart(token: token, error: .startCancelled, completion: completion)
+            return
         }
 
         do {
             try engine.start()
         } catch {
-            inputNode.removeTap(onBus: 0)
-            BackgroundRecordingService.shared.resumeAfterForegroundCapture()
-            completion(AudioCaptureError.engineStartFailed(error))
+            finishStart(
+                token: token,
+                error: .engineStartFailed(error),
+                completion: completion
+            )
             return
         }
 
-        isRecording = true
-        log.info("🎙 Recording started on background thread ✅")
+        guard commitStart(token) else {
+            finishStart(token: token, error: .startCancelled, completion: completion)
+            return
+        }
+        log.info("🎙 Recording started on lifecycle queue ✅")
         completion(nil)
     }
 
-    /// Stop recording and return all captured audio as WAV data.
+    /// Stop a real recording or cancel an in-flight start. Resource teardown
+    /// is serialized after setup and remains idempotent if setup observes the
+    /// cancellation first.
     @MainActor
     @discardableResult
     func stopCapture() -> Data? {
-        guard isRecording else {
+        let stoppedPhase = lifecycleLock.withLock { () -> CapturePhase? in
+            guard let activeCapture else { return nil }
+            self.activeCapture = nil
+            return activeCapture.phase
+        }
+        guard let stoppedPhase else { return nil }
+
+        let teardown = captureQueue.sync { [self] in
+            teardownCaptureResources(
+                buildWAV: stoppedPhase == .recording
+            )
+        }
+        if teardown.shouldResumeKeyboardReady {
             BackgroundRecordingService.shared.resumeAfterForegroundCapture()
-            return nil
         }
-
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-
-        do {
-            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        } catch {
-            // Non-fatal
-        }
-
-        isRecording = false
-        BackgroundRecordingService.shared.resumeAfterForegroundCapture()
-
-        guard let buffer = buildPCMBuffer() else { return nil }
-        return try? Self.encodeToWAV(buffer: buffer)
+        return teardown.wavData
     }
 
-    // MARK: - WAV Encoding / Decoding
-
-    /// Encode an AVAudioPCMBuffer (must be Int16 PCM) to WAV Data.
-    nonisolated static func encodeToWAV(buffer: AVAudioPCMBuffer) throws -> Data {
-        let format = buffer.format
-        let sampleRate = UInt32(format.sampleRate)
-        let channelCount = UInt16(format.channelCount)
-        let bitsPerSample: UInt16 = 16
-        let frameCount = Int(buffer.frameLength)
-
-        let byteRate = sampleRate * UInt32(channelCount) * UInt32(bitsPerSample) / 8
-        let blockAlign = channelCount * bitsPerSample / 8
-        let dataSize = UInt32(frameCount) * UInt32(channelCount) * UInt32(bitsPerSample / 8)
-        let chunkSize = 36 + dataSize
-
-        var data = Data(capacity: 44 + Int(dataSize))
-
-        // RIFF header
-        data.append(contentsOf: "RIFF".utf8)
-        data.appendLittleEndian(chunkSize)
-        data.append(contentsOf: "WAVE".utf8)
-
-        // fmt chunk
-        data.append(contentsOf: "fmt ".utf8)
-        data.appendLittleEndian(UInt32(16))    // fmt chunk size
-        data.appendLittleEndian(UInt16(1))      // PCM audio format
-        data.appendLittleEndian(channelCount)
-        data.appendLittleEndian(sampleRate)
-        data.appendLittleEndian(byteRate)
-        data.appendLittleEndian(blockAlign)
-        data.appendLittleEndian(bitsPerSample)
-
-        // data chunk
-        data.append(contentsOf: "data".utf8)
-        data.appendLittleEndian(dataSize)
-
-        // PCM samples
-        if let int16Data = buffer.int16ChannelData {
-            for frame in 0..<frameCount {
-                for ch in 0..<Int(channelCount) {
-                    data.appendLittleEndian(int16Data[ch][frame])
-                }
-            }
-        } else if let floatData = buffer.floatChannelData {
-            for frame in 0..<frameCount {
-                for ch in 0..<Int(channelCount) {
-                    let clamped = max(-1.0, min(1.0, floatData[ch][frame]))
-                    let sample = Int16(clamped * Float(Int16.max))
-                    data.appendLittleEndian(sample)
-                }
-            }
+    private func isCurrentStart(_ token: AudioCaptureStartToken) -> Bool {
+        lifecycleLock.withLock {
+            guard let activeCapture,
+                  activeCapture.token == token,
+                  case .starting = activeCapture.phase else { return false }
+            return true
         }
-
-        return data
     }
 
-    /// Decode WAV data back to AVAudioPCMBuffer.
-    nonisolated static func decodeWAV(data: Data) throws -> AVAudioPCMBuffer {
-        guard data.count >= 44 else { throw WAVError.invalidData }
-
-        // Validate RIFF/WAVE header
-        guard String(bytes: data[0..<4], encoding: .ascii) == "RIFF",
-              String(bytes: data[8..<12], encoding: .ascii) == "WAVE" else {
-            throw WAVError.invalidData
+    private func commitStart(_ token: AudioCaptureStartToken) -> Bool {
+        lifecycleLock.withLock {
+            guard var activeCapture,
+                  activeCapture.token == token,
+                  case .starting = activeCapture.phase else { return false }
+            activeCapture.phase = .recording
+            self.activeCapture = activeCapture
+            return true
         }
+    }
 
-        // Parse fmt chunk (must be at offset 12)
-        guard String(bytes: data[12..<16], encoding: .ascii) == "fmt " else {
-            throw WAVError.invalidData
+    private func clearStartIfCurrent(_ token: AudioCaptureStartToken) -> Bool {
+        lifecycleLock.withLock {
+            guard let activeCapture, activeCapture.token == token else { return false }
+            self.activeCapture = nil
+            return true
         }
+    }
 
-        let audioFormat = data.readLittleEndian(UInt16.self, at: 20)
-        let channelCount = data.readLittleEndian(UInt16.self, at: 22)
-        let sampleRate = data.readLittleEndian(UInt32.self, at: 24)
-        let bitsPerSample = data.readLittleEndian(UInt16.self, at: 34)
-
-        guard audioFormat == 1, bitsPerSample == 16 else {
-            throw WAVError.unsupportedFormat
-        }
-
-        // Search for "data" chunk (starts at offset 36 in standard 44-byte WAV)
-        var dataChunkOffset = 0
-        var dataChunkSize: UInt32 = 0
-        var searchOffset = 36
-        while searchOffset + 8 <= data.count {
-            let chunkID = String(bytes: data[searchOffset..<(searchOffset + 4)], encoding: .ascii)
-            let chunkSize = data.readLittleEndian(UInt32.self, at: searchOffset + 4)
-            if chunkID == "data" {
-                dataChunkOffset = searchOffset + 8
-                dataChunkSize = chunkSize
-                break
-            }
-            searchOffset += 8 + Int(chunkSize)
-        }
-
-        guard dataChunkSize > 0, dataChunkOffset > 0 else { throw WAVError.invalidData }
-
-        let bytesPerSample = Int(bitsPerSample / 8)
-        let frameCount = Int(dataChunkSize) / (Int(channelCount) * bytesPerSample)
-
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: Double(sampleRate),
-            channels: AVAudioChannelCount(channelCount),
-            interleaved: false
-        ) else {
-            throw WAVError.unsupportedFormat
-        }
-
-        guard let outBuffer = AVAudioPCMBuffer(
-            pcmFormat: format,
-            frameCapacity: AVAudioFrameCount(frameCount)
-        ) else {
-            throw WAVError.bufferCreationFailed
-        }
-        outBuffer.frameLength = AVAudioFrameCount(frameCount)
-
-        guard let int16Data = outBuffer.int16ChannelData else {
-            throw WAVError.bufferCreationFailed
-        }
-
-        // Read samples from data chunk
-        var byteOffset = dataChunkOffset
-        for frame in 0..<frameCount {
-            for ch in 0..<Int(channelCount) {
-                guard byteOffset + 2 <= data.count else { break }
-                let sample = data.readLittleEndian(Int16.self, at: byteOffset)
-                int16Data[ch][frame] = sample
-                byteOffset += 2
+    private func finishStart(
+        token: AudioCaptureStartToken,
+        error: AudioCaptureError,
+        completion: @escaping @Sendable (Error?) -> Void
+    ) {
+        let wasCurrent = clearStartIfCurrent(token)
+        let teardown = teardownCaptureResources(buildWAV: false)
+        if teardown.shouldResumeKeyboardReady {
+            DispatchQueue.main.async {
+                BackgroundRecordingService.shared.resumeAfterForegroundCapture()
             }
         }
+        completion(wasCurrent ? error : AudioCaptureError.startCancelled)
+    }
 
-        return outBuffer
+    private func teardownCaptureResources(
+        buildWAV: Bool
+    ) -> (wavData: Data?, shouldResumeKeyboardReady: Bool) {
+        if inputTapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            inputTapInstalled = false
+        }
+        if engine.isRunning { engine.stop() }
+        currentAudioLevel = 0
+        resetConversionResources()
+
+        if audioSessionActive {
+            try? AVAudioSession.sharedInstance().setActive(
+                false,
+                options: .notifyOthersOnDeactivation
+            )
+            audioSessionActive = false
+        }
+
+        let wavData: Data?
+        if buildWAV, let buffer = buildPCMBuffer() {
+            wavData = try? Self.encodeToWAV(buffer: buffer)
+        } else {
+            wavData = nil
+        }
+
+        let shouldResume = foregroundCapturePaused
+        foregroundCapturePaused = false
+        return (wavData, shouldResume)
     }
 
     // MARK: - Private Helpers
@@ -346,6 +445,13 @@ final class AudioCaptureService: @unchecked Sendable {
         lock.unlock()
     }
 
+    private func resetConversionResources() {
+        converterLock.withLock {
+            converter = nil
+            converterOutputBuffer = nil
+        }
+    }
+
     private nonisolated(unsafe) static var tapCallCount = 0
 
     private func processTapBuffer(_ buffer: AVAudioPCMBuffer) {
@@ -354,7 +460,10 @@ final class AudioCaptureService: @unchecked Sendable {
 
         // Log first few calls to verify tap is working
         if callNum <= 3 {
-            log.info("🔊 processTapBuffer #\(callNum): frames=\(buffer.frameLength), rate=\(buffer.format.sampleRate), channels=\(buffer.format.channelCount)")
+            let frames = buffer.frameLength
+            let sampleRate = buffer.format.sampleRate
+            let channels = buffer.format.channelCount
+            log.info("🔊 processTapBuffer #\(callNum): frames=\(frames), rate=\(sampleRate), channels=\(channels)")
         }
 
         // Compute audio level directly from the input buffer (float32 format)
@@ -371,35 +480,48 @@ final class AudioCaptureService: @unchecked Sendable {
             currentAudioLevel = min(1.0, rms * 5.0)
         }
 
-        // Convert to 16kHz Int16 for the ring buffer (for WAV export)
-        guard let converter = AVAudioConverter(from: buffer.format, to: captureFormat) else {
+        // Converter creation and buffer allocation are intentionally reused
+        // across tap callbacks. The audio render path should not allocate two
+        // heavyweight AVFoundation objects for every ~90 ms input buffer.
+        converterLock.lock()
+        defer { converterLock.unlock() }
+
+        if converter == nil || converter?.inputFormat != buffer.format {
+            converter = AVAudioConverter(from: buffer.format, to: captureFormat)
+            converterOutputBuffer = nil
+        }
+        guard let converter else {
             if callNum <= 3 { log.error("❌ Failed to create converter") }
             return
         }
 
         let ratio = captureFormat.sampleRate / buffer.format.sampleRate
-        let outputFrameCount = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio))
-
-        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: captureFormat,
-                                                   frameCapacity: outputFrameCount) else {
+        let requiredFrames = AVAudioFrameCount(
+            ceil(Double(buffer.frameLength) * ratio) + 32
+        )
+        if converterOutputBuffer?.frameCapacity ?? 0 < requiredFrames {
+            converterOutputBuffer = AVAudioPCMBuffer(
+                pcmFormat: captureFormat,
+                frameCapacity: requiredFrames
+            )
+        }
+        guard let outputBuffer = converterOutputBuffer else {
             if callNum <= 3 { log.error("❌ Failed to create output buffer") }
             return
         }
+        outputBuffer.frameLength = 0
 
-        var hasProvidedData = false
+        let input = AudioCaptureConverterInput(buffer: buffer)
         var conversionError: NSError?
         let status = converter.convert(to: outputBuffer, error: &conversionError) { _, outStatus in
-            if hasProvidedData {
-                outStatus.pointee = .endOfStream
-                return nil
-            }
-            hasProvidedData = true
-            outStatus.pointee = .haveData
-            return buffer
+            input.next(status: outStatus)
         }
 
         if callNum <= 3 {
-            log.info("🔊 Conversion #\(callNum): status=\(status.rawValue), outFrames=\(outputBuffer.frameLength), error=\(conversionError?.localizedDescription ?? "none")")
+            let statusValue = status.rawValue
+            let outputFrames = outputBuffer.frameLength
+            let errorDescription = conversionError?.localizedDescription ?? "none"
+            log.info("🔊 Conversion #\(callNum): status=\(statusValue), outFrames=\(outputFrames), error=\(errorDescription)")
         }
 
         guard status != .error, let int16Ptr = outputBuffer.int16ChannelData else { return }
@@ -454,34 +576,12 @@ final class AudioCaptureService: @unchecked Sendable {
               type == .began else { return }
 
         Task { @MainActor in
-            if self.isRecording {
-                _ = self.stopCapture()
+            let interruptionHandler = self.lifecycleLock.withLock {
+                self.activeCapture?.onInterruption
             }
-        }
-    }
-}
-
-// MARK: - Data Extensions
-
-private extension Data {
-    mutating func appendLittleEndian(_ value: UInt16) {
-        var v = value.littleEndian
-        Swift.withUnsafeBytes(of: &v) { self.append(contentsOf: $0) }
-    }
-
-    mutating func appendLittleEndian(_ value: Int16) {
-        appendLittleEndian(UInt16(bitPattern: value))
-    }
-
-    mutating func appendLittleEndian(_ value: UInt32) {
-        var v = value.littleEndian
-        Swift.withUnsafeBytes(of: &v) { self.append(contentsOf: $0) }
-    }
-
-    func readLittleEndian<T: FixedWidthInteger>(_ type: T.Type, at offset: Int) -> T {
-        guard offset + MemoryLayout<T>.size <= count else { return 0 }
-        return subdata(in: offset..<(offset + MemoryLayout<T>.size)).withUnsafeBytes {
-            $0.loadUnaligned(as: T.self).littleEndian
+            guard let interruptionHandler else { return }
+            _ = self.stopCapture()
+            interruptionHandler()
         }
     }
 }

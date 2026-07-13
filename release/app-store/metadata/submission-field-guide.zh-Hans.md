@@ -4,10 +4,10 @@
 
 当前已有截图：
 
-- `release/app-store/screenshots/iphone-17-pro/01-dictate.png`
-- `release/app-store/screenshots/iphone-17-pro/02-history.png`
-- `release/app-store/screenshots/iphone-17-pro/03-notes.png`
-- `release/app-store/screenshots/iphone-17-pro/04-settings.png`
+- `release/app-store/screenshots/iphone-17-pro-max/01-dictate.png`
+- `release/app-store/screenshots/iphone-17-pro-max/02-history.png`
+- `release/app-store/screenshots/iphone-17-pro-max/03-notes.png`
+- `release/app-store/screenshots/iphone-17-pro-max/04-settings.png`
 
 上传位置：
 
@@ -20,13 +20,15 @@ App Store Connect -> Apps -> Fonos -> App Store -> iOS App 1.0 -> App Preview an
 3. Notes
 4. Settings
 
-如果 App Store Connect 要求 6.9 英寸截图，而当前 iPhone 17 Pro 截图不能复用，需要再生成一套 6.9 英寸截图。
+当前目录中的 iPhone 17 Pro Max 截图为 `1320 x 2868`，用于 6.9 英寸截图槽。
 
 ## 三个 URL
 
 ### Support URL
 
 必填。给用户遇到问题时获取支持的页面。
+
+暂定值：`https://github.com/ethannortharc/fonos/issues`。正式提交前应改成包含私人联系邮箱、隐私政策链接和常见问题的公开支持页面；仅有公开 Issues 页面存在审核风险。
 
 建议内容：
 
@@ -38,6 +40,9 @@ App Store Connect -> Apps -> Fonos -> App Store -> iOS App 1.0 -> App Preview an
 ### Privacy Policy URL
 
 必填。必须是公开网页，不建议只放本地文件。
+
+**提交 App Review 前仍需提供：托管下述隐私政策的公开 HTTPS URL，以及可私下联系开发者的支持邮箱。**
+工程的 `FONOS_PRIVACY_POLICY_URL` 当前故意留空，拿到正式 URL 后同时填入 Release build setting 与 App Store Connect。
 
 建议内容：
 
@@ -59,13 +64,14 @@ App Store Connect -> Apps -> Fonos -> App Store -> iOS App 1.0 -> App Preview an
 - 不用于第三方广告
 - 不用于跨 App / 网站追踪
 - 没有第三方 analytics / ads SDK
-- User Content：可能处理音频、转写文本、笔记内容
-- Identifiers：如果把用户自己填的 API key 算入 app 内配置，应披露为敏感凭据/用户提供的信息；但它保存在 Keychain，不用于追踪
+- `Audio Data`：用户主动录制、并可能发送给所选网络 STT 的语音
+- `Other User Content`：转写文本、prompt 和笔记内容
+- API key 仅保存在设备 Keychain 时不因这一点申报 Identifiers；若远端服务使用该 key 识别账户，则按该服务的实际收集和保留行为评估
 - Diagnostics：如果当前没有上传 crash/log/diagnostic 数据，可以不勾选
 
 关键解释：
 
-Fonos 默认会在本地保存历史和笔记；用户配置 OpenAI-compatible 服务时，音频/文本会发给对应第三方 endpoint。因此隐私页和审核备注都应说明这是用户主动配置的处理方式。
+Fonos 默认会在本地保存历史和笔记；用户配置网络 STT/LLM 服务时，App 会先显示服务商、目标 origin 和将发送的数据类型，并在用户明确允许后才发送音频/文本。用户可在 Settings → General → Privacy & Data Sharing 撤回全部权限。API key 仅存 Keychain。隐私页和审核备注都应与该行为一致。
 
 ## 年龄分级建议
 
@@ -97,12 +103,14 @@ Fonos 默认会在本地保存历史和笔记；用户配置 OpenAI-compatible �
 - App does not implement custom cryptographic algorithms.
 - App is not primarily a cryptography or security product.
 
+工程已设置 `ITSAppUsesNonExemptEncryption = NO`，表示不使用非豁免加密。上传并处理完成后先确认 build 没有显示 Missing Compliance；只有 App Store Connect 仍提示时才按当前问卷回答。
+
 如果表单问是否 qualifies for exemption，通常选择使用标准加密/HTTPS 的豁免路径；最终以 Apple 表单当前问题为准。
 
 ## App Review Notes 建议
 
 Fonos does not require account sign-in.
 
-The main app can use Apple Speech for dictation. Users may also manually configure OpenAI-compatible STT or LLM services in Settings by adding an endpoint and API key.
+The main app can use Apple Speech for dictation. Users may also manually configure network STT or LLM services in Settings by adding an endpoint and API key. Before any audio or text is sent, Fonos identifies the provider and destination, discloses the data types, and requires explicit permission. Users can withdraw all remote-AI permissions in Settings at any time. API keys remain in Apple Keychain.
 
-The keyboard extension requires Full Access and communicates with the main app through an App Group. To test the keyboard extension, please open the Fonos app first, then switch to the Fonos keyboard from another app.
+The keyboard extension requires Full Access and communicates with the main app through an App Group. To test no-jump keyboard dictation, open Fonos → Settings → General, explicitly start the 15-minute Keyboard Ready session, then switch to the Fonos keyboard in another app and tap its microphone. iOS shows its orange microphone indicator while Keyboard Ready is active. Idle input buffers are discarded; bounded in-memory utterance capture begins only after the keyboard microphone is tapped. Keyboard Ready can be stopped from the persistent in-app banner and expires automatically.

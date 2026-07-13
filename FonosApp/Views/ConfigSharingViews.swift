@@ -1,7 +1,8 @@
 import SwiftUI
 import UIKit
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreImage.CIFilterBuiltins
+import os
 
 // MARK: - QR generation
 
@@ -25,22 +26,23 @@ enum QRCode {
 /// AVFoundation metadata delegate. Kept off the main actor (the callback fires
 /// on the queue we hand to setMetadataObjectsDelegate) and hops to main to
 /// deliver the scan, so a @MainActor UIViewController never conforms directly.
-final class QRScanCoordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate, @unchecked Sendable {
+final class QRScanCoordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate, Sendable {
     private let onScan: @Sendable (String) -> Void
-    private let lock = NSLock()
-    private var handled = false
+    private let handled = OSAllocatedUnfairLock(initialState: false)
 
     init(onScan: @escaping @Sendable (String) -> Void) { self.onScan = onScan }
 
     func metadataOutput(_ output: AVCaptureMetadataOutput,
                         didOutput metadataObjects: [AVMetadataObject],
                         from connection: AVCaptureConnection) {
-        lock.lock()
-        if handled { lock.unlock(); return }
         guard let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
-              let value = object.stringValue else { lock.unlock(); return }
-        handled = true
-        lock.unlock()
+              let value = object.stringValue else { return }
+        let shouldDeliver = handled.withLock { handled in
+            guard !handled else { return false }
+            handled = true
+            return true
+        }
+        guard shouldDeliver else { return }
         onScan(value)
     }
 }
@@ -49,6 +51,12 @@ final class QRScannerViewController: UIViewController {
     var onScan: ((String) -> Void)?
 
     private let session = AVCaptureSession()
+    /// AVFoundation's Objective-C session type is not annotated Sendable, but
+    /// its blocking lifecycle calls are intentionally confined to this queue.
+    private let sessionQueue = DispatchQueue(
+        label: "com.fonos.ios.qr.session",
+        qos: .userInitiated
+    )
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var coordinator: QRScanCoordinator?
 
@@ -77,7 +85,8 @@ final class QRScannerViewController: UIViewController {
         view.layer.addSublayer(preview)
         previewLayer = preview
 
-        DispatchQueue.global(qos: .userInitiated).async { [session] in
+        sessionQueue.async { [session] in
+            guard !session.isRunning else { return }
             session.startRunning()
         }
     }
@@ -89,7 +98,10 @@ final class QRScannerViewController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if session.isRunning { session.stopRunning() }
+        sessionQueue.async { [session] in
+            guard session.isRunning else { return }
+            session.stopRunning()
+        }
     }
 }
 
@@ -133,10 +145,83 @@ struct ConfigImportPreviewView: View {
                         }
                         if summary.dictationApplied { Text("Dictation defaults") }
                         if summary.vocabBooksImported > 0 { row("Vocab books", summary.vocabBooksImported) }
+                        if summary.importedWorkflows > 0 {
+                            row("Voice recipes", summary.importedWorkflows)
+                        }
+                        if summary.importedWidgets > 0 {
+                            row("Reusable components", summary.importedWidgets)
+                        }
                     } header: {
                         Text(summary.name.isEmpty ? "Shared config" : summary.name)
                     } footer: {
                         Text("Existing items with the same id are updated; nothing else is removed.")
+                    }
+
+                    if summary.unsupportedWorkflows > 0 || summary.unsupportedWidgets > 0 {
+                        Section("iPhone compatibility") {
+                            Label {
+                                Text(
+                                    """
+                                    \(summary.unsupportedWorkflows) recipe entries and \
+                                    \(summary.unsupportedWidgets) component entries are unsupported or invalid. \
+                                    Decodable definitions are kept for sharing, but cannot run on this iPhone.
+                                    """
+                                )
+                                .font(.system(size: 12))
+                            } icon: {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                    }
+
+                    if summary.noRunnableWorkflow {
+                        Section("Active voice recipe") {
+                            Label {
+                                Text(
+                                    """
+                                    No runnable microphone recipe remains after this import. \
+                                    The active recipe will be cleared; imported definitions are still retained for editing or sharing.
+                                    """
+                                )
+                                .font(.system(size: 12))
+                            } icon: {
+                                Image(systemName: "mic.slash.fill")
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    } else if summary.activeWorkflowAdjusted {
+                        Section("Active voice recipe") {
+                            Label {
+                                Text(
+                                    """
+                                    The requested recipe cannot run on this iPhone. \
+                                    Fonos will use \(workflowSelectionLabel(summary)) instead.
+                                    """
+                                )
+                                .font(.system(size: 12))
+                            } icon: {
+                                Image(systemName: "arrow.triangle.branch")
+                                    .foregroundColor(Color(hex: "#fbbf24"))
+                            }
+                        }
+                    }
+
+                    if summary.adaptedWorkflows > 0 {
+                        Section("Surface adaptation") {
+                            Label {
+                                Text(
+                                    """
+                                    \(summary.adaptedWorkflows) desktop Insert recipes will return their final text to the current \
+                                    iPhone surface; the keyboard inserts it explicitly.
+                                    """
+                                )
+                                .font(.system(size: 12))
+                            } icon: {
+                                Image(systemName: "iphone.and.arrow.forward")
+                                    .foregroundColor(Color(hex: "#fbbf24"))
+                            }
+                        }
                     }
 
                     if !summary.skippedSections.isEmpty {
@@ -169,6 +254,11 @@ struct ConfigImportPreviewView: View {
             Spacer()
             Text("\(count)").foregroundColor(.secondary)
         }
+    }
+
+    private func workflowSelectionLabel(_ summary: ScenarioImportSummary) -> String {
+        if summary.selectedWorkflowName.isEmpty { return summary.selectedWorkflowID }
+        return "\(summary.selectedWorkflowName) (\(summary.selectedWorkflowID))"
     }
 }
 
@@ -203,7 +293,12 @@ struct ConfigExportSheet: View {
                             .padding(.horizontal, 20)
 
                         if includeKeys {
-                            warning("Includes your API keys — share only with your own devices. This bundle is copyable text only (no QR/link) to avoid leaking keys.")
+                            warning(
+                                """
+                                Includes your API keys — share only with your own devices. \
+                                This bundle is copyable text only (no QR/link) to avoid leaking keys.
+                                """
+                            )
                             copyButton("Copy config text (with keys)") {
                                 UIPasteboard.general.string = prettyText(injectingKeys: true)
                             }
@@ -322,7 +417,12 @@ struct ConfigSetsView: View {
                         Label("Export current config", systemImage: "square.and.arrow.up")
                     }
                 } footer: {
-                    Text("A set bundles your model profiles, defaults, and vocab. Share it as a QR (keys stripped) or move it to your own device with keys.")
+                    Text(
+                        """
+                        A set bundles your model profiles, defaults, and vocab. \
+                        Share it as a QR (keys stripped) or move it to your own device with keys.
+                        """
+                    )
                 }
 
                 Section {

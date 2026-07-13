@@ -2,21 +2,25 @@ import SwiftUI
 
 // MARK: - Modes Tab
 
-/// Settings tab for managing processing mode configurations.
-/// Shows built-in and custom modes with pipeline details, and allows add/edit/delete.
+/// Settings tab for managing executable voice recipes.
+/// Legacy `ModeConfig` remains a compatibility input, but this screen edits the
+/// real workflow/widget graph that every recording surface now executes.
 struct ModesTab: View {
     @Binding var config: AppConfig
 
-    @State private var showAddMode = false
-    @State private var editingModeConfig: ModeConfig?
+    @State private var showAddRecipe = false
+    @State private var editingRecipe: WorkflowDefinition?
     @State private var expandedID: String?
+    @State private var vocabBooks: [VocabBook] = []
+    @State private var recipeSaveError: String?
+
+    private let vocabStore = VocabStore()
 
     private let amber = Color(hex: "#fbbf24")
     private let green = Color(hex: "#86efac")
     private let textPrimary = Color(hex: "#fafaf9")
     private let textDim = Color(hex: "#fafaf9").opacity(0.5)
     private let cardBg = Color.white.opacity(0.02)
-    private let cardBorder = Color.white.opacity(0.04)
     private let separator = Color.white.opacity(0.04)
 
     var body: some View {
@@ -32,18 +36,25 @@ struct ModesTab: View {
                             .foregroundColor(textPrimary)
                     }
 
-                    Text("Main-app dictation follows a clear path. Speech is transcribed first, your vocabulary is applied deterministically, then AI processing runs only when the selected mode requests it.")
+                    Text(
+                        """
+                        The selected recipe runs its real source, ordered processors, and outputs in listed delivery order. \
+                        Vocabulary is mounted where it is used: recognition and correction at STT, glossary context at each AI step.
+                        """
+                    )
                         .font(.subheadline)
                         .foregroundColor(textDim)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    ModeFlowStrip(
-                        requiresLLM: config.activeModeConfig?.mode.requiresLLM ?? false,
-                        hasLLM: config.activeModeConfig.map { llmModel(for: $0) != nil } ?? false,
-                        amber: amber,
-                        green: green,
-                        textDim: textDim
-                    )
+                    if let activeWorkflow {
+                        WorkflowRecipeStrip(
+                            definition: activeWorkflow,
+                            catalog: catalog,
+                            amber: amber,
+                            green: green,
+                            textDim: textDim
+                        )
+                    }
                 }
                 .padding(.vertical, 6)
                 .accessibilityElement(children: .contain)
@@ -53,13 +64,13 @@ struct ModesTab: View {
             }
 
             Section {
-                ForEach(config.modeConfigs, id: \.id) { modeConfig in
-                    ModeConfigRow(
-                        modeConfig: modeConfig,
-                        isExpanded: expandedID == modeConfig.id,
-                        isActive: config.activeModeID == modeConfig.id,
-                        sttModel: sttModel(for: modeConfig),
-                        llmModel: llmModel(for: modeConfig),
+                ForEach(voiceWorkflows, id: \.id) { workflow in
+                    WorkflowDefinitionRow(
+                        definition: workflow,
+                        catalog: catalog,
+                        isAvailable: isWorkflowRunnable(workflow),
+                        isExpanded: expandedID == workflow.id,
+                        isActive: config.activeVoiceWorkflowID == workflow.id,
                         amber: amber,
                         green: green,
                         textPrimary: textPrimary,
@@ -68,25 +79,22 @@ struct ModesTab: View {
                         separator: separator,
                         onTap: {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                expandedID = expandedID == modeConfig.id ? nil : modeConfig.id
+                                expandedID = expandedID == workflow.id ? nil : workflow.id
                             }
-                        },
-                        onEdit: {
-                            editingModeConfig = modeConfig
                         },
                         onActivate: {
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                config.activeModeID = modeConfig.id
+                                activateRecipe(workflow.id)
                             }
+                        },
+                        onEdit: {
+                            openEditor(for: workflow)
                         }
                     )
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        if !modeConfig.isBuiltIn {
+                        if !workflow.builtin {
                             Button(role: .destructive) {
-                                config.modeConfigs.removeAll { $0.id == modeConfig.id }
-                                if config.activeModeID == modeConfig.id {
-                                    config.activeModeID = "raw"
-                                }
+                                deleteRecipe(workflow)
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -94,75 +102,212 @@ struct ModesTab: View {
                     }
                 }
 
-                // Add Mode button
                 Button {
-                    showAddMode = true
+                    reloadVocabularyBooks()
+                    showAddRecipe = true
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "plus.circle.fill")
                             .foregroundColor(amber)
-                        Text("Add Mode")
+                        Text("New voice recipe")
                             .foregroundColor(amber)
                     }
                 }
+                .accessibilityIdentifier("modes.addRecipe")
                 .listRowBackground(cardBg)
                 .listRowSeparatorTint(separator)
             } header: {
-                sectionHeader("Processing Modes")
+                sectionHeader("Voice Recipes")
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .sheet(isPresented: $showAddMode) {
-            ModeConfigForm(
-                availableSTTModels: sttModels,
-                availableLLMModels: llmModels,
-                onSave: { newConfig in
-                    config.modeConfigs.append(newConfig)
+        .sheet(isPresented: $showAddRecipe) {
+            VoiceRecipeEditor(
+                catalog: catalog,
+                operationalConfig: config,
+                modelProfiles: config.modelProfiles,
+                vocabBooks: vocabBooks,
+                onSave: { result in
+                    saveRecipe(result, activate: true)
                 }
             )
         }
-        .sheet(item: $editingModeConfig) { modeConfig in
-            ModeConfigForm(
-                initialConfig: modeConfig,
-                availableSTTModels: sttModels,
-                availableLLMModels: llmModels,
-                onSave: { updated in
-                    if let idx = config.modeConfigs.firstIndex(where: { $0.id == modeConfig.id }) {
-                        config.modeConfigs[idx] = updated
-                    }
+        .sheet(item: $editingRecipe) { workflow in
+            VoiceRecipeEditor(
+                definition: workflow,
+                catalog: catalog,
+                operationalConfig: config,
+                modelProfiles: config.modelProfiles,
+                vocabBooks: vocabBooks,
+                onSave: { result in
+                    saveRecipe(result, activate: false)
                 }
             )
+        }
+        .onAppear(perform: reloadVocabularyBooks)
+        .alert("Recipe could not be saved", isPresented: Binding(
+            get: { recipeSaveError != nil },
+            set: { if !$0 { recipeSaveError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(recipeSaveError ?? "")
         }
     }
 
     // MARK: - Helpers
 
-    private var sttModels: [ModelProfile] {
-        config.modelProfiles.filter(\.hasSTT)
-    }
+    private var catalog: WorkflowCatalog { config.workflowCatalog }
 
-    private var llmModels: [ModelProfile] {
-        config.modelProfiles.filter(\.hasLLM)
-    }
-
-    private func sttModel(for modeConfig: ModeConfig) -> ModelProfile? {
-        let id = config.effectiveSTTProfileID(forModeID: modeConfig.id)
-        if id.isEmpty {
-            return ModelProfile(
-                id: "apple-speech",
-                name: "Apple Speech",
-                provider: "apple",
-                modelID: "system",
-                capabilities: ["stt"]
-            )
+    private var voiceWorkflows: [WorkflowDefinition] {
+        catalog.workflows.filter { workflow in
+            catalog.widget(id: workflow.source)?.typeTag == "microphone"
         }
-        return config.modelProfiles.first(where: { $0.id == id && $0.hasSTT })
     }
 
-    private func llmModel(for modeConfig: ModeConfig) -> ModelProfile? {
-        let id = config.effectiveLLMProfileID(forModeID: modeConfig.id)
-        return config.modelProfiles.first(where: { $0.id == id && $0.hasLLM })
+    private var activeWorkflow: WorkflowDefinition? {
+        catalog.workflow(id: config.activeVoiceWorkflowID)
+    }
+
+    private func isWorkflowRunnable(_ workflow: WorkflowDefinition) -> Bool {
+        (try? VoiceWorkflowOperationalValidator.validateMicrophone(
+            definition: workflow,
+            catalog: catalog,
+            config: config
+        )) != nil
+    }
+
+    private func openEditor(for workflow: WorkflowDefinition) {
+        reloadVocabularyBooks()
+        editingRecipe = workflow
+    }
+
+    private func reloadVocabularyBooks() {
+        vocabBooks = vocabStore.books
+    }
+
+    private func saveRecipe(
+        _ result: VoiceRecipeEditorResult,
+        activate: Bool
+    ) {
+        let candidateCatalog = catalog(applying: result)
+        do {
+            _ = try VoiceWorkflowOperationalValidator.validateMicrophone(
+                definition: result.definition,
+                catalog: candidateCatalog,
+                config: config
+            )
+        } catch {
+            recipeSaveError = error.localizedDescription
+            return
+        }
+
+        let previousReferences = catalog.workflow(id: result.definition.id)
+            .map(referencedWidgetIDs(in:)) ?? []
+
+        if let index = config.workflows.firstIndex(where: {
+            $0.id == result.definition.id
+        }) {
+            config.workflows[index] = result.definition
+        } else {
+            config.workflows.append(result.definition)
+        }
+
+        for widget in result.widgetOverlays {
+            if let index = config.widgets.firstIndex(where: { $0.id == widget.id }) {
+                config.widgets[index] = widget
+            } else {
+                config.widgets.append(widget)
+            }
+        }
+
+        let retainedReferences = referencedWidgetIDs(in: result.definition)
+        removeOrphanedWidgets(previousReferences.subtracting(retainedReferences))
+        expandedID = result.definition.id
+
+        if activate {
+            activateRecipe(result.definition.id)
+        }
+    }
+
+    private func catalog(
+        applying result: VoiceRecipeEditorResult
+    ) -> WorkflowCatalog {
+        var widgets = catalog.widgets
+        for overlay in result.widgetOverlays {
+            if let index = widgets.firstIndex(where: { $0.id == overlay.id }) {
+                widgets[index] = overlay
+            } else {
+                widgets.append(overlay)
+            }
+        }
+
+        var workflows = catalog.workflows
+        if let index = workflows.firstIndex(where: {
+            $0.id == result.definition.id
+        }) {
+            workflows[index] = result.definition
+        } else {
+            workflows.append(result.definition)
+        }
+        return WorkflowCatalog(widgets: widgets, workflows: workflows)
+    }
+
+    private func deleteRecipe(_ workflow: WorkflowDefinition) {
+        let removedReferences = referencedWidgetIDs(in: workflow)
+        config.workflows.removeAll { $0.id == workflow.id }
+
+        if let legacyID = WorkflowMigration.legacyModeID(forWorkflowID: workflow.id),
+           config.modeConfigs.contains(where: { $0.id == legacyID && !$0.isBuiltIn }) {
+            config.modeConfigs.removeAll { $0.id == legacyID && !$0.isBuiltIn }
+        }
+
+        removeOrphanedWidgets(removedReferences)
+        if config.activeVoiceWorkflowID == workflow.id {
+            activateFallbackRecipe()
+        }
+    }
+
+    private func activateRecipe(_ workflowID: String) {
+        config.activeVoiceWorkflowID = workflowID
+        if let legacyID = WorkflowMigration.legacyModeID(forWorkflowID: workflowID),
+           config.modeConfigs.contains(where: { $0.id == legacyID }) {
+            config.activeModeID = legacyID
+        }
+    }
+
+    private func activateFallbackRecipe() {
+        let updatedCatalog = config.workflowCatalog
+        let candidates = updatedCatalog.workflows.filter {
+            updatedCatalog.widget(id: $0.source)?.typeTag == "microphone"
+        }
+        let fallback = candidates.first(where: {
+            $0.id == "wf.dictation" && isWorkflowRunnable($0)
+        }) ?? candidates.first(where: isWorkflowRunnable)
+        guard let fallback else {
+            config.activeVoiceWorkflowID = ""
+            return
+        }
+        activateRecipe(fallback.id)
+    }
+
+    private func referencedWidgetIDs(
+        in workflow: WorkflowDefinition
+    ) -> Set<String> {
+        Set([workflow.source] + workflow.processors + workflow.outputs)
+    }
+
+    private func removeOrphanedWidgets(_ candidates: Set<String>) {
+        guard !candidates.isEmpty else { return }
+        let referenced = Set(config.workflowCatalog.workflows.flatMap {
+            [ $0.source ] + $0.processors + $0.outputs
+        })
+        config.widgets.removeAll { widget in
+            candidates.contains(widget.id)
+                && !referenced.contains(widget.id)
+                && WorkflowCatalog.builtIn.widget(id: widget.id) == nil
+        }
     }
 
     private func sectionHeader(_ title: LocalizedStringKey) -> some View {
@@ -173,14 +318,14 @@ struct ModesTab: View {
     }
 }
 
-// MARK: - Mode Config Row
+// MARK: - Workflow definition row
 
-private struct ModeConfigRow: View {
-    let modeConfig: ModeConfig
+private struct WorkflowDefinitionRow: View {
+    let definition: WorkflowDefinition
+    let catalog: WorkflowCatalog
+    let isAvailable: Bool
     let isExpanded: Bool
     let isActive: Bool
-    let sttModel: ModelProfile?
-    let llmModel: ModelProfile?
     let amber: Color
     let green: Color
     let textPrimary: Color
@@ -188,21 +333,31 @@ private struct ModeConfigRow: View {
     let cardBg: Color
     let separator: Color
     let onTap: () -> Void
-    let onEdit: () -> Void
     let onActivate: () -> Void
+    let onEdit: (() -> Void)?
+
+    private var nodes: [WorkflowWidget] {
+        ([definition.source] + definition.processors + definition.outputs).map { id in
+            catalog.widget(id: id) ?? WorkflowWidget(
+                id: id,
+                role: .unknown("missing"),
+                typeTag: "unknown",
+                name: id
+            )
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Main row
             Button(action: onTap) {
                 HStack(spacing: 12) {
-                    Image(systemName: modeConfig.icon)
+                    workflowIcon
                         .foregroundColor(amber)
-                        .frame(width: 22)
+                        .frame(width: 22, height: 24)
 
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 7) {
                         HStack(spacing: 8) {
-                            Text(modeDisplayName)
+                            Text(workflowName)
                                 .foregroundColor(textPrimary)
                                 .font(.body)
 
@@ -212,36 +367,40 @@ private struct ModeConfigRow: View {
                                     .foregroundColor(Color.black.opacity(0.75))
                                     .padding(.horizontal, 7)
                                     .padding(.vertical, 3)
-                                    .background(
-                                        Capsule()
-                                            .fill(green)
-                                    )
+                                    .background(Capsule().fill(green))
                             }
 
-                            if modeConfig.isBuiltIn {
+                            if definition.builtin {
                                 Text("Built-in")
                                     .font(.caption2.weight(.medium))
                                     .foregroundColor(textDim)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
+                                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.06)))
+                            }
+
+                            if !isAvailable {
+                                Text("Unavailable")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundColor(Color.red.opacity(0.82))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 4)
-                                            .fill(Color.white.opacity(0.06))
+                                        Capsule().fill(Color.red.opacity(0.1))
                                     )
                             }
                         }
 
-                        ModeFlowStrip(
-                            requiresLLM: modeConfig.mode.requiresLLM,
-                            hasLLM: llmModel != nil,
+                        WorkflowRecipeStrip(
+                            definition: definition,
+                            catalog: catalog,
                             amber: amber,
                             green: green,
                             textDim: textDim
                         )
-                        .padding(.top, 5)
                     }
 
-                    Spacer()
+                    Spacer(minLength: 8)
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 12, weight: .semibold))
@@ -249,90 +408,55 @@ private struct ModeConfigRow: View {
                 }
                 .padding(.vertical, 4)
             }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel(modeDisplayName)
-            .accessibilityValue(modeAccessibilityValue)
-            .accessibilityHint(
-                isExpanded
-                    ? String(localized: "Collapses flow details")
-                    : String(localized: "Expands flow details")
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(
+                "modes.mode.\(WorkflowMigration.legacyModeID(forWorkflowID: definition.id) ?? definition.id)"
             )
-            .accessibilityIdentifier("modes.mode.\(modeConfig.id)")
 
-            // Expanded details
             if isExpanded {
                 VStack(alignment: .leading, spacing: 12) {
                     Divider()
                         .background(Color.white.opacity(0.06))
                         .padding(.top, 4)
 
-                    // Description
-                    if !modeConfig.description.isEmpty {
-                        Text(modeConfig.description)
-                            .font(.system(size: 13))
-                            .foregroundColor(textDim)
+                    ForEach(Array(nodes.enumerated()), id: \.offset) { index, widget in
+                        componentDetail(index: index, widget: widget)
                     }
 
-                    // Resolved flow steps
-                    VStack(alignment: .leading, spacing: 10) {
-                        pipelineStep(
-                            icon: "waveform",
-                            label: "Speech-to-Text",
-                            value: sttModel?.name ?? String(localized: "Unavailable — Apple Speech fallback"),
-                            color: sttModel == nil ? Color.orange : amber,
-                            statusIcon: sttModel == nil ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
-                        )
-
-                        pipelineStep(
-                            icon: "text.badge.checkmark",
-                            label: "Vocabulary",
-                            value: String(localized: "Deterministic corrections"),
-                            color: green,
-                            statusIcon: "checkmark.circle.fill"
-                        )
-
-                        llmPipelineStep
-                    }
+                    Label(
+                        "Vocabulary resolves per processor: STT bias and correction, then optional AI glossary context.",
+                        systemImage: "text.badge.checkmark"
+                    )
+                    .font(.caption)
+                    .foregroundColor(green.opacity(0.72))
 
                     HStack(spacing: 10) {
-                        if !isActive {
+                        if !isActive && isAvailable {
                             Button(action: onActivate) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "checkmark.circle")
-                                    Text("Use this mode")
-                                        .font(.subheadline.weight(.semibold))
-                                }
-                                .foregroundColor(Color.black.opacity(0.75))
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(green)
-                                )
+                                Label("Use this recipe", systemImage: "checkmark.circle")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Color.black.opacity(0.75))
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(green))
                             }
-                            .buttonStyle(PlainButtonStyle())
-                            .accessibilityIdentifier("modes.use.\(modeConfig.id)")
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("modes.use.\(definition.id)")
                         }
 
                         Spacer()
 
-                        if !modeConfig.isBuiltIn {
+                        if let onEdit {
                             Button(action: onEdit) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "pencil")
-                                    Text("Edit")
-                                        .font(.subheadline.weight(.medium))
-                                }
-                                .foregroundColor(amber)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(amber.opacity(0.1))
-                                )
+                                Label("Edit", systemImage: "pencil")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(amber)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(amber.opacity(0.1)))
                             }
-                            .buttonStyle(PlainButtonStyle())
-                            .accessibilityIdentifier("modes.edit.\(modeConfig.id)")
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("modes.edit.\(definition.id)")
                         }
                     }
                 }
@@ -343,507 +467,99 @@ private struct ModeConfigRow: View {
         .listRowSeparatorTint(separator)
     }
 
-    @ViewBuilder
-    private var llmPipelineStep: some View {
-        if !modeConfig.mode.requiresLLM {
-            pipelineStep(
-                icon: "sparkles",
-                label: "AI Processing",
-                value: String(localized: "Skipped — raw transcript"),
-                color: textDim,
-                statusIcon: "minus.circle.fill"
-            )
-        } else if let llmModel {
-            pipelineStep(
-                icon: "sparkles",
-                label: "AI Processing",
-                value: llmModel.name,
-                color: green,
-                statusIcon: "checkmark.circle.fill"
-            )
-        } else {
-            pipelineStep(
-                icon: "sparkles",
-                label: "AI Processing",
-                value: String(localized: "Not configured — transcript fallback"),
-                color: Color.orange,
-                statusIcon: "exclamationmark.triangle.fill"
-            )
-        }
-    }
-
-    private func pipelineStep(
-        icon: String,
-        label: LocalizedStringKey,
-        value: String,
-        color: Color,
-        statusIcon: String
-    ) -> some View {
+    private func componentDetail(index: Int, widget: WorkflowWidget) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 9) {
-            Image(systemName: icon)
+            Image(systemName: componentIcon(widget))
                 .font(.caption.weight(.semibold))
-                .foregroundColor(color)
+                .foregroundColor(roleColor(widget.role))
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(label)
+                Text(roleLabel(widget.role, index: index))
                     .font(.caption.weight(.semibold))
-                    .foregroundColor(color)
-
-                Text(value)
+                    .foregroundColor(roleColor(widget.role))
+                Text(widget.name)
                     .font(.subheadline)
                     .foregroundColor(textDim)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 8)
 
-            Image(systemName: statusIcon)
-                .font(.caption)
-                .foregroundColor(color)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(label))
-        .accessibilityValue(value)
-    }
-
-    private var modeDisplayName: String {
-        guard modeConfig.isBuiltIn else { return modeConfig.name }
-        switch modeConfig.id {
-        case "raw": return String(localized: "Raw")
-        case "polish": return String(localized: "Polish")
-        case "formal": return String(localized: "Formal")
-        case "translate": return String(localized: "Translate")
-        default: return modeConfig.name
+            Text(widget.typeTag)
+                .font(.caption2.monospaced())
+                .foregroundColor(textDim.opacity(0.75))
         }
     }
 
-    private var modeAccessibilityValue: String {
-        let activity = isActive
-            ? String(localized: "Active mode")
-            : String(localized: "Inactive mode")
-        let flow: String
-        if !modeConfig.mode.requiresLLM {
-            flow = String(localized: "AI processing is skipped for a raw transcript")
-        } else if llmModel == nil {
-            flow = String(localized: "AI processing is not configured; transcript fallback will be used")
-        } else {
-            flow = String(localized: "All three steps are configured")
+    private func roleLabel(_ role: WorkflowRole, index: Int) -> String {
+        switch role {
+        case .source: return String(localized: "Source")
+        case .processor: return String(localized: "Processor \(index)")
+        case .output: return String(localized: "Output")
+        case .unknown: return String(localized: "Unavailable component")
         }
-        return "\(activity). \(flow)"
-    }
-}
-
-// MARK: - Flow Strip
-
-private struct ModeFlowStrip: View {
-    let requiresLLM: Bool
-    let hasLLM: Bool
-    let amber: Color
-    let green: Color
-    let textDim: Color
-
-    private var aiColor: Color {
-        if !requiresLLM { return textDim }
-        return hasLLM ? green : Color.orange
     }
 
-    private var aiIcon: String {
-        if !requiresLLM { return "minus.circle" }
-        return hasLLM ? "sparkles" : "exclamationmark.triangle.fill"
-    }
-
-    private var accessibilityValue: String {
-        if !requiresLLM {
-            return String(localized: "AI processing is skipped for a raw transcript")
+    private func componentIcon(_ widget: WorkflowWidget) -> String {
+        switch widget.typeTag {
+        case "microphone": "mic.fill"
+        case "provided_audio": "waveform"
+        case "stt": "text.bubble"
+        case "llm": "sparkles"
+        case "insert": "keyboard"
+        case "clipboard": "doc.on.clipboard"
+        case "return_to_caller": "arrow.uturn.backward"
+        case "ios_destination": "arrow.up.forward.app"
+        default: "square.grid.2x2"
         }
-        if !hasLLM {
-            return String(localized: "AI processing is not configured; transcript fallback will be used")
-        }
-        return String(localized: "All three steps are configured")
     }
 
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 7) {
-                step(icon: "waveform", title: "Speech", color: amber)
-                connector(systemName: "chevron.right")
-                step(icon: "text.badge.checkmark", title: "Vocabulary", color: green)
-                connector(systemName: "chevron.right")
-                step(icon: aiIcon, title: "AI", color: aiColor)
-            }
-
-            VStack(alignment: .leading, spacing: 5) {
-                step(icon: "waveform", title: "Speech", color: amber)
-                connector(systemName: "chevron.down")
-                    .padding(.leading, 14)
-                step(icon: "text.badge.checkmark", title: "Vocabulary", color: green)
-                connector(systemName: "chevron.down")
-                    .padding(.leading, 14)
-                step(icon: aiIcon, title: "AI", color: aiColor)
-            }
+    private func roleColor(_ role: WorkflowRole) -> Color {
+        switch role {
+        case .source: amber
+        case .processor: green
+        case .output: Color(red: 196/255, green: 181/255, blue: 253/255)
+        case .unknown: Color.red.opacity(0.75)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Speech, then Vocabulary, then AI"))
-        .accessibilityValue(accessibilityValue)
     }
 
-    private func step(icon: String, title: LocalizedStringKey, color: Color) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.caption2.weight(.semibold))
-            Text(title)
-                .font(.caption.weight(.semibold))
+    private var workflowName: String {
+        switch definition.id {
+        case "wf.dictation" where definition.name == "Raw": String(localized: "Raw")
+        case "wf.voice.polish" where definition.name == "Polish": String(localized: "Polish")
+        case "wf.voice.formal" where definition.name == "Formal": String(localized: "Formal")
+        case "wf.voice.translate" where definition.name == "Translate": String(localized: "Translate")
+        default: definition.name
+        }
+    }
+
+    private var workflowSymbol: String {
+        switch definition.id {
+        case "wf.dictation": "waveform"
+        case "wf.voice.polish": "sparkles"
+        case "wf.voice.formal": "briefcase"
+        case "wf.voice.translate": "globe"
+        default: "point.3.connected.trianglepath.dotted"
+        }
+    }
+
+    @ViewBuilder
+    private var workflowIcon: some View {
+        let icon = definition.icon.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !isKnownPreset, !icon.isEmpty,
+           icon.unicodeScalars.contains(where: { $0.value > 127 }) {
+            Text(icon)
+                .font(.system(size: 19))
                 .lineLimit(1)
-        }
-        .foregroundColor(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(
-            Capsule()
-                .fill(color.opacity(0.1))
-        )
-    }
-
-    private func connector(systemName: String) -> some View {
-        Image(systemName: systemName)
-            .font(.caption2.weight(.bold))
-            .foregroundColor(textDim.opacity(0.7))
-    }
-}
-
-// MARK: - Mode Config Form
-
-/// Sheet for creating or editing a ModeConfig.
-struct ModeConfigForm: View {
-    var initialConfig: ModeConfig?
-    let availableSTTModels: [ModelProfile]
-    let availableLLMModels: [ModelProfile]
-    let onSave: (ModeConfig) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-
-    // Identity
-    @State private var icon: String = "slider.horizontal.3"
-    @State private var name: String = ""
-    @State private var description: String = ""
-
-    // STT
-    @State private var sttModelID: String = ""  // "" = use default
-    @State private var sttPrompt: String = ""
-    @State private var sttTemperature: Double = 0.0
-    @State private var showSTTAdvanced: Bool = false
-
-    // LLM
-    @State private var llmEnabled: Bool = true
-    @State private var llmModelID: String = ""  // "" = use default
-    @State private var systemPrompt: String = ""
-    @State private var userTemplate: String = "{text}"
-    @State private var llmTemperature: Double = 0.7
-    @State private var maxTokens: Int = 1024
-    @State private var showLLMAdvanced: Bool = false
-
-    // Output
-    @State private var outputLanguage: String = "auto"
-    @State private var autoPaste: Bool = false
-
-    private let amber = Color(hex: "#fbbf24")
-    private let green = Color(hex: "#86efac")
-    private let bg = Color(hex: "#1a1917")
-    private let textPrimary = Color(hex: "#fafaf9")
-    private let textDim = Color(hex: "#fafaf9").opacity(0.5)
-    private let cardBg = Color.white.opacity(0.06)
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                bg.ignoresSafeArea()
-
-                Form {
-                    identitySection
-                    sttSection
-                    vocabularySection
-                    llmSection
-                }
-                .scrollContentBackground(.hidden)
-            }
-            .navigationTitle(initialConfig == nil ? "New Mode" : "Edit Mode")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(amber)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        save()
-                        dismiss()
-                    }
-                    .foregroundColor(amber)
-                    .disabled(!canSave)
-                }
-            }
-        }
-        .onAppear(perform: populateFromInitial)
-    }
-
-    // MARK: - Identity Section
-
-    private var identitySection: some View {
-        Section {
-            HStack(spacing: 12) {
-                Text("Icon")
-                    .foregroundColor(textPrimary)
-                    .frame(width: 50, alignment: .leading)
-                TextField("SF Symbol or emoji", text: $icon)
-                    .foregroundColor(textPrimary)
-                    .tint(amber)
-                    .autocapitalization(.none)
-                    .autocorrectionDisabled()
-            }
-            .listRowBackground(cardBg)
-
-            TextField("Name", text: $name)
-                .foregroundColor(textPrimary)
-                .tint(amber)
-                .listRowBackground(cardBg)
-
-            TextField("Description (optional)", text: $description)
-                .foregroundColor(textPrimary)
-                .tint(amber)
-                .listRowBackground(cardBg)
-        } header: {
-            formHeader("Identity")
-        }
-    }
-
-    // MARK: - STT Section
-
-    private var sttSection: some View {
-        Section {
-            // Model picker
-            Picker(selection: $sttModelID) {
-                Text("Default").tag("")
-                ForEach(availableSTTModels) { model in
-                    Text(model.name)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                                .tag(model.id)
-                }
-            } label: {
-                Text("Model")
-                    .foregroundColor(textPrimary)
-            }
-            .foregroundColor(textPrimary)
-            .listRowBackground(cardBg)
-
-            // Advanced disclosure
-            DisclosureGroup("Advanced", isExpanded: $showSTTAdvanced) {
-                TextField("Whisper Prompt Hint", text: $sttPrompt)
-                    .foregroundColor(textPrimary)
-                    .tint(amber)
-                    .listRowBackground(cardBg)
-                    .font(.system(size: 14))
-            }
-            .foregroundColor(textDim)
-            .listRowBackground(cardBg)
-        } header: {
-            formHeader("Step 1: Speech-to-Text")
-        }
-    }
-
-    // MARK: - Vocabulary Section
-
-    private var vocabularySection: some View {
-        Section {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "text.badge.checkmark")
-                    .foregroundColor(green)
-                    .frame(width: 22)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Deterministic corrections")
-                        .font(.body.weight(.medium))
-                        .foregroundColor(textPrimary)
-
-                    Text("Vocabulary entries for this mode are applied after transcription and before AI processing.")
-                        .font(.subheadline)
-                        .foregroundColor(textDim)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "lock.fill")
-                    .font(.caption)
-                    .foregroundColor(textDim)
-                    .accessibilityLabel("Read only")
-            }
-            .padding(.vertical, 4)
-            .listRowBackground(cardBg)
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("modeForm.vocabularyStep")
-        } header: {
-            formHeader("Step 2: Vocabulary")
-        }
-    }
-
-    // MARK: - LLM Section
-
-    private var llmSection: some View {
-        Section {
-            Toggle("Enable LLM Processing", isOn: $llmEnabled)
-                .tint(amber)
-                .foregroundColor(textPrimary)
-                .listRowBackground(cardBg)
-
-            if llmEnabled {
-                Picker(selection: $llmModelID) {
-                    Text("Default").tag("")
-                    ForEach(availableLLMModels) { model in
-                        Text(model.name)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                                .tag(model.id)
-                    }
-                } label: {
-                    Text("Model")
-                        .foregroundColor(textPrimary)
-                }
-                .foregroundColor(textPrimary)
-                .listRowBackground(cardBg)
-
-                // System prompt
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("System Prompt")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(textDim)
-                    TextEditor(text: $systemPrompt)
-                        .foregroundColor(textPrimary)
-                        .tint(amber)
-                        .frame(minHeight: 80)
-                        .scrollContentBackground(.hidden)
-                }
-                .listRowBackground(cardBg)
-
-                // User template
-                TextField("User Template ({text})", text: $userTemplate)
-                    .foregroundColor(textPrimary)
-                    .tint(amber)
-                    .font(.system(size: 14, design: .monospaced))
-                    .listRowBackground(cardBg)
-
-                // Advanced disclosure
-                DisclosureGroup("Advanced", isExpanded: $showLLMAdvanced) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("Temperature")
-                                .foregroundColor(textPrimary)
-                            Spacer()
-                            Text(String(format: "%.2f", llmTemperature))
-                                .foregroundColor(textDim)
-                                .monospacedDigit()
-                        }
-                        Slider(value: $llmTemperature, in: 0.0...2.0, step: 0.05)
-                            .tint(amber)
-                    }
-                    .listRowBackground(cardBg)
-
-                    Picker("Max Tokens", selection: $maxTokens) {
-                        Text("256").tag(256)
-                        Text("512").tag(512)
-                        Text("1024").tag(1024)
-                        Text("2048").tag(2048)
-                        Text("4096").tag(4096)
-                    }
-                    .foregroundColor(textPrimary)
-                    .listRowBackground(cardBg)
-
-                }
-                .foregroundColor(textDim)
-                .listRowBackground(cardBg)
-            }
-        } header: {
-            formHeader("Step 3: AI Processing")
-        }
-    }
-
-    // MARK: - Helpers
-
-    private var canSave: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !icon.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    private func formHeader(_ title: LocalizedStringKey) -> some View {
-        Text(title)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundColor(textDim)
-            .textCase(.uppercase)
-    }
-
-    private func populateFromInitial() {
-        guard let cfg = initialConfig else { return }
-        icon = cfg.icon
-        name = cfg.name
-        description = cfg.description
-        sttModelID = cfg.sttModelID ?? ""
-        llmModelID = cfg.llmModelID ?? ""
-        sttPrompt = cfg.sttPrompt
-        sttTemperature = cfg.sttTemperature
-        autoPaste = cfg.autoPaste
-        outputLanguage = cfg.outputLanguage
-
-        // Extract LLM settings from the mode
-        if case .custom(let sp, let ut, let temp, let tokens) = cfg.mode {
-            llmEnabled = true
-            systemPrompt = sp
-            userTemplate = ut
-            llmTemperature = temp
-            maxTokens = tokens
         } else {
-            llmEnabled = cfg.mode.requiresLLM
-            systemPrompt = cfg.mode.systemPrompt
-            userTemplate = cfg.mode.userTemplate
+            Image(systemName: isKnownPreset || icon.isEmpty ? workflowSymbol : icon)
         }
     }
 
-    private func save() {
-        let configID: String
-        if let existing = initialConfig {
-            configID = existing.id
-        } else {
-            configID = UUID().uuidString
+    private var isKnownPreset: Bool {
+        switch definition.id {
+        case "wf.dictation", "wf.voice.polish", "wf.voice.formal", "wf.voice.translate": true
+        default: false
         }
-
-        // Build the Mode
-        let mode: Mode
-        if llmEnabled && !systemPrompt.isEmpty {
-            mode = .custom(
-                systemPrompt: systemPrompt,
-                userTemplate: userTemplate.isEmpty ? "{text}" : userTemplate,
-                temperature: llmTemperature,
-                maxTokens: maxTokens
-            )
-        } else {
-            mode = .raw
-        }
-
-        let newConfig = ModeConfig(
-            id: configID,
-            mode: mode,
-            name: name.trimmingCharacters(in: .whitespaces),
-            icon: icon.trimmingCharacters(in: .whitespaces),
-            description: description.trimmingCharacters(in: .whitespaces),
-            sttModelID: sttModelID.isEmpty ? nil : sttModelID,
-            llmModelID: llmModelID.isEmpty ? nil : llmModelID,
-            sttPrompt: sttPrompt,
-            sttTemperature: sttTemperature,
-            outputLanguage: outputLanguage,
-            autoPaste: autoPaste,
-            isBuiltIn: initialConfig?.isBuiltIn ?? false
-        )
-        onSave(newConfig)
     }
 }

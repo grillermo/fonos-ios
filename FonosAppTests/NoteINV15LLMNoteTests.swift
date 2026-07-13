@@ -10,7 +10,7 @@ import Foundation
 
 // MARK: - Mock URLProtocol that captures the request body
 
-final class CapturingURLProtocol: URLProtocol, @unchecked Sendable {
+final class CapturingURLProtocol: URLProtocol {
     nonisolated(unsafe) static var lastBody: Data?
     nonisolated(unsafe) static var stubResponse: Data = Data(
         #"{"choices":[{"message":{"content":"OK"}}]}"#.utf8
@@ -51,7 +51,7 @@ private func makeService(model: String = "gpt-4o") -> LLMService {
     let cfg = URLSessionConfiguration.ephemeral
     cfg.protocolClasses = [CapturingURLProtocol.self]
     let session = URLSession(configuration: cfg)
-    return LLMService(session: session, apiKey: "test", modelID: model, baseURL: "https://example.test")
+    return authorizedLLMService(session: session, apiKey: "test", modelID: model, baseURL: "https://example.test")
 }
 
 @MainActor

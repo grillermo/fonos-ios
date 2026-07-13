@@ -44,7 +44,7 @@ private final class SuccessLLMURLProtocol: URLProtocol {
 private func makeSuccessLLM() -> LLMService {
     let config = URLSessionConfiguration.ephemeral
     config.protocolClasses = [SuccessLLMURLProtocol.self]
-    return LLMService(session: URLSession(configuration: config), apiKey: "sk-test")
+    return authorizedLLMService(session: URLSession(configuration: config), apiKey: "sk-test")
 }
 
 @MainActor
@@ -77,6 +77,12 @@ private func waitForResult(_ vm: DictationViewModel, timeout: TimeInterval = 5) 
 @Suite(.serialized)
 struct DictationPersistenceTests {
 
+    @Test("History compatibility envelope preserves Flow output fan-out")
+    func destinationFanOutParsing() {
+        let session = DictationSession(destination: "result, clipboard, messages")
+        #expect(session.destinationIDs == ["result", "clipboard", "messages"])
+    }
+
     // P0-1: completing a dictation must insert a DictationSession.
 
     @Test("Raw-mode dictation persists a session with input == output")
@@ -94,6 +100,8 @@ struct DictationPersistenceTests {
         #expect(sessions.first?.inputText == "hello world")
         #expect(sessions.first?.outputText == "hello world")
         #expect(sessions.first?.mode == "raw")
+        #expect(sessions.first?.workflowID == "wf.dictation")
+        #expect(sessions.first?.workflowName == "Raw")
     }
 
     @Test("LLM-mode dictation persists raw transcript as input and processed text as output")
@@ -105,7 +113,7 @@ struct DictationPersistenceTests {
             sttProvider: FixedSTT(transcript: "um yeah raw text"),
             llmService: makeSuccessLLM()
         )
-        vm.config.activeModeID = "polish"
+        vm.selectMode(id: "polish")
         vm.modelContext = container.mainContext
 
         vm.finishRecording(wavData: dummyWAV())
@@ -116,6 +124,8 @@ struct DictationPersistenceTests {
         #expect(sessions.first?.inputText == "um yeah raw text")
         #expect(sessions.first?.outputText == "polished text")
         #expect(sessions.first?.mode == "polish")
+        #expect(sessions.first?.workflowID == "wf.voice.polish")
+        #expect(sessions.first?.workflowName == "Polish")
         #expect(sessions.first.map { $0.latencyMs > 0 } == true)
     }
 

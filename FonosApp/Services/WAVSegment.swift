@@ -1,14 +1,7 @@
 import Foundation
 
-/// Pure WAV byte-slicing used by the keyboard's continuous recorder to cut a
-/// segment out of the always-running `kb_continuous.wav` file.
-///
-/// The file is read WHILE AVAudioRecorder is still recording (it is never
-/// stopped, to keep audio alive in the background). That has one sharp edge:
-/// AVAudioRecorder leaves the `data` chunk's size field at 0 until `stop()`
-/// finalizes the header, so the declared size cannot be trusted for a live
-/// file — the real PCM runs from the start of the `data` chunk to the current
-/// end of the file.
+/// Pure helpers for wrapping the keyboard bridge's bounded 16-bit PCM buffer
+/// as WAV and inspecting the resulting payload.
 enum WAVSegment {
     private static let bytesPerSample = 2  // 16-bit mono
 
@@ -44,48 +37,6 @@ enum WAVSegment {
     /// Number of complete PCM bytes currently available in the WAV payload.
     static func pcmByteCount(in data: Data) -> Int {
         alignDownToSample(pcmRange(in: data).count)
-    }
-
-    /// Cut `[startTime, endTime]` (seconds) out of the PCM and re-wrap as WAV.
-    static func segment(_ data: Data, from startTime: TimeInterval, to endTime: TimeInterval,
-                        sampleRate: Int) -> Data {
-        let bytesPerSecond = sampleRate * bytesPerSample
-
-        let startOffset = Int(startTime * Double(bytesPerSecond))
-        let endOffset = Int(endTime * Double(bytesPerSecond))
-        return segment(data, fromPCMByteOffset: startOffset, toPCMByteOffset: endOffset, sampleRate: sampleRate)
-    }
-
-    /// Cut a PCM byte range out of the WAV payload and re-wrap as WAV.
-    ///
-    /// Offsets are relative to the start of the `data` chunk body.
-    static func segment(_ data: Data, fromPCMByteOffset startOffset: Int, toPCMByteOffset endOffset: Int,
-                        sampleRate: Int) -> Data {
-        let dataRange = pcmRange(in: data)
-        let availablePCMBytes = alignDownToSample(dataRange.count)
-        guard availablePCMBytes > 0 else { return Data() }
-
-        let startOffset = min(max(0, alignDownToSample(startOffset)), availablePCMBytes)
-        let endOffset = min(max(0, alignDownToSample(endOffset)), availablePCMBytes)
-        guard startOffset < endOffset else { return Data() }
-
-        let startByte = dataRange.lowerBound + startOffset
-        let endByte = dataRange.lowerBound + endOffset
-        return build(from: data[startByte..<endByte], sampleRate: sampleRate)
-    }
-
-    /// Take the last `duration` seconds of PCM and re-wrap as WAV.
-    static func tail(_ data: Data, duration: TimeInterval, sampleRate: Int) -> Data {
-        let dataRange = pcmRange(in: data)
-        guard !dataRange.isEmpty else { return Data() }
-
-        let bytesPerSecond = sampleRate * bytesPerSample
-        let availablePCMBytes = alignDownToSample(dataRange.count)
-        let requestedBytes = alignDownToSample(max(bytesPerSample, Int(duration * Double(bytesPerSecond))))
-        let pcmByteCount = min(availablePCMBytes, requestedBytes)
-        let endByte = dataRange.lowerBound + availablePCMBytes
-        let startByte = endByte - pcmByteCount
-        return build(from: data[startByte..<endByte], sampleRate: sampleRate)
     }
 
     /// Wrap raw 16-bit mono PCM in a minimal valid WAV header.

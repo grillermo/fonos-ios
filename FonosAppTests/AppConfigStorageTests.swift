@@ -62,23 +62,82 @@ struct AppConfigStorageTests {
         #expect(AppConfigStorage.keyboardModeID(shared: shared) == "polish")
     }
 
-    // MARK: - Keyboard mode resolution (used by BackgroundRecordingService)
-
-    @Test("keyboard mode resolves to the override when set")
-    func keyboardModeUsesOverride() {
-        #expect(AppConfigStorage.resolveKeyboardMode(override: "polish", configActiveModeID: "raw") == "polish")
-    }
-
-    @Test("keyboard mode falls back to the config mode when no override is set")
-    func keyboardModeFallsBack() {
-        #expect(AppConfigStorage.resolveKeyboardMode(override: nil, configActiveModeID: "formal") == "formal")
-        #expect(AppConfigStorage.resolveKeyboardMode(override: "", configActiveModeID: "formal") == "formal")
-    }
-
     @Test("keyboardModeID returns nil for an empty stored value")
     func keyboardModeIDEmptyIsNil() {
         let shared = freshDefaults()
         AppConfigStorage.setKeyboardModeID("", shared: shared)
         #expect(AppConfigStorage.keyboardModeID(shared: shared) == nil)
+    }
+
+    @Test("keyboard workflow override is stored independently from the legacy mode mirror")
+    func keyboardWorkflowOverrideIsIndependent() {
+        let shared = freshDefaults()
+        AppConfigStorage.setKeyboardModeID("polish", shared: shared)
+        AppConfigStorage.setKeyboardWorkflowID("wf.custom-demo", shared: shared)
+
+        #expect(AppConfigStorage.keyboardModeID(shared: shared) == "polish")
+        #expect(AppConfigStorage.keyboardWorkflowID(shared: shared) == "wf.custom-demo")
+    }
+
+    @Test("saving publishes only operationally runnable recipes to the keyboard")
+    func savePublishesValidatedKeyboardManifest() throws {
+        let standard = freshDefaults()
+        let shared = freshDefaults()
+        var config = WorkflowMigration.migrated(AppConfig())
+        let invalidSTT = WorkflowWidget(
+            id: "stt.missing-profile",
+            role: .processor,
+            typeTag: "stt",
+            name: "Missing",
+            props: .object(["model_profile": .string("ghost")])
+        )
+        config.widgets.append(invalidSTT)
+        config.workflows.append(WorkflowDefinition(
+            id: "wf.invalid-profile",
+            name: "Invalid",
+            source: "src.mic-hold",
+            processors: [invalidSTT.id],
+            outputs: ["out.insert"]
+        ))
+
+        AppConfigStorage.save(config, standard: standard, shared: shared)
+
+        let data = try #require(shared.data(forKey: AppConfigStorage.keyboardWorkflowManifestKey))
+        let manifest = try JSONDecoder().decode([KeyboardIPC.WorkflowManifestEntry].self, from: data)
+        #expect(manifest.contains { $0.id == "wf.dictation" })
+        #expect(!manifest.contains { $0.id == "wf.invalid-profile" })
+    }
+
+    @Test("keyboard manifest accepts Apple sentinel and preserves a valid empty state")
+    func keyboardManifestSentinelAndEmptyState() {
+        var appleConfig = WorkflowMigration.migrated(AppConfig())
+        let appleSTT = WorkflowWidget(
+            id: "stt.apple",
+            role: .processor,
+            typeTag: "stt",
+            name: "Apple",
+            props: .object(["model_profile": .string(ModelProfileReference.appleSpeech)])
+        )
+        appleConfig.widgets.append(appleSTT)
+        appleConfig.workflows.append(WorkflowDefinition(
+            id: "wf.apple",
+            name: "Apple",
+            source: "src.mic-hold",
+            processors: [appleSTT.id],
+            outputs: ["out.insert"]
+        ))
+        #expect(AppConfigStorage.keyboardWorkflowManifest(config: appleConfig)
+            .contains { $0.id == "wf.apple" })
+
+        var unavailable = appleConfig
+        unavailable.widgets.append(contentsOf: [
+            WorkflowWidget(
+                id: "src.mic-hold", role: .output, typeTag: "clipboard", name: "Broken"
+            ),
+            WorkflowWidget(
+                id: "src.mic-toggle", role: .output, typeTag: "clipboard", name: "Broken"
+            )
+        ])
+        #expect(AppConfigStorage.keyboardWorkflowManifest(config: unavailable).isEmpty)
     }
 }

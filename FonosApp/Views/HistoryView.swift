@@ -33,15 +33,20 @@ struct HistoryView: View {
     private var filteredSessions: [DictationSession] {
         sessions.filter { session in
             // Mode filter
-            if let modeKey = activeFilter.modeKey, session.mode != modeKey {
-                return false
+            if let modeKey = activeFilter.modeKey {
+                let workflowID = WorkflowMigration.workflowID(forLegacyModeID: modeKey)
+                guard session.mode == modeKey || session.workflowID == workflowID else {
+                    return false
+                }
             }
             // Search filter
             if !searchText.isEmpty {
                 let query = searchText.lowercased()
                 let inInput = session.inputText.lowercased().contains(query)
                 let inOutput = session.outputText.lowercased().contains(query)
-                return inInput || inOutput
+                let inWorkflowID = session.workflowID.lowercased().contains(query)
+                let inWorkflowName = session.workflowName.lowercased().contains(query)
+                return inInput || inOutput || inWorkflowID || inWorkflowName
             }
             return true
         }

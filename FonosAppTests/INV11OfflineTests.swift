@@ -32,18 +32,19 @@ private func makeOfflineSession() -> URLSession {
 // MARK: - Mock on-device speech recognizer (no network needed)
 
 private final class OnDeviceMockRecognizer: SpeechRecognizerProtocol, @unchecked Sendable {
-    // stubbedTranscript used by the fallback path in AppleSTT
-    var stubbedTranscript: String? = "hello from device"
+    private let transcript = "hello from device"
 
     func requestAuthorization(_ handler: @escaping (SFSpeechRecognizerAuthorizationStatus) -> Void) {
         handler(.authorized)
     }
 
     func recognize(request: SFSpeechAudioBufferRecognitionRequest,
-                   resultHandler: @escaping (SFSpeechRecognitionResult?, Error?) -> Void) -> SFSpeechRecognitionTask {
+                   resultHandler: @escaping (SpeechRecognitionOutput?, Error?) -> Void) -> SFSpeechRecognitionTask {
         // Simulate on-device recognition succeeding without any network.
-        // Calling handler with (nil, nil) causes AppleSTT to read stubbedTranscript.
-        resultHandler(nil, nil)
+        resultHandler(
+            SpeechRecognitionOutput(transcript: transcript, isFinal: true),
+            nil
+        )
         return SFSpeechRecognitionTask()
     }
 }
@@ -69,7 +70,7 @@ struct INV11OfflineTests {
 
     @Test("WhisperSTT with no network throws STTError.networkUnavailable (not crash)")
     func whisperSTTOfflineThrowsConnectivityError() async throws {
-        let stt = WhisperSTT(session: makeOfflineSession(), apiKey: "sk-test")
+        let stt = authorizedWhisperSTT(session: makeOfflineSession(), apiKey: "sk-test")
         await #expect(throws: STTError.networkUnavailable) {
             _ = try await stt.transcribe(audioData: dummyAudioData(), language: "en")
         }
@@ -77,7 +78,7 @@ struct INV11OfflineTests {
 
     @Test("WhisperSTT offline error message is user-friendly (not a raw system error)")
     func whisperSTTOfflineErrorDescriptive() async throws {
-        let stt = WhisperSTT(session: makeOfflineSession(), apiKey: "sk-test")
+        let stt = authorizedWhisperSTT(session: makeOfflineSession(), apiKey: "sk-test")
         do {
             _ = try await stt.transcribe(audioData: dummyAudioData(), language: "en")
             Issue.record("Expected STTError to be thrown")
@@ -96,7 +97,7 @@ struct INV11OfflineTests {
 
     @Test("FonosSTT with no network throws STTError.networkUnavailable (not crash)")
     func fonosSTTOfflineThrowsConnectivityError() async throws {
-        let stt = FonosSTT(session: makeOfflineSession(),
+        let stt = authorizedFonosSTT(session: makeOfflineSession(),
                            serverURL: URL(string: "http://192.168.1.100:8000")!)
         await #expect(throws: STTError.networkUnavailable) {
             _ = try await stt.transcribe(audioData: dummyAudioData(), language: "en")
@@ -107,7 +108,7 @@ struct INV11OfflineTests {
 
     @Test("LLMService with no network throws LLMError.networkUnavailable")
     func llmServiceOfflineThrowsConnectivityError() async throws {
-        let service = LLMService(session: makeOfflineSession(), apiKey: "sk-test")
+        let service = authorizedLLMService(session: makeOfflineSession(), apiKey: "sk-test")
         await #expect(throws: LLMError.networkUnavailable) {
             _ = try await service.process(text: "some text", mode: .polish)
         }
@@ -115,7 +116,7 @@ struct INV11OfflineTests {
 
     @Test("LLMService offline error has user-friendly localizedDescription")
     func llmOfflineErrorDescriptive() async throws {
-        let service = LLMService(session: makeOfflineSession(), apiKey: "sk-test")
+        let service = authorizedLLMService(session: makeOfflineSession(), apiKey: "sk-test")
         do {
             _ = try await service.process(text: "hello", mode: .polish)
             Issue.record("Expected LLMError to be thrown")
@@ -130,7 +131,7 @@ struct INV11OfflineTests {
 
     @Test("DictationSession with STT offline error surfaces error to caller (does not crash)")
     func dictationSessionSTTOfflineError() async throws {
-        let stt = WhisperSTT(session: makeOfflineSession(), apiKey: "sk-test")
+        let stt = authorizedWhisperSTT(session: makeOfflineSession(), apiKey: "sk-test")
         let vm = DictationViewModel(sttProvider: stt)
         // Starting a dictation that immediately fails at STT step must set an error state
         await #expect(throws: STTError.networkUnavailable) {
@@ -143,7 +144,7 @@ struct INV11OfflineTests {
         // STT succeeds; LLM fails; result should be the raw STT transcript
         let mockRecognizer = OnDeviceMockRecognizer()
         let stt = AppleSTT(recognizer: mockRecognizer)
-        let llm = LLMService(session: makeOfflineSession(), apiKey: "sk-test")
+        let llm = authorizedLLMService(session: makeOfflineSession(), apiKey: "sk-test")
         let vm = DictationViewModel(sttProvider: stt, llmService: llm)
 
         let result = try await vm.processAudio(dummyAudioData(), language: "en", mode: .polish)

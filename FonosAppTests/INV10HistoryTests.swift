@@ -121,7 +121,7 @@ struct INV10HistoryTests {
 
         let start = base.addingTimeInterval(-60)
         let end = base.addingTimeInterval(60)
-        var descriptor = FetchDescriptor<DictationSession>(
+        let descriptor = FetchDescriptor<DictationSession>(
             predicate: #Predicate { $0.date >= start && $0.date <= end }
         )
         let results = try context.fetch(descriptor)

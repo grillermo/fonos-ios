@@ -10,7 +10,7 @@ struct NotesView: View {
     @State private var notebooks: [NoteContainer] = []
     @State private var showNewNotebookSheet = false
     @State private var newNotebookTitle = ""
-    @State private var selectedNotebook: NoteContainer? = nil
+    @State private var selectedNotebook: NoteContainer?
 
     // MARK: - Init
 

@@ -39,6 +39,13 @@ struct RecordGestureTests {
         #expect(action == .stop)
     }
 
+    @Test("release while audio setup is pending cancels the start")
+    func releaseWhileStartingStops() {
+        let action = DictationViewModel.holdGestureAction(
+            pressing: false, state: .starting, recordMode: .hold)
+        #expect(action == .stop)
+    }
+
     @Test("release while processing does nothing")
     func releaseWhileProcessingIsNoop() {
         let action = DictationViewModel.holdGestureAction(

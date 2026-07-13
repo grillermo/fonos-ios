@@ -128,6 +128,17 @@ protocol STTProvider: Sendable {
     /// `build_stt_prompt`). Providers that support biasing override this; the
     /// default ignores both.
     func transcribe(audioData: Data, language: String?, vocabulary: [String], promptHint: String) async throws -> String
+
+    /// Fully configured workflow entry point. Providers that expose a sampling
+    /// temperature should override this; the default preserves compatibility
+    /// with providers whose API has no such control (for example Apple Speech).
+    func transcribe(
+        audioData: Data,
+        language: String?,
+        vocabulary: [String],
+        promptHint: String,
+        temperature: Double
+    ) async throws -> String
 }
 
 extension STTProvider {
@@ -135,9 +146,70 @@ extension STTProvider {
         try await transcribe(audioData: audioData, language: language)
     }
 
+    func transcribe(
+        audioData: Data,
+        language: String?,
+        vocabulary: [String],
+        promptHint: String,
+        temperature: Double
+    ) async throws -> String {
+        try await transcribe(
+            audioData: audioData,
+            language: language,
+            vocabulary: vocabulary,
+            promptHint: promptHint
+        )
+    }
+
     /// Convenience for callers that have no mode prompt hint.
     func transcribe(audioData: Data, language: String?, vocabulary: [String]) async throws -> String {
         try await transcribe(audioData: audioData, language: language, vocabulary: vocabulary, promptHint: "")
+    }
+}
+
+/// Desktop stores human-readable language names in STT widget props, then
+/// normalizes them at the execution boundary. Keep the same wire values and
+/// conversion so imported recipes work with APIs that require language codes.
+enum STTLanguageCode {
+    static func normalized(_ language: String?) -> String? {
+        guard let language else { return nil }
+        let trimmed = language.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = trimmed.lowercased()
+        guard !value.isEmpty, value != "auto" else { return nil }
+        let names: [String: String] = [
+            "chinese": "zh",
+            "english": "en",
+            "japanese": "ja",
+            "korean": "ko",
+            "cantonese": "yue",
+            "french": "fr",
+            "german": "de",
+            "spanish": "es",
+            "portuguese": "pt",
+            "italian": "it",
+            "russian": "ru",
+            "arabic": "ar",
+            "hindi": "hi",
+            "thai": "th",
+            "vietnamese": "vi",
+            "dutch": "nl",
+            "polish": "pl",
+            "turkish": "tr",
+            "indonesian": "id"
+        ]
+        return names[value] ?? trimmed
+    }
+
+    static func appleLocaleIdentifier(_ language: String?) -> String? {
+        guard let code = normalized(language) else { return nil }
+        let locales: [String: String] = [
+            "zh": "zh-CN", "en": "en-US", "ja": "ja-JP", "ko": "ko-KR",
+            "fr": "fr-FR", "de": "de-DE", "es": "es-ES", "pt": "pt-BR",
+            "it": "it-IT", "ru": "ru-RU", "ar": "ar-SA", "th": "th-TH",
+            "vi": "vi-VN", "nl": "nl-NL", "pl": "pl-PL", "tr": "tr-TR",
+            "id": "id-ID"
+        ]
+        return locales[code.lowercased()] ?? code
     }
 }
 
@@ -147,33 +219,262 @@ extension STTProvider {
 /// and NoteViewModel so both surfaces honour the configured model profile.
 enum STTResolver {
     static func resolve(config: AppConfig, profileID overrideProfileID: String? = nil) -> any STTProvider {
-        let profileID = overrideProfileID ?? config.sttProfile
-        guard !profileID.isEmpty,
-              let profile = config.modelProfiles.first(where: { $0.id == profileID }),
-              profile.hasSTT else {
+        let profileID = ModelProfileReference.normalized(
+            overrideProfileID ?? config.sttProfile
+        )
+        guard !profileID.isEmpty else {
             sttLog.info("🔌 No STT profile configured, using Apple Speech")
             return AppleSTT()
         }
-        let key = (try? KeychainStore(service: "com.fonos.models").get(profile.id)) ?? ""
-        let baseURL = profile.baseURL ?? ""
-        sttLog.info("🔌 Resolving STT: provider=\(profile.provider), model=\(profile.modelID), baseURL=\(baseURL)")
-
-        switch profile.provider {
-        case "openai":
-            let url = baseURL.isEmpty ? "https://api.openai.com" : baseURL
-            return WhisperSTT(apiKey: key, baseURL: url, modelID: profile.modelID)
-        case "fonos":
-            let url = URL(string: baseURL.isEmpty ? "http://localhost:9880" : baseURL)
-                ?? URL(string: "http://localhost:9880")!
-            return FonosSTT(serverURL: url)
-        default:
-            // OMLX, Ollama, etc. with STT — use Whisper-compatible endpoint
-            if profile.hasSTT && !baseURL.isEmpty {
-                return WhisperSTT(apiKey: key, baseURL: baseURL, modelID: profile.modelID)
-            }
-            sttLog.warning("🔌 STT profile has no STT capability or empty URL, falling back to Apple")
+        if profileID == ModelProfileReference.appleSpeech {
+            sttLog.info("🔌 Explicit Apple Speech adapter selected")
             return AppleSTT()
         }
+        guard let profile = config.modelProfiles.first(where: { $0.id == profileID }),
+              profile.hasSTT else {
+            return UnavailableSTT(reason: "STT model profile '\(profileID)' is unavailable")
+        }
+        let key = (try? KeychainStore(service: "com.fonos.models").get(profile.id)) ?? ""
+        let baseURL = profile.effectiveBaseURL
+        sttLog.info("🔌 Resolving STT: provider=\(profile.provider), model=\(profile.modelID), baseURL=\(baseURL)")
+
+        switch profile.provider.lowercased() {
+        case "apple":
+            return AppleSTT()
+        case "fonos":
+            guard let url = URL(string: baseURL)
+                ?? URL(string: "http://localhost:9880") else {
+                return UnavailableSTT(reason: "The local Fonos endpoint is invalid")
+            }
+            return FonosSTT(serverURL: url)
+        default:
+            guard !baseURL.isEmpty else {
+                return UnavailableSTT(reason: "STT profile '\(profile.name)' has no endpoint")
+            }
+            if profile.effectiveSTTAPI == "chat" {
+                return ChatSTT(
+                    apiKey: key,
+                    baseURL: baseURL,
+                    modelID: profile.modelID,
+                    provider: profile.provider
+                )
+            }
+            return WhisperSTT(
+                apiKey: key,
+                baseURL: baseURL,
+                modelID: profile.modelID,
+                provider: profile.provider
+            )
+        }
+    }
+}
+
+private struct UnavailableSTT: STTProvider {
+    let reason: String
+
+    func transcribe(audioData: Data, language: String?) async throws -> String {
+        throw STTError.profileUnavailable(reason)
+    }
+}
+
+// MARK: - ChatSTT
+
+/// STT provider for multimodal models exposed through an OpenAI-compatible
+/// chat-completions endpoint. This mirrors fonos-core's `transcribe_chat`
+/// contract: the complete WAV is sent as base64 `input_audio`, alongside a
+/// deterministic transcription instruction and optional language/vocabulary
+/// hints.
+final class ChatSTT: STTProvider, @unchecked Sendable {
+    private let session: URLSession
+    private let apiKey: String
+    private let baseURL: String
+    private let modelID: String
+    private let provider: String
+    private let consentAuthorizer: RemoteAIConsentStore.Authorizer
+
+    init(
+        session: URLSession = .shared,
+        apiKey: String,
+        baseURL: String,
+        modelID: String,
+        provider: String = "custom",
+        consentAuthorizer: @escaping RemoteAIConsentStore.Authorizer = RemoteAIConsentStore.liveAuthorizer
+    ) {
+        self.session = session
+        self.apiKey = apiKey
+        self.baseURL = baseURL
+        self.modelID = modelID
+        self.provider = provider
+        self.consentAuthorizer = consentAuthorizer
+    }
+
+    func transcribe(audioData: Data, language: String?) async throws -> String {
+        try await transcribe(
+            audioData: audioData,
+            language: language,
+            vocabulary: [],
+            promptHint: ""
+        )
+    }
+
+    func transcribe(
+        audioData: Data,
+        language: String?,
+        vocabulary: [String],
+        promptHint: String
+    ) async throws -> String {
+        try Task.checkCancellation()
+        try validateRemoteAccess()
+        let request = try makeRequest(
+            audioData: audioData,
+            language: language,
+            vocabulary: vocabulary
+        )
+        let (data, response) = try await send(request)
+        try Task.checkCancellation()
+        try validate(response: response, data: data)
+        return try parseTranscript(from: data)
+    }
+
+    private func validateRemoteAccess() throws {
+        guard RemoteAITransportPolicy.allows(baseURL) else {
+            throw STTError.insecureEndpoint
+        }
+        guard consentAuthorizer(provider, baseURL) else {
+            throw STTError.consentRequired(Self.consentDestination(provider: provider, baseURL: baseURL))
+        }
+    }
+
+    private func makeRequest(audioData: Data, language: String?, vocabulary: [String]) throws -> URLRequest {
+        let url = try endpointURL()
+        let body = requestBody(audioData: audioData, language: language, vocabulary: vocabulary)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            throw STTError.badRequest
+        }
+        return request
+    }
+
+    private func endpointURL() throws -> URL {
+        let trimmedBase = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !trimmedBase.isEmpty,
+              !modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw STTError.badRequest
+        }
+        let endpoint: String
+        if trimmedBase.hasSuffix("/chat/completions") {
+            endpoint = trimmedBase
+        } else if trimmedBase.hasSuffix("/v1") {
+            endpoint = "\(trimmedBase)/chat/completions"
+        } else {
+            endpoint = "\(trimmedBase)/v1/chat/completions"
+        }
+        guard let url = URL(string: endpoint) else {
+            throw STTError.badRequest
+        }
+        return url
+    }
+
+    private func requestBody(audioData: Data, language: String?, vocabulary: [String]) -> [String: Any] {
+        let normalizedLanguage = STTLanguageCode.normalized(language)
+        let languageHint = normalizedLanguage.map {
+            " The audio is in language code '\($0)'."
+        } ?? ""
+        let vocabularyHint = vocabulary.isEmpty
+            ? ""
+            : " Domain vocabulary (prefer these exact spellings): \(vocabulary.joined(separator: ", "))."
+        let instruction = "Transcribe this audio exactly as spoken. "
+            + "Output only the transcript text, nothing else."
+            + languageHint
+            + vocabularyHint
+        let body: [String: Any] = [
+            "model": modelID,
+            "messages": [[
+                "role": "user",
+                "content": [
+                    ["type": "text", "text": instruction],
+                    [
+                        "type": "input_audio",
+                        "input_audio": [
+                            "data": audioData.base64EncodedString(),
+                            "format": "wav"
+                        ]
+                    ]
+                ]
+            ]],
+            "temperature": 0.0,
+            "max_tokens": 4096
+        ]
+        return body
+    }
+
+    private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            return try await session.data(for: request)
+        } catch {
+            if error is CancellationError || Task.isCancelled {
+                throw CancellationError()
+            }
+            if let urlError = error as? URLError {
+                switch urlError.code {
+                case .cancelled: throw CancellationError()
+                case .timedOut: throw STTError.timeout
+                case .notConnectedToInternet, .networkConnectionLost:
+                    throw STTError.networkUnavailable
+                default:
+                    throw STTError.recognizerError(urlError.localizedDescription)
+                }
+            }
+            throw STTError.recognizerError(error.localizedDescription)
+        }
+    }
+
+    private func validate(response: URLResponse, data: Data) throws {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw STTError.parseError
+        }
+        switch httpResponse.statusCode {
+        case 200 ... 299:
+            break
+        case 401, 403:
+            throw STTError.authenticationFailed
+        case 400:
+            throw STTError.badRequest
+        default:
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            throw STTError.recognizerError(
+                "Server returned HTTP \(httpResponse.statusCode): \(responseBody.prefix(200))"
+            )
+        }
+    }
+
+    private func parseTranscript(from data: Data) throws -> String {
+        guard
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let choices = json["choices"] as? [[String: Any]],
+            let message = choices.first?["message"] as? [String: Any],
+            let content = message["content"] as? String
+        else {
+            throw STTError.parseError
+        }
+        let transcript = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !transcript.isEmpty else { throw STTError.noTranscript }
+        return transcript
+    }
+
+    private static func consentDestination(provider: String, baseURL: String) -> String {
+        RemoteAIEndpointIdentity(provider: provider, baseURL: baseURL)
+            .map { "\($0.providerDisplayName) at \($0.origin)" }
+            ?? "the configured speech endpoint"
     }
 }
 
@@ -190,6 +491,9 @@ enum STTError: LocalizedError, Equatable {
     case networkUnavailable
     case recognizerError(String)
     case transcriptionFailed
+    case profileUnavailable(String)
+    case consentRequired(String)
+    case insecureEndpoint
 
     var errorDescription: String? {
         switch self {
@@ -202,6 +506,11 @@ enum STTError: LocalizedError, Equatable {
         case .networkUnavailable:     "Network unavailable. Check your connection."
         case .recognizerError(let m): "Recognizer error: \(m)"
         case .transcriptionFailed:    "Transcription failed."
+        case .profileUnavailable(let reason): reason
+        case .consentRequired(let destination):
+            "Permission is required before sending audio to \(destination). Review this model under Settings → Models."
+        case .insecureEndpoint:
+            "Public speech endpoints must use HTTPS. HTTP is allowed only for a local server on this device or LAN."
         }
     }
 }
@@ -210,35 +519,21 @@ enum STTError: LocalizedError, Equatable {
 
 /// Protocol seam allowing AppleSTT to work with both the real SFSpeechRecognizer
 /// and mock implementations injected during tests.
-///
-/// ## Mock fallback mechanism
-///
-/// When a mock recognizer's `recognize(request:resultHandler:)` calls the handler with
-/// `(nil, nil)` — which happens because `mockResult as? SFSpeechRecognitionResult` returns
-/// nil (MockSpeechRecognitionResult inherits NSObject, not SFSpeechRecognitionResult) —
-/// AppleSTT falls back to `transcribeSync()`, which reads `stubbedTranscript`.
-///
-/// Test mocks satisfy `stubbedTranscript` via their stored `var stubbedTranscript: String?`
-/// property. The default extension implementation makes `transcribeSync()` return
-/// `stubbedTranscript ?? ""`, so mocks don't need to implement `transcribeSync()` explicitly.
-protocol SpeechRecognizerProtocol: Sendable {
-    /// Pre-loaded transcript exposed by test mocks.
-    /// Real recognizers provide `nil`; mocks provide the expected result.
-    var stubbedTranscript: String? { get }
+struct SpeechRecognitionOutput: Equatable, Sendable {
+    let transcript: String
+    let isFinal: Bool
+}
 
+protocol SpeechRecognizerProtocol: Sendable {
     /// Switch the underlying recognizer to a new locale. Default no-op for mocks.
     func updateLocale(_ locale: Locale)
 
     func requestAuthorization(_ handler: @escaping (SFSpeechRecognizerAuthorizationStatus) -> Void)
     func recognize(request: SFSpeechAudioBufferRecognitionRequest,
-                   resultHandler: @escaping (SFSpeechRecognitionResult?, Error?) -> Void) -> SFSpeechRecognitionTask
+                   resultHandler: @escaping (SpeechRecognitionOutput?, Error?) -> Void) -> SFSpeechRecognitionTask
 }
 
 extension SpeechRecognizerProtocol {
-    /// Returns `stubbedTranscript ?? ""`.
-    /// Called by AppleSTT when the recognize callback fires with (nil, nil).
-    func transcribeSync() -> String { stubbedTranscript ?? "" }
-
     /// Default no-op so test mocks don't need to implement locale switching.
     func updateLocale(_ locale: Locale) {}
 }
@@ -247,9 +542,6 @@ extension SpeechRecognizerProtocol {
 
 /// Production wrapper that delegates to SFSpeechRecognizer.
 final class RealSpeechRecognizer: SpeechRecognizerProtocol, @unchecked Sendable {
-    // Real recognizer never provides a stubbed transcript.
-    var stubbedTranscript: String? { nil }
-
     private var recognizer: SFSpeechRecognizer
 
     init(locale: Locale = .current) {
@@ -277,8 +569,16 @@ final class RealSpeechRecognizer: SpeechRecognizerProtocol, @unchecked Sendable 
     }
 
     func recognize(request: SFSpeechAudioBufferRecognitionRequest,
-                   resultHandler: @escaping (SFSpeechRecognitionResult?, Error?) -> Void) -> SFSpeechRecognitionTask {
-        recognizer.recognitionTask(with: request, resultHandler: resultHandler)
+                   resultHandler: @escaping (SpeechRecognitionOutput?, Error?) -> Void) -> SFSpeechRecognitionTask {
+        recognizer.recognitionTask(with: request) { result, error in
+            let output = result.map {
+                SpeechRecognitionOutput(
+                    transcript: $0.bestTranscription.formattedString,
+                    isFinal: $0.isFinal
+                )
+            }
+            resultHandler(output, error)
+        }
     }
 }
 
@@ -322,7 +622,8 @@ final class AppleSTT: STTProvider, @unchecked Sendable {
     /// actually recognized — not just recorded as "intended".
     func transcribe(buffer audioData: Data, language: String?, vocabulary: [String] = []) async throws -> String {
         try Task.checkCancellation()
-        let targetLocale = language.map { Locale(identifier: $0) } ?? .current
+        let targetLocale = STTLanguageCode.appleLocaleIdentifier(language)
+            .map { Locale(identifier: $0) } ?? .current
         lastUsedLocale = targetLocale
         // The previous bug: this line was missing. lastUsedLocale was being set
         // for test introspection but the actual recognizer kept its init-time
@@ -358,8 +659,15 @@ final class AppleSTT: STTProvider, @unchecked Sendable {
                             // Fallback: try to create a buffer directly from raw PCM (skip WAV header)
                             let pcmData = audioData.dropFirst(44)
                             let sampleCount = pcmData.count / 2 // 16-bit samples
-                            if let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false),
-                               let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(sampleCount)) {
+                            if let format = AVAudioFormat(
+                                commonFormat: .pcmFormatInt16,
+                                sampleRate: 16_000,
+                                channels: 1,
+                                interleaved: false
+                            ), let buffer = AVAudioPCMBuffer(
+                                pcmFormat: format,
+                                frameCapacity: AVAudioFrameCount(sampleCount)
+                            ) {
                                 buffer.frameLength = AVAudioFrameCount(sampleCount)
                                 if let int16Ptr = buffer.int16ChannelData {
                                     pcmData.withUnsafeBytes { rawBuf in
@@ -383,14 +691,12 @@ final class AppleSTT: STTProvider, @unchecked Sendable {
                         }
 
                         if let result, result.isFinal {
-                            completion.succeed(result.bestTranscription.formattedString)
+                            completion.succeed(result.transcript)
                             return
                         }
 
-                        // Mock fallback path for tests
                         if result == nil && error == nil {
-                            let transcript = recognizer.transcribeSync()
-                            completion.succeed(transcript)
+                            completion.fail(STTError.noTranscript)
                         }
                     }
                     completion.setTask(task)
@@ -414,38 +720,102 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
     private let apiKey: String
     private let baseURL: String
     private let modelID: String  // actual model ID to send in the request
+    private let provider: String
+    private let consentAuthorizer: RemoteAIConsentStore.Authorizer
 
     init(session: URLSession = .shared,
          apiKey: String,
          baseURL: String = "https://api.openai.com",
-         modelID: String = "whisper-1") {
+         modelID: String = "whisper-1",
+         provider: String = "openai",
+         consentAuthorizer: @escaping RemoteAIConsentStore.Authorizer = RemoteAIConsentStore.liveAuthorizer) {
         self.session = session
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.modelID = modelID
+        self.provider = provider
+        self.consentAuthorizer = consentAuthorizer
     }
 
     func transcribe(audioData: Data, language: String?) async throws -> String {
-        try await transcribe(audioData: audioData, language: language, prompt: nil)
+        try await transcribe(audioData: audioData, language: language, prompt: nil, temperature: nil)
     }
 
     func transcribe(audioData: Data, language: String?, vocabulary: [String], promptHint: String) async throws -> String {
+        try await transcribe(
+            audioData: audioData,
+            language: language,
+            vocabulary: vocabulary,
+            promptHint: promptHint,
+            temperature: 0
+        )
+    }
+
+    func transcribe(
+        audioData: Data,
+        language: String?,
+        vocabulary: [String],
+        promptHint: String,
+        temperature: Double
+    ) async throws -> String {
         // Fold the mode's prompt hint (base) with the vocab glossary, matching
         // fonos-core build_stt_prompt.
         let composed = VocabApplier.buildSTTPrompt(base: promptHint, terms: vocabulary)
         return try await transcribe(audioData: audioData, language: language,
-                                    prompt: composed.isEmpty ? nil : composed)
+                                    prompt: composed.isEmpty ? nil : composed,
+                                    temperature: temperature > 0 ? temperature : nil)
     }
 
-    private func transcribe(audioData: Data, language: String?, prompt: String?) async throws -> String {
+    private func transcribe(
+        audioData: Data,
+        language: String?,
+        prompt: String?,
+        temperature: Double?
+    ) async throws -> String {
         try Task.checkCancellation()
+        try validateRemoteAccess()
+        let (urlString, url) = try transcriptionEndpoint()
+        sttLog.info("🌐 WhisperSTT POST \(urlString), model=\(self.modelID), audioSize=\(audioData.count)")
+        let request = makeRequest(
+            url: url,
+            audioData: audioData,
+            language: language,
+            prompt: prompt,
+            temperature: temperature
+        )
+        let (data, response) = try await send(request, urlString: urlString)
+        try Task.checkCancellation()
+        try validate(response: response, data: data)
+        return try parseTranscript(from: data)
+    }
+
+    private func validateRemoteAccess() throws {
+        guard RemoteAITransportPolicy.allows(baseURL) else {
+            throw STTError.insecureEndpoint
+        }
+        guard consentAuthorizer(provider, baseURL) else {
+            let destination = RemoteAIEndpointIdentity(provider: provider, baseURL: baseURL)
+                .map { "\($0.providerDisplayName) at \($0.origin)" }
+                ?? "the configured speech endpoint"
+            throw STTError.consentRequired(destination)
+        }
+    }
+
+    private func transcriptionEndpoint() throws -> (String, URL) {
         let urlString = "\(baseURL)/v1/audio/transcriptions"
         guard let url = URL(string: urlString) else {
             throw STTError.badRequest
         }
+        return (urlString, url)
+    }
 
-        sttLog.info("🌐 WhisperSTT POST \(urlString), model=\(self.modelID), audioSize=\(audioData.count)")
-
+    private func makeRequest(
+        url: URL,
+        audioData: Data,
+        language: String?,
+        prompt: String?,
+        temperature: Double?
+    ) -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 30
@@ -455,24 +825,49 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
 
         let boundary = UUID().uuidString
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = makeBody(
+            boundary: boundary,
+            audioData: audioData,
+            language: language,
+            prompt: prompt,
+            temperature: temperature
+        )
+        return request
+    }
 
+    private func makeBody(
+        boundary: String,
+        audioData: Data,
+        language: String?,
+        prompt: String?,
+        temperature: Double?
+    ) -> Data {
         var body = Data()
         // Use actual model ID, not hardcoded "whisper-1"
         appendFormField(&body, boundary: boundary, name: "model", value: modelID)
         appendFormFile(&body, boundary: boundary, name: "file", filename: "audio.wav",
                        mimeType: "audio/wav", data: audioData)
-        if let language {
+        if let language = STTLanguageCode.normalized(language) {
             appendFormField(&body, boundary: boundary, name: "language", value: language)
         }
         if let prompt, !prompt.isEmpty {
             appendFormField(&body, boundary: boundary, name: "prompt", value: prompt)
         }
+        if let temperature {
+            appendFormField(
+                &body,
+                boundary: boundary,
+                name: "temperature",
+                value: String(min(max(temperature, 0), 1))
+            )
+        }
         body.append(Data("--\(boundary)--\r\n".utf8))
-        request.httpBody = body
+        return body
+    }
 
-        let (data, response): (Data, URLResponse)
+    private func send(_ request: URLRequest, urlString: String) async throws -> (Data, URLResponse) {
         do {
-            (data, response) = try await session.data(for: request)
+            return try await session.data(for: request)
         } catch {
             if error is CancellationError || Task.isCancelled {
                 throw CancellationError()
@@ -489,8 +884,9 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
             }
             throw STTError.recognizerError("Request failed: \(desc)")
         }
-        try Task.checkCancellation()
+    }
 
+    private func validate(response: URLResponse, data: Data) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw STTError.parseError
         }
@@ -511,7 +907,9 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
             sttLog.error("🌐 HTTP \(httpResponse.statusCode): \(body)")
             throw STTError.recognizerError("Server returned HTTP \(httpResponse.statusCode): \(body.prefix(200))")
         }
+    }
 
+    private func parseTranscript(from data: Data) throws -> String {
         // Try standard Whisper response format
         if let decoded = try? JSONDecoder().decode(WhisperResponse.self, from: data) {
             guard !decoded.text.isEmpty else { throw STTError.noTranscript }

@@ -8,7 +8,7 @@ private let catalogLog = Logger(subsystem: "com.fonos.ios", category: "SharedNot
 /// notebooks without booting the SwiftData stack.
 enum SharedNotebookCatalog {
 
-    static let appGroupID = "group.com.fonos.ios"
+    static let appGroupID = KeyboardIPC.appGroupID
     static let filename   = "notebooks.json"
 
     struct Entry: Codable, Equatable, Sendable {

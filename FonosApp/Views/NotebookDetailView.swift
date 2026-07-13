@@ -141,7 +141,6 @@ struct NotebookDetailView: View {
         presenter.present(activityVC, animated: true)
     }
 }
-
 // MARK: - EntryRow
 
 private struct EntryRow: View {
@@ -202,4 +201,3 @@ private struct EntryRow: View {
             .background(Capsule().fill(Color(hex: "#fbbf24").opacity(0.1)))
     }
 }
-

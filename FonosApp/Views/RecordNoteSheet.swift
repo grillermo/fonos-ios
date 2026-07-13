@@ -7,7 +7,7 @@ struct RecordNoteSheet: View {
     let onDismiss: () -> Void
 
     @State private var elapsedSeconds: Int = 0
-    @State private var timer: Timer? = nil
+    @State private var timer: Timer?
 
     var body: some View {
         ZStack {
@@ -130,7 +130,11 @@ struct RecordNoteSheet: View {
     private func startTimer() {
         elapsedSeconds = 0
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            elapsedSeconds += 1
+            // startTimer() runs on SwiftUI's main actor, which schedules this
+            // timer on the main run loop. Keep State mutation on that actor.
+            MainActor.assumeIsolated {
+                elapsedSeconds += 1
+            }
         }
     }
 

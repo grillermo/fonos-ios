@@ -12,17 +12,18 @@ struct ActivityCard: View {
     }
 
     private var modeIcon: String {
-        switch session.mode {
-        case "raw":       return "waveform"
-        case "polish":    return "sparkles"
-        case "formal":    return "briefcase"
-        case "translate": return "globe"
-        case "custom":    return "slider.horizontal.3"
-        default:          return "waveform"
+        switch session.workflowID.isEmpty ? session.mode : session.workflowID {
+        case "raw", "wf.dictation": return "waveform"
+        case "polish", "wf.voice.polish": return "sparkles"
+        case "formal", "wf.voice.formal": return "briefcase"
+        case "translate", "wf.voice.translate": return "globe"
+        case "custom": return "slider.horizontal.3"
+        default: return "point.3.connected.trianglepath.dotted"
         }
     }
 
     private var modeName: String {
+        if !session.workflowName.isEmpty { return session.workflowName }
         switch session.mode {
         case "raw":       return "Raw"
         case "polish":    return "Polish"
@@ -89,14 +90,19 @@ struct ActivityCard: View {
 
             // MARK: - Footer row
             HStack(spacing: 12) {
-                // Destination
-                HStack(spacing: 4) {
-                    Image(systemName: destinationIcon(session.destination))
-                        .font(.system(size: 10))
+                // Flow outputs fan out, so show every frozen destination
+                // rather than rendering the compatibility string as one tag.
+                HStack(spacing: 8) {
+                    ForEach(Array(session.destinationIDs.enumerated()), id: \.offset) { entry in
+                        let destination = entry.element
+                        HStack(spacing: 4) {
+                            Image(systemName: destinationIcon(destination))
+                                .font(.system(size: 10))
+                            Text(LocalizedStringKey(destinationLabel(destination)))
+                                .font(.system(size: 11))
+                        }
                         .foregroundColor(Color(hex: "#fafaf9").opacity(0.35))
-                    Text(LocalizedStringKey(destinationLabel(session.destination)))
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "#fafaf9").opacity(0.35))
+                    }
                 }
 
                 Spacer()
@@ -180,6 +186,8 @@ struct ActivityCard: View {
 
     private func destinationIcon(_ destination: String) -> String {
         switch destination.lowercased() {
+        case "result":     return "text.cursor"
+        case "keyboard":   return "keyboard"
         case "clipboard":  return "doc.on.clipboard"
         case "messages":   return "message.fill"
         case "share":      return "square.and.arrow.up"
@@ -194,6 +202,8 @@ struct ActivityCard: View {
 
     private func destinationLabel(_ destination: String) -> String {
         switch destination.lowercased() {
+        case "result":    return "Result"
+        case "keyboard":  return "Keyboard"
         case "clipboard": return "Clipboard"
         case "messages":  return "Messages"
         case "share":     return "Share"

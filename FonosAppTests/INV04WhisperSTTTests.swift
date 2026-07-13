@@ -60,7 +60,7 @@ private func makeSession() -> URLSession {
 }
 
 private func makeWhisperSTT(session: URLSession, apiKey: String = "sk-test") -> WhisperSTT {
-    WhisperSTT(session: session, apiKey: apiKey)
+    authorizedWhisperSTT(session: session, apiKey: apiKey)
 }
 
 private func okResponse(for url: URL, body: String) -> (HTTPURLResponse, Data) {
@@ -93,7 +93,7 @@ struct INV04WhisperSTTTests {
 
     @Test("WhisperSTT conforms to STTProvider protocol")
     func protocolConformance() throws {
-        let stt: any STTProvider = WhisperSTT(session: .shared, apiKey: "sk-test")
+        let stt: any STTProvider = authorizedWhisperSTT(session: .shared, apiKey: "sk-test")
         _ = stt
         #expect(Bool(true))
     }
@@ -215,5 +215,119 @@ struct INV04WhisperSTTTests {
         let stt = makeWhisperSTT(session: makeSession())
         _ = try? await stt.transcribe(audioData: dummyWAVData(), language: "fr")
         #expect(capturedBodyString.contains("fr"))
+    }
+
+    @Test("WhisperSTT sends workflow prompt and temperature")
+    func includesWorkflowTuning() async throws {
+        var capturedBodyString = ""
+        MockURLProtocol.requestHandler = { req in
+            if let body = req.httpBody {
+                capturedBodyString = String(data: body, encoding: .utf8) ?? ""
+            }
+            return okResponse(for: kOpenAITranscriptURL, body: #"{"text":"Fonos"}"#)
+        }
+
+        let stt = makeWhisperSTT(session: makeSession())
+        _ = try await stt.transcribe(
+            audioData: dummyWAVData(),
+            language: "en",
+            vocabulary: ["Fonos"],
+            promptHint: "Product names",
+            temperature: 0.35
+        )
+
+        #expect(capturedBodyString.contains("Product names"))
+        #expect(capturedBodyString.contains("Fonos"))
+        #expect(capturedBodyString.contains("name=\"temperature\""))
+        #expect(capturedBodyString.contains("0.35"))
+    }
+
+    @Test("WhisperSTT omits a zero workflow temperature like desktop")
+    func omitsZeroWorkflowTemperature() async throws {
+        var capturedBodyString = ""
+        MockURLProtocol.requestHandler = { request in
+            capturedBodyString = request.httpBody
+                .flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            return okResponse(for: kOpenAITranscriptURL, body: #"{"text":"hello"}"#)
+        }
+        let stt = makeWhisperSTT(session: makeSession())
+
+        _ = try await stt.transcribe(
+            audioData: dummyWAVData(),
+            language: nil,
+            vocabulary: [],
+            promptHint: "",
+            temperature: 0
+        )
+
+        #expect(!capturedBodyString.contains("name=\"temperature\""))
+    }
+
+    @Test("ChatSTT mirrors the desktop input_audio request contract")
+    func chatSTTRequestContract() async throws {
+        var capturedRequest: URLRequest?
+        var capturedBody: [String: Any] = [:]
+        MockURLProtocol.requestHandler = { request in
+            capturedRequest = request
+            if let body = request.httpBody {
+                capturedBody = try JSONSerialization.jsonObject(with: body) as? [String: Any] ?? [:]
+            }
+            let url = request.url!
+            return okResponse(
+                for: url,
+                body: #"{"choices":[{"message":{"content":"  Fonos transcript  "}}]}"#
+            )
+        }
+        let wav = dummyWAVData()
+        let stt = authorizedChatSTT(
+            session: makeSession(),
+            apiKey: "chat-key",
+            baseURL: "https://openrouter.ai/api/v1",
+            modelID: "openai/gpt-audio-mini"
+        )
+
+        let transcript = try await stt.transcribe(
+            audioData: wav,
+            language: "zh",
+            vocabulary: ["Fonos", "SwiftData"],
+            promptHint: "ignored by desktop chat STT",
+            temperature: 0.9
+        )
+
+        #expect(capturedRequest?.url?.path == "/api/v1/chat/completions")
+        #expect(capturedRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer chat-key")
+        #expect(capturedBody["model"] as? String == "openai/gpt-audio-mini")
+        #expect(capturedBody["temperature"] as? Double == 0)
+        #expect(capturedBody["max_tokens"] as? Int == 4096)
+        let messages = capturedBody["messages"] as? [[String: Any]]
+        let content = messages?.first?["content"] as? [[String: Any]]
+        #expect((content?.first?["text"] as? String)?.contains("language code 'zh'") == true)
+        #expect((content?.first?["text"] as? String)?.contains("Fonos, SwiftData") == true)
+        let audio = content?[safe: 1]?["input_audio"] as? [String: String]
+        #expect(audio?["data"] == wav.base64EncodedString())
+        #expect(audio?["format"] == "wav")
+        #expect(transcript == "Fonos transcript")
+    }
+
+    @Test("ChatSTT rejects an empty completion")
+    func chatSTTRejectsEmptyCompletion() async throws {
+        MockURLProtocol.requestHandler = { request in
+            okResponse(for: request.url!, body: #"{"choices":[{"message":{"content":"  "}}]}"#)
+        }
+        let stt = authorizedChatSTT(
+            session: makeSession(),
+            apiKey: "",
+            baseURL: "https://example.com/chat/completions",
+            modelID: "audio"
+        )
+        await #expect(throws: STTError.noTranscript) {
+            _ = try await stt.transcribe(audioData: dummyWAVData(), language: nil)
+        }
+    }
+}
+
+private extension Array {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }

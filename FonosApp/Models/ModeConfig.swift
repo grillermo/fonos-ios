@@ -77,16 +77,4 @@ struct ModeConfig: Codable, Equatable, Hashable, Identifiable, Sendable {
         )
     ]
 
-    // MARK: - Pipeline summary
-
-    /// Returns a human-readable pipeline summary string for display in the modes list.
-    func pipelineSummary(sttModel: ModelProfile?, llmModel: ModelProfile?) -> String {
-        let sttName = sttModel?.name ?? "Default STT"
-        if mode.requiresLLM {
-            let llmName = llmModel?.name ?? "Default LLM"
-            return "STT: \(sttName) → LLM: \(llmName)"
-        } else {
-            return "STT: \(sttName)"
-        }
-    }
 }

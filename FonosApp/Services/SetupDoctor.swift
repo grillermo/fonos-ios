@@ -37,8 +37,7 @@ final class SetupDoctor: ObservableObject {
     @Published var checks: [DoctorCheck] = []
     @Published var isRunning = false
 
-    private let keyboardBundleID = "com.fonos.ios.keyboard"
-    private let appGroupID = "group.com.fonos.ios"
+    private let appGroupID = KeyboardIPC.appGroupID
 
     // MARK: - Run
 
@@ -98,16 +97,22 @@ final class SetupDoctor: ObservableObject {
     }
 
     private func keyboardCheck() -> DoctorCheck {
-        let keyboards = UserDefaults.standard.object(forKey: "AppleKeyboards") as? [String] ?? []
-        if keyboards.contains(where: { $0.hasPrefix(keyboardBundleID) }) {
-            return DoctorCheck(id: "keyboard", title: String(localized: "Fonos keyboard enabled"),
-                               status: .pass,
-                               detail: String(localized: "Enabled. Remember it needs Full Access and the main app running to dictate."))
-        }
-        return DoctorCheck(id: "keyboard", title: String(localized: "Fonos keyboard enabled"),
-                           status: .warn,
-                           detail: String(localized: "Not enabled. Add it in Settings → General → Keyboard → Keyboards, then allow Full Access."),
-                           fix: .openSettings)
+        // iOS has no public API that tells an app whether its custom keyboard
+        // extension is enabled or has Full Access. In particular, do not read
+        // the system-owned `AppleKeyboards` defaults key: required-reason
+        // UserDefaults access permits only values written by this app/group.
+        return DoctorCheck(
+            id: "keyboard",
+            title: String(localized: "Fonos keyboard setup"),
+            status: .warn,
+            detail: String(
+                localized: """
+                iOS cannot report keyboard enablement to Fonos. \
+                Confirm that Fonos is added in Settings → General → Keyboard → Keyboards and that Full Access is enabled.
+                """
+            ),
+            fix: .openSettings
+        )
     }
 
     private func appGroupCheck() -> DoctorCheck {
@@ -116,9 +121,17 @@ final class SetupDoctor: ObservableObject {
                                status: .pass,
                                detail: String(localized: "App Group container is accessible; keyboard IPC can work."))
         }
-        return DoctorCheck(id: "appgroup", title: String(localized: "Keyboard ↔ app bridge (App Group)"),
-                           status: .fail,
-                           detail: String(localized: "App Group \(appGroupID) is not accessible — keyboard dictation cannot reach the recorder. Check entitlements/provisioning."))
+        return DoctorCheck(
+            id: "appgroup",
+            title: String(localized: "Keyboard ↔ app bridge (App Group)"),
+            status: .fail,
+            detail: String(
+                localized: """
+                App Group \(appGroupID) is not accessible — keyboard dictation cannot reach the recorder. \
+                Check entitlements/provisioning.
+                """
+            )
+        )
     }
 
     private func endpointChecks(config: AppConfig) async -> [DoctorCheck] {
@@ -161,11 +174,15 @@ final class SetupDoctor: ObservableObject {
         var issues: [String] = []
         let profileIDs = Set(config.modelProfiles.map(\.id))
 
-        if !config.sttProfile.isEmpty && !profileIDs.contains(config.sttProfile) {
-            issues.append("Default STT profile '\(config.sttProfile)' does not exist.")
+        let sttProfile = ModelProfileReference.normalized(config.sttProfile)
+        let llmProfile = ModelProfileReference.normalized(config.llmProfile)
+        if !sttProfile.isEmpty,
+           sttProfile != ModelProfileReference.appleSpeech,
+           !profileIDs.contains(sttProfile) {
+            issues.append("Default STT profile '\(sttProfile)' does not exist.")
         }
-        if !config.llmProfile.isEmpty && !profileIDs.contains(config.llmProfile) {
-            issues.append("Default LLM profile '\(config.llmProfile)' does not exist.")
+        if !llmProfile.isEmpty && !profileIDs.contains(llmProfile) {
+            issues.append("Default LLM profile '\(llmProfile)' does not exist.")
         }
 
         let bookIDs = Set(vocabStore.books.map(\.id))
@@ -182,11 +199,18 @@ final class SetupDoctor: ObservableObject {
     nonisolated static func endpointsToCheck(config: AppConfig) -> [URL] {
         var seen: Set<String> = []
         var urls: [URL] = []
-        for id in [config.sttProfile, config.llmProfile] where !id.isEmpty {
-            guard let profile = config.modelProfiles.first(where: { $0.id == id }),
-                  let baseURL = profile.baseURL, !baseURL.isEmpty,
-                  seen.insert(baseURL).inserted,
-                  let url = URL(string: baseURL) else { continue }
+        for rawID in [config.sttProfile, config.llmProfile] {
+            let id = ModelProfileReference.normalized(rawID)
+            guard !id.isEmpty, id != ModelProfileReference.appleSpeech else { continue }
+            guard let profile = config.modelProfiles.first(where: { $0.id == id }) else {
+                continue
+            }
+            guard let baseURL = profile.portableBaseURL, !baseURL.isEmpty,
+                  let url = URL(string: baseURL),
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https",
+                  url.host?.isEmpty == false,
+                  seen.insert(baseURL).inserted else { continue }
             urls.append(url)
         }
         return urls

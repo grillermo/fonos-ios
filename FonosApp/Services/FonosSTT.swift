@@ -11,26 +11,40 @@ final class FonosSTT: STTProvider, @unchecked Sendable {
 
     private let session: URLSession
     private let serverURL: URL
+    private let consentAuthorizer: RemoteAIConsentStore.Authorizer
 
     // MARK: - Init
 
     init(session: URLSession = .shared,
-         serverURL: URL = URL(string: "http://localhost:8000") ?? URL(fileURLWithPath: "/")) {
+         serverURL: URL = URL(string: "http://localhost:8000") ?? URL(fileURLWithPath: "/"),
+         consentAuthorizer: @escaping RemoteAIConsentStore.Authorizer = RemoteAIConsentStore.liveAuthorizer) {
         self.session = session
         self.serverURL = serverURL
+        self.consentAuthorizer = consentAuthorizer
     }
 
     // MARK: - STTProvider
 
     func transcribe(audioData: Data, language: String?) async throws -> String {
         try Task.checkCancellation()
+        guard RemoteAITransportPolicy.allows(serverURL.absoluteString) else {
+            throw STTError.insecureEndpoint
+        }
+        guard consentAuthorizer("fonos", serverURL.absoluteString) else {
+            let destination = RemoteAIEndpointIdentity(
+                provider: "fonos",
+                baseURL: serverURL.absoluteString
+            ).map { "\($0.providerDisplayName) at \($0.origin)" }
+                ?? "the configured Fonos server"
+            throw STTError.consentRequired(destination)
+        }
         guard var components = URLComponents(
             url: serverURL.appendingPathComponent("transcribe"),
             resolvingAgainstBaseURL: false
         ) else {
             throw STTError.badRequest
         }
-        if let language {
+        if let language = STTLanguageCode.normalized(language) {
             components.queryItems = [URLQueryItem(name: "language", value: language)]
         }
 

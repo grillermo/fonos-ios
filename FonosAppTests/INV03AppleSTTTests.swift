@@ -28,28 +28,19 @@ private final class MockSpeechRecognizer: SpeechRecognizerProtocol, @unchecked S
     }
 
     func recognize(request: SFSpeechAudioBufferRecognitionRequest,
-                   resultHandler: @escaping (SFSpeechRecognitionResult?, Error?) -> Void) -> SFSpeechRecognitionTask {
+                   resultHandler: @escaping (SpeechRecognitionOutput?, Error?) -> Void) -> SFSpeechRecognitionTask {
         if let error = stubbedError {
             resultHandler(nil, error)
         } else if let transcript = stubbedTranscript {
-            let mockResult = MockSpeechRecognitionResult(bestTranscription: transcript, isFinal: true)
-            resultHandler(mockResult as? SFSpeechRecognitionResult, nil)
+            resultHandler(
+                SpeechRecognitionOutput(transcript: transcript, isFinal: true),
+                nil
+            )
         } else {
             // No results, no error
             resultHandler(nil, nil)
         }
         return SFSpeechRecognitionTask()
-    }
-}
-
-/// Minimal stand-in for SFSpeechRecognitionResult.
-private final class MockSpeechRecognitionResult: NSObject {
-    let transcriptString: String
-    let isFinal: Bool
-
-    init(bestTranscription: String, isFinal: Bool) {
-        self.transcriptString = bestTranscription
-        self.isFinal = isFinal
     }
 }
 

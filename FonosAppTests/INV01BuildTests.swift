@@ -23,6 +23,7 @@ struct INV01BuildLaunchTests {
 
     // Validates that the root content view initialises without throwing.
     @Test("DictationView initialises without crash")
+    @MainActor
     func dictationViewInitialises() throws {
         // DictationView is the expected root view — it must be constructible.
         let view = DictationView()
@@ -36,7 +37,10 @@ struct INV01BuildLaunchTests {
     @Test("AppConfig default initialisation succeeds")
     func appConfigDefaultInit() throws {
         let config = AppConfig()
-        #expect(config.sttProvider != nil || config.sttProvider == nil) // must not crash
+        #expect(config.sttProvider == "apple")
+        #expect(config.sttLanguage == "auto")
+        #expect(config.recordMode == .tap)
+        #expect(config.historyRetentionDays == 30)
     }
 
     // Validates that DictationViewModel (if separate from the view) initialises.

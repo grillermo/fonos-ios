@@ -11,6 +11,7 @@ struct RecordButton: View {
 
     enum ButtonState: Equatable {
         case idle
+        case starting
         case recording
         case processing
     }
@@ -30,6 +31,10 @@ struct RecordButton: View {
                 Image(systemName: "mic.fill")
                     .font(.system(size: 40, weight: .medium))
                     .foregroundColor(.white)
+            case .starting:
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(1.25)
             case .recording:
                 Image(systemName: "stop.fill")
                     .font(.system(size: 32, weight: .medium))
@@ -58,6 +63,7 @@ struct RecordButton: View {
     private var accessibilityLabel: String {
         switch state {
         case .idle: return "Record"
+        case .starting: return "Cancel recording start"
         case .recording: return "Stop recording"
         case .processing: return "Processing recording"
         }
@@ -66,6 +72,7 @@ struct RecordButton: View {
     private var accessibilityValue: String {
         switch state {
         case .idle: return "Idle"
+        case .starting: return "Starting"
         case .recording: return "Recording"
         case .processing: return "Processing"
         }
@@ -88,6 +95,7 @@ struct RecordButton: View {
 #Preview {
     VStack(spacing: 32) {
         RecordButton(state: .idle, onTap: {})
+        RecordButton(state: .starting, onTap: {})
         RecordButton(state: .recording, onTap: {})
         RecordButton(state: .processing, onTap: {})
     }

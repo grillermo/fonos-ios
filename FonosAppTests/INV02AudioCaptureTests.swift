@@ -132,6 +132,32 @@ struct INV02AudioCaptureTests {
         }
     }
 
+    @Test("WAV decoder rejects a zero-channel header without crashing")
+    func wavRejectsZeroChannels() throws {
+        let buffer = makeMockPCMBuffer(frameCount: 160)
+        var wavData = try AudioCaptureService.encodeToWAV(buffer: buffer)
+        wavData[22] = 0
+        wavData[23] = 0
+
+        #expect(throws: WAVError.self) {
+            _ = try AudioCaptureService.decodeWAV(data: wavData)
+        }
+    }
+
+    @Test("WAV decoder rejects a data chunk larger than its payload")
+    func wavRejectsTruncatedPayload() throws {
+        let buffer = makeMockPCMBuffer(frameCount: 160)
+        var wavData = try AudioCaptureService.encodeToWAV(buffer: buffer)
+        wavData[40] = 0xff
+        wavData[41] = 0xff
+        wavData[42] = 0xff
+        wavData[43] = 0x7f
+
+        #expect(throws: WAVError.self) {
+            _ = try AudioCaptureService.decodeWAV(data: wavData)
+        }
+    }
+
     // --- Service lifecycle ---
 
     @Test("AudioCaptureService initialises without crash")

@@ -92,17 +92,17 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     private var resolvedLLM: (any NoteLLMProvider)? {
         if let test = _testLLM { return test }
         // In production: resolve from config (mirroring DictationViewModel pattern)
-        let profileID = config.llmProfile
+        let profileID = ModelProfileReference.normalized(config.llmProfile)
         guard !profileID.isEmpty,
               let profile = config.modelProfiles.first(where: { $0.id == profileID }) else {
             return nil
         }
         let key = (try? KeychainStore(service: "com.fonos.models").get(profile.id)) ?? ""
-        let baseURL = profile.baseURL ?? ""
         let service = LLMService(
             apiKey: key,
             modelID: profile.modelID,
-            baseURL: baseURL.isEmpty ? "https://api.openai.com" : baseURL
+            baseURL: profile.effectiveBaseURL,
+            provider: profile.provider
         )
         return LLMServiceNoteAdapter(service: service)
     }
@@ -200,7 +200,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             }
             let rawText = vocab.correct(sttText)
 
-            var processedText: String? = nil
+            var processedText: String?
             if let baseLLMConfig = resolved.llm, let llmProvider = llm {
                 let glossary = vocab.glossary ?? ""
                 let llmConfig = NotebookLLMConfig(
@@ -250,10 +250,15 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     private func startLevelPolling() {
         levelPollTimer?.invalidate()
         levelPollTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            let level = self.audioCapture.currentAudioLevel
-            if abs(self.audioLevel - level) > 0.01 {
-                self.audioLevel = level
+            // This timer is created by the @MainActor view model, so it is
+            // attached to the main run loop. Make that executor guarantee
+            // explicit to Swift 6 without spawning an untracked Task per tick.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let level = self.audioCapture.currentAudioLevel
+                if abs(self.audioLevel - level) > 0.01 {
+                    self.audioLevel = level
+                }
             }
         }
     }

@@ -50,16 +50,16 @@ Fonos 1.0 is the first iOS release, with dictation, history, notes, model settin
 
 Fonos does not require account sign-in.
 
-The main app can use Apple Speech for dictation. Users may also manually configure OpenAI-compatible STT or LLM services in Settings by adding an endpoint and API key.
+The main app can use Apple Speech for dictation. Users may also manually configure network STT or LLM services in Settings by adding an endpoint and API key. Fonos identifies the provider, destination, and data types and requires explicit permission before sending audio or text. Permissions can be withdrawn in Settings; API keys remain in Apple Keychain.
 
-The keyboard extension requires Full Access and communicates with the main app through an App Group. To test the keyboard extension, please open the Fonos app first, then switch to the Fonos keyboard from another app.
+The keyboard extension requires Full Access and communicates with the main app through an App Group because iOS custom keyboards cannot access the microphone directly. To test it, open Fonos → Settings → General and explicitly start the 15-minute Keyboard Ready session, then switch to the Fonos keyboard in another app. iOS keeps its microphone indicator visible during that bounded session. Fonos discards idle audio buffers; after the keyboard microphone is tapped, it keeps only that bounded utterance in memory and releases it when the selected recipe finishes, fails, or is cancelled.
 
 ## Still Required From You
 
-- Support URL
+- Support URL: `https://github.com/ethannortharc/fonos/issues`
 - Marketing URL, optional
-- Privacy Policy URL
+- Privacy Policy URL: a public HTTPS URL is still required before submitting the App Store version to App Review
 - Copyright
 - Age Rating answers
-- App Privacy labels: confirm whether audio, transcripts, and diagnostics are processed or stored by third-party services
-- Export Compliance answers: confirm whether the app only uses system HTTPS / standard encryption
+- App Privacy labels: confirm whether audio, transcripts, notes, or diagnostics leave the device and remain accessible to the developer or a service provider after the real-time request finishes
+- Export Compliance: confirm the processed build does not show Missing Compliance; answer only if App Store Connect still prompts after reading `ITSAppUsesNonExemptEncryption = NO`

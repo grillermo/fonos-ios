@@ -6,6 +6,7 @@
 
 import Testing
 import Foundation
+import os
 @testable import FonosApp
 
 private func json(_ obj: [String: Any]) -> Data {
@@ -179,17 +180,21 @@ struct ConfigDeepLinkTests {
     @Test("fonos://config posts .fonosImportConfig with the URL payload")
     func configLinkPosts() async {
         let url = ConfigBundleCodec.encodeURL(bundleJSON: json(["name": "Shared"]))
-        var received: String?
+        let received = OSAllocatedUnfairLock<String?>(initialState: nil)
         let token = NotificationCenter.default.addObserver(
             forName: .fonosImportConfig, object: nil, queue: .main
-        ) { note in received = note.userInfo?["payload"] as? String }
+        ) { note in
+            let payload = note.userInfo?["payload"] as? String
+            received.withLock { $0 = payload }
+        }
         defer { NotificationCenter.default.removeObserver(token) }
 
         DeepLinkRouter.handle(url)
 
-        #expect(received != nil)
+        let payload = received.withLock { $0 }
+        #expect(payload != nil)
         // The payload decodes back to the shared bundle.
-        let decoded = try? received.map { try ConfigBundleCodec.decode($0) } ?? nil
+        let decoded = try? payload.map { try ConfigBundleCodec.decode($0) } ?? nil
         #expect(decoded.map { obj($0)["name"] as? String } == "Shared")
     }
 }

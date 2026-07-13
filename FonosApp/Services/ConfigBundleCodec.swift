@@ -29,8 +29,10 @@ enum ConfigBundleCodec {
         comps.scheme = scheme
         comps.host = host
         comps.queryItems = [URLQueryItem(name: queryKey, value: encodePayload(bundleJSON: bundleJSON))]
-        // Force-unwrap is safe: scheme+host+query always yields a valid URL.
-        return comps.url!
+        guard let url = comps.url else {
+            preconditionFailure("Static Fonos config URL components must form a valid URL")
+        }
+        return url
     }
 
     /// The bare `base64url(zlib(json))` payload (no URL wrapper).

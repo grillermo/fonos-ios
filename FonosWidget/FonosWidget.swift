@@ -122,6 +122,14 @@ struct FonosWidget: Widget {
     }
 }
 
+@main
+struct FonosWidgets: WidgetBundle {
+    @WidgetBundleBuilder
+    var body: some Widget {
+        FonosWidget()
+    }
+}
+
 // MARK: - Previews
 
 #Preview(as: .systemSmall) {

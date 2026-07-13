@@ -1,87 +1,85 @@
 # Release Checklist
 
-## 已确认
+## Current candidate
 
-- Bundle ID：`com.fonos.ios`
-- Marketing version：`1.0`
-- Build number：`2`
-- Deployment target：iOS `17.0`
-- Device family：iPhone
-- Team ID：`SBU743JJ9S`
-- App display name：`Fonos`
-- 本地化：`en`、`zh-Hans`
-- iPhone 17 Pro 截图：已生成到 `release/app-store/screenshots/iphone-17-pro/`
-- 截图尺寸：`1206 x 2622` portrait PNG
-- 截图数据：通过 `FONOS_SCREENSHOT_MODE=1` 注入 in-memory demo data
-- Release archive：已生成到 `build/FonosApp.xcarchive`
-- App Store IPA：已导出到 `build/AppStore/FonosApp.ipa`
-- Distribution signing：`Cloud Managed Apple Distribution`，过期日 `2027-07-05`
-- App Store Connect upload：`1.0 (2)` 已上传成功，等待 Apple 处理 build
-- App icon：已替换为最终黑金声纹图标，已补齐 iPhone required sizes 和 1024px marketing icon
-- App icon source：`release/app-store/icon/fonos-icon-final-1024.png`
+- App: `com.fonos.ios`, version `1.0 (3)`
+- Keyboard: `com.fonos.ios.keyboard`, version `1.0 (3)`
+- Widget: `com.fonos.ios.widget`, version `1.0 (3)`
+- Deployment target: iOS `17.0`
+- Device family: iPhone (`UIDeviceFamily = [1]`)
+- Team: `SBU743JJ9S`
+- Localizations: English and Simplified Chinese
+- Toolchain: Xcode `26.2`, iOS SDK `26.2`, Swift `6.2.3`
+- Export compliance: `ITSAppUsesNonExemptEncryption = NO`; the app uses Apple-provided HTTPS and Keychain APIs and no custom cryptography
 
-## 已跑验证
+## Candidate validation — July 13, 2026
+
+- Clean generic iOS Simulator build: passed
+- Release static analysis: passed
+- Unit/invariant suite: `532 / 532` passed, no failures or skips
+- UI suite: `7 / 7` passed, including launch, tab navigation, Flow surfaces, recording entry, and screenshots
+- Strict SwiftLint findings reduced from the main-branch baseline of `38` to `6`; the remaining findings are file/type-length warnings in four established service/settings files, with no force unwrap/try, complexity, long-function, or large-tuple findings
+- Unsigned Release device archive: passed at `/tmp/FonosApp-final.xcarchive`
+- Archive inspection: App, Keyboard, and Widget are all `1.0 (3)`, arm64, iPhone-only
+- Privacy manifests: present in App and Keyboard bundles and pass `plutil -lint`
+- String catalogs: valid JSON; English and Simplified Chinese compile
+- App Store screenshot test: passed on iPhone 17 Pro Max
+- Upload screenshot set: `release/app-store/screenshots/iphone-17-pro-max/`, four `1320 x 2868` portrait PNG files
+
+Representative commands:
 
 ```bash
 xcodebuild build -project FonosApp.xcodeproj -scheme FonosApp \
-  -destination 'platform=iOS Simulator,id=480335BF-BE94-43D4-8335-35330B6F157B' \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
+
+xcodebuild analyze -project FonosApp.xcodeproj -scheme FonosApp \
+  -configuration Release -destination 'generic/platform=iOS Simulator' \
   CODE_SIGNING_ALLOWED=NO
 
-xcodebuild build -project FonosApp.xcodeproj -scheme FonosApp \
-  -destination 'generic/platform=iOS Simulator' \
+xcodebuild test -project FonosApp.xcodeproj -scheme FonosApp \
+  -destination 'platform=iOS Simulator,name=iPhone 16' \
   CODE_SIGNING_ALLOWED=NO
 
-FONOS_SCREENSHOT_DIR="$PWD/release/app-store/screenshots/iphone-17-pro" \
 xcodebuild test -project FonosApp.xcodeproj -scheme FonosAppUITests \
-  -destination 'platform=iOS Simulator,id=480335BF-BE94-43D4-8335-35330B6F157B' \
-  -only-testing:FonosAppUITests/FonosAppUITests/testCaptureAppStoreScreenshots \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
   CODE_SIGNING_ALLOWED=NO
 
 xcodebuild archive -project FonosApp.xcodeproj -scheme FonosApp \
-  -configuration Release \
-  -destination 'generic/platform=iOS' \
-  -archivePath build/FonosApp.xcarchive
-
-xcodebuild -exportArchive \
-  -archivePath build/FonosApp.xcarchive \
-  -exportPath build/AppStoreUpload \
-  -exportOptionsPlist release/app-store/ExportOptions.app-store-upload.plist \
-  -allowProvisioningUpdates
+  -configuration Release -destination 'generic/platform=iOS' \
+  -archivePath /tmp/FonosApp-final.xcarchive CODE_SIGNING_ALLOWED=NO
 ```
 
-## 当前状态
+## Historical artifacts — do not reuse for build 3
 
-App Store Connect 上传已成功。Apple 侧可能还需要几分钟处理 build；处理完成后，可在 App Store Connect 的 Fonos 版本页或 TestFlight 里选择 `1.0 (2)`。
+- `build/FonosApp.xcarchive` is historical `1.0 (2)`.
+- `build/AppStore/FonosApp.ipa` is historical build `1` and does not contain the Widget.
+- App Store Connect previously accepted the historical `1.0 (2)` binary upload; that does not mean it was distributed through TestFlight or approved by App Review, and it does not validate `1.0 (3)`.
 
-本机 Keychain 里没有本地 `Apple Distribution` 证书；当前导出使用 Xcode 自动签名和 Apple cloud managed distribution signing。导出摘要里的 profiles：
+## Before uploading build 3 / internal TestFlight
 
-- `iOS Team Store Provisioning Profile: com.fonos.ios`
-- `iOS Team Store Provisioning Profile: com.fonos.ios.keyboard`
+- Create a newly signed `1.0 (3)` archive with automatic signing.
+- Confirm distribution profiles and signatures for App, Keyboard, and Widget.
+- Export/upload build 3 and wait for App Store Connect processing.
+- Confirm the processed build does not show Missing Compliance. Because `ITSAppUsesNonExemptEncryption = NO`, answer an export-compliance prompt only if App Store Connect still presents one.
+- Assign an internal TestFlight group.
+- On a physical iPhone, recheck Keyboard Ready while locked/backgrounded, phone-call interruption, Bluetooth route changes, expiry during an utterance, and repeated dictation.
 
-## 还没做
+Privacy Policy URL and full App Store metadata do not block binary upload or internal TestFlight.
+`FONOS_PRIVACY_POLICY_URL` is compiled into the app. If build 3 will also be the App Review candidate, fill it before creating the signed archive. If build 3 is uploaded with an empty URL for internal TestFlight, use build 4 for a later review candidate that includes the in-app link.
 
-- App Store Connect 版本页选择上传后的 build
-- 隐私标签填写
-- 年龄分级填写
-- 出口合规填写
-- 选择价格和可用地区
-- App Review 联系方式和审核备注确认
+## Before App Review
 
-## 平台支持
+- Publish a public HTTPS privacy-policy page and put the same URL in App Store Connect and `FONOS_PRIVACY_POLICY_URL`.
+- Publish a support page with a private contact email; a public GitHub Issues page alone should not be the only contact path.
+- Finalize App Privacy answers against the actual remote STT/LLM providers and their retention behavior.
+- Complete age rating, copyright, price/regions, App Review contact, review notes, and export compliance.
+- Declare the required EU Digital Services Act trader/non-trader status.
+- Select processed build `1.0 (3)` on the App Store version page.
+- Run external TestFlight/Beta App Review first if desired, with beta description, feedback email, and test notes.
 
-当前 `1.0 (2)` 是 iPhone-only 首发包：
+## Signed export / upload commands
 
-- Xcode `TARGETED_DEVICE_FAMILY = 1`
-- Archive `UIDeviceFamily = [1]`
-- App Store Connect 只需当前 iPhone 截图集
-
-iPad 原生支持建议作为后续版本处理：需要改为 universal target、适配宽屏 UI、测试 iPad 键盘扩展，并准备 iPad 截图。
-
-Apple Watch 原生支持需要新增 watchOS app/extension target，设计 Watch 上的核心流程，并准备 watchOS metadata、截图和图标；当前项目没有 Watch target。
-
-## Export / Upload 命令
-
-导出 IPA：
+After creating a signed build 3 archive at `build/FonosApp.xcarchive`:
 
 ```bash
 xcodebuild -exportArchive \
@@ -89,11 +87,7 @@ xcodebuild -exportArchive \
   -exportPath build/AppStore \
   -exportOptionsPlist release/app-store/ExportOptions.app-store-connect.plist \
   -allowProvisioningUpdates
-```
 
-上传 App Store Connect：
-
-```bash
 xcodebuild -exportArchive \
   -archivePath build/FonosApp.xcarchive \
   -exportPath build/AppStoreUpload \
@@ -101,4 +95,8 @@ xcodebuild -exportArchive \
   -allowProvisioningUpdates
 ```
 
-本次命令行上传使用当前 Xcode 登录账号和 cloud managed distribution signing 成功完成。
+Do not describe build 3 as uploaded until App Store Connect confirms the upload and processing status.
+
+## Later platforms
+
+iPad remains a later universal-target project: it needs wide-layout work, iPad keyboard testing, and iPad screenshots. Apple Watch requires a separate watchOS app/extension and is not part of `1.0 (3)`.

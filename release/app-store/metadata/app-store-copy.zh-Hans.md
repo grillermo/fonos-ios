@@ -38,16 +38,16 @@ Fonos 1.0 首个 iOS 版本：支持主 App 听写、历史记录、笔记、设
 
 ## 审核备注草案
 
-Fonos 不需要账号登录。主 App 可以使用 Apple Speech 进行听写；如需使用第三方兼容 OpenAI 的 STT 或 LLM 服务，可在 Settings 中手动添加模型端点和 API key。
+Fonos 不需要账号登录。主 App 可以使用 Apple Speech 进行听写；也可在 Settings 中手动添加网络 STT 或 LLM 服务。发送音频或文本前，Fonos 会明确显示服务商、目标地址和数据类型并要求用户同意；权限可在 Settings 中撤回，API key 始终保存在 Apple Keychain。
 
-键盘扩展需要开启 Full Access，并通过 App Group 与主 App 通信。审核时如测试键盘扩展，请先打开 Fonos 主 App，再在系统键盘中切换到 Fonos 键盘。
+键盘扩展需要开启 Full Access。由于 iOS 自定义键盘不能直接访问麦克风，它通过 App Group 与主 App 通信。审核时请先打开 Fonos → Settings → General，明确启动 15 分钟 Keyboard Ready，再到其他 App 切换至 Fonos 键盘。限时会话期间 iOS 会持续显示麦克风指示；Fonos 会丢弃空闲音频 buffer，点击键盘麦克风后只在内存中保留这一段有限语音，并在所选 recipe 完成、失败或取消后释放。
 
 ## 仍需人工确认
 
-- Support URL
+- Support URL：`https://github.com/ethannortharc/fonos/issues`
 - Marketing URL（可选）
-- Privacy Policy URL
+- Privacy Policy URL：提交 App Review 前仍需提供一个公开 HTTPS URL
 - Copyright
 - App Store Connect 年龄分级问卷
-- 隐私标签：需要确认音频、转写文本、诊断信息是否被第三方服务处理或保存
-- 加密出口合规：需要按 Apple 表单确认是否仅使用系统 HTTPS / 标准加密
+- 隐私标签：需要确认音频、转写文本、笔记或诊断信息是否离开设备，以及实时请求结束后开发者或服务商是否仍可访问或保留
+- 加密出口合规：确认 processed build 没有显示 Missing Compliance；工程已声明不使用非豁免加密，仅在 App Store Connect 仍提示时回答

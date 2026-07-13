@@ -38,8 +38,8 @@
             </array>
         </dict>
     </array>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Fonos needs microphone access to record your voice for dictation.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Fonos uses the microphone for dictation and, when you explicitly start Keyboard Ready, keeps microphone input active so its custom keyboard can dictate without switching apps.</string>
     <key>NSCameraUsageDescription</key>
     <string>Fonos uses the camera to scan a config QR code so you can load a shared setup.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
@@ -58,11 +58,15 @@
     </array>
     <key>NSAppTransportSecurity</key>
     <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <key>FonosPrivacyPolicyURL</key>
+    <string>$(FONOS_PRIVACY_POLICY_URL)</string>
+    <key>FonosSupportURL</key>
+    <string>$(FONOS_SUPPORT_URL)</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Fonos connects to local AI model servers (OMLX, Ollama, LM Studio) for speech recognition and text processing.</string>
     <key>NSBonjourServices</key>

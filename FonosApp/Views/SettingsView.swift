@@ -116,6 +116,8 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         List {
+            keyboardReadySection
+            privacySection
             doctorSection
             dictationSection
             recordingSection
@@ -124,6 +126,50 @@ struct SettingsView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+    }
+
+    // MARK: - Keyboard Ready Section
+
+    private var keyboardReadySection: some View {
+        Section {
+            KeyboardReadyControl()
+                .listRowBackground(cardBg)
+        } header: {
+            sectionHeader("Keyboard Dictation")
+        } footer: {
+            Text(
+                """
+                A custom iOS keyboard cannot open the microphone itself. \
+                During a Keyboard Ready session, Fonos keeps microphone input active in the background but discards idle audio; \
+                it retains audio only after you tap the Fonos keyboard microphone.
+                """
+            )
+                .font(.system(size: 12))
+                .foregroundColor(textDim)
+        }
+    }
+
+    // MARK: - Privacy Section
+
+    private var privacySection: some View {
+        Section {
+            NavigationLink {
+                PrivacySettingsView(config: config)
+            } label: {
+                Label {
+                    Text("Privacy & Data Sharing")
+                        .foregroundColor(textPrimary)
+                } icon: {
+                    Image(systemName: "hand.raised.fill")
+                        .foregroundColor(amber)
+                }
+            }
+            .listRowBackground(cardBg)
+        } footer: {
+            Text("Review the privacy policy and withdraw permission for configured AI endpoints.")
+                .font(.system(size: 12))
+                .foregroundColor(textDim)
+        }
     }
 
     // MARK: - Setup Doctor Section
@@ -154,14 +200,11 @@ struct SettingsView: View {
     private var dictationSection: some View {
         Section {
             // Default Mode
-            Picker("Default Mode", selection: $config.activeModeID) {
-                Text("📝 Raw").tag("raw")
-                Text("✨ Polish").tag("polish")
-                Text("👔 Formal").tag("formal")
-                Text("🌐 Translate").tag("translate")
-                // Custom modes from config
-                ForEach(config.modeConfigs.filter { !$0.isBuiltIn }, id: \.id) { modeConfig in
-                    Text("\(modeConfig.icon) \(modeConfig.name)").tag(modeConfig.id)
+            Picker("Default Mode", selection: activeWorkflowBinding) {
+                ForEach(voiceWorkflows, id: \.id) { workflow in
+                    Text(workflow.name)
+                        .tag(workflow.id)
+                        .disabled(!isWorkflowRunnable(workflow))
                 }
             }
             .foregroundColor(textPrimary)
@@ -169,7 +212,7 @@ struct SettingsView: View {
             .listRowSeparatorTint(separator)
 
             // STT Language
-            Picker("STT Language", selection: $config.sttLanguage) {
+            Picker("STT Language", selection: sttLanguageBinding) {
                 Text("Auto-detect").tag("auto")
                 Section("Common") {
                     Text("English").tag("en")
@@ -197,7 +240,7 @@ struct SettingsView: View {
             .listRowSeparatorTint(separator)
 
             // Translate Target Language (visible when mode is translate)
-            Picker("Translate To", selection: $config.translateTargetLanguage) {
+            Picker("Translate To", selection: translateTargetBinding) {
                 Text("English").tag("English")
                 Text("中文 (Chinese)").tag("Chinese")
                 Text("日本語 (Japanese)").tag("Japanese")
@@ -221,17 +264,99 @@ struct SettingsView: View {
         } header: {
             sectionHeader("Dictation")
         } footer: {
-            Text("Default Mode is used when dictation starts. STT Language helps the speech recognizer. Translate To sets the target language for Translate mode.")
+            Text(
+                """
+                Default Mode is used when dictation starts. \
+                STT Language helps the speech recognizer. \
+                Translate To sets the target language for Translate mode.
+                """
+            )
                 .foregroundColor(textDim)
                 .font(.system(size: 12))
         }
+    }
+
+    private var voiceWorkflows: [WorkflowDefinition] {
+        let catalog = config.workflowCatalog
+        return catalog.workflows.filter {
+            catalog.widget(id: $0.source)?.typeTag == "microphone"
+        }
+    }
+
+    private var activeWorkflowBinding: Binding<String> {
+        Binding(
+            get: { config.activeVoiceWorkflowID },
+            set: { workflowID in
+                guard let workflow = config.workflowCatalog.workflow(id: workflowID),
+                      (try? VoiceWorkflowOperationalValidator.validateMicrophone(
+                        definition: workflow,
+                        catalog: config.workflowCatalog,
+                        config: config
+                      )) != nil else { return }
+                config.activeVoiceWorkflowID = workflowID
+                if let legacyID = WorkflowMigration.legacyModeID(forWorkflowID: workflowID) {
+                    config.activeModeID = legacyID
+                }
+            }
+        )
+    }
+
+    private func isWorkflowRunnable(_ workflow: WorkflowDefinition) -> Bool {
+        (try? VoiceWorkflowOperationalValidator.validateMicrophone(
+            definition: workflow,
+            catalog: config.workflowCatalog,
+            config: config
+        )) != nil
+    }
+
+    private var sttLanguageBinding: Binding<String> {
+        Binding(
+            get: { config.sttLanguage },
+            set: { language in
+                config.sttLanguage = language
+                synchronizeDefaultSTTLanguage(language)
+            }
+        )
+    }
+
+    private var translateTargetBinding: Binding<String> {
+        Binding(
+            get: { config.translateTargetLanguage },
+            set: { target in
+                config.translateTargetLanguage = target
+                synchronizeBuiltinTranslateTarget(target)
+            }
+        )
+    }
+
+    private func synchronizeDefaultSTTLanguage(_ language: String) {
+        if let index = config.widgets.firstIndex(where: { $0.id == "stt.default" }) {
+            // A non-builtin overlay may have been imported from desktop and is
+            // recipe-owned; do not silently rewrite it from a legacy setting.
+            guard config.widgets[index].builtin,
+                  case .object(var props) = config.widgets[index].props else { return }
+            props["language"] = .string(language)
+            config.widgets[index].props = .object(props)
+            return
+        }
+
+        guard var widget = config.workflowCatalog.widget(id: "stt.default"),
+              widget.builtin,
+              case .object(var props) = widget.props else { return }
+        props["language"] = .string(language)
+        widget.props = .object(props)
+        config.widgets.append(widget)
+    }
+
+    private func synchronizeBuiltinTranslateTarget(_ target: String) {
+        WorkflowMigration.synchronizeBuiltinTranslateTarget(target, in: &config)
     }
 
     // MARK: - Recording Section
 
     private var recordingSection: some View {
         Section {
-            Picker("Record Mode", selection: $config.recordMode) {
+            Picker("Active Recipe Capture", selection: activeCaptureBinding) {
                 Text("Tap to Record").tag(RecordMode.tap)
                 Text("Hold to Record").tag(RecordMode.hold)
             }
@@ -269,7 +394,39 @@ struct SettingsView: View {
             }
         } header: {
             sectionHeader("Recording")
+        } footer: {
+            Text(
+                """
+                Capture is stored in the selected recipe. \
+                The keyboard adapts microphone recipes to its tap control. \
+                Auto-send is added as a traced iOS output for each run.
+                """
+            )
+                .foregroundColor(textDim)
+                .font(.system(size: 12))
         }
+    }
+
+    private var activeCaptureBinding: Binding<RecordMode> {
+        Binding(
+            get: {
+                guard let workflow = config.activeVoiceWorkflow,
+                      let source = config.workflowCatalog.widget(id: workflow.source) else {
+                    return config.recordMode
+                }
+                return source.props["capture"]?.stringValue == "toggle" ? .tap : .hold
+            },
+            set: { mode in
+                config.recordMode = mode // Codable compatibility mirror.
+                guard var workflow = config.activeVoiceWorkflow else { return }
+                workflow.source = mode == .hold ? "src.mic-hold" : "src.mic-toggle"
+                if let index = config.workflows.firstIndex(where: { $0.id == workflow.id }) {
+                    config.workflows[index] = workflow
+                } else {
+                    config.workflows.append(workflow)
+                }
+            }
+        )
     }
 
     // MARK: - Destinations Section

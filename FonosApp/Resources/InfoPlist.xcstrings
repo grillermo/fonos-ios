@@ -1,0 +1,74 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSCameraUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonos uses the camera to scan a config QR code so you can load a shared setup."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonos 使用相机扫描配置二维码，以载入共享设置。"
+          }
+        }
+      }
+    },
+    "NSLocalNetworkUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonos connects to local AI model servers (OMLX, Ollama, LM Studio) for speech recognition and text processing."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonos 会连接本地 AI 模型服务器（OMLX、Ollama、LM Studio）以进行语音识别和文字处理。"
+          }
+        }
+      }
+    },
+    "NSMicrophoneUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonos uses the microphone for dictation and, when you explicitly start Keyboard Ready, keeps microphone input active so its custom keyboard can dictate without switching apps."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonos 使用麦克风进行听写；当你明确开启 Keyboard Ready 时，它会保持麦克风输入活动，让自定义键盘无需切换 App 即可听写。"
+          }
+        }
+      }
+    },
+    "NSSpeechRecognitionUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonos uses speech recognition to transcribe your dictation."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonos 使用语音识别将你的听写转换为文字。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

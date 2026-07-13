@@ -104,7 +104,7 @@ struct INV05LLMServiceTests {
             }
             return okLLMResponse(body: openAIChatResponse(content: "polished text"))
         }
-        let service = LLMService(session: makeLLMSession(), apiKey: "sk-test")
+        let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
         _ = try? await service.process(text: "raw input", mode: .polish)
 
         let messages = capturedBody["messages"] as? [[String: String]] ?? []
@@ -124,7 +124,7 @@ struct INV05LLMServiceTests {
             }
             return okLLMResponse(body: openAIChatResponse(content: "polished"))
         }
-        let service = LLMService(session: makeLLMSession(), apiKey: "sk-test")
+        let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
         _ = try? await service.process(text: "um yeah so basically", mode: .polish)
 
         let messages = capturedBody["messages"] as? [[String: String]] ?? []
@@ -145,7 +145,7 @@ struct INV05LLMServiceTests {
             }
             return okLLMResponse(body: openAIChatResponse(content: "formal text"))
         }
-        let service = LLMService(session: makeLLMSession(), apiKey: "sk-test")
+        let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
         _ = try? await service.process(text: "hey just checking in", mode: .formal)
 
         let messages = capturedBody["messages"] as? [[String: String]] ?? []
@@ -167,7 +167,7 @@ struct INV05LLMServiceTests {
             }
             return okLLMResponse(body: openAIChatResponse(content: "Bonjour"))
         }
-        let service = LLMService(session: makeLLMSession(), apiKey: "sk-test")
+        let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
         _ = try? await service.process(text: "hello", mode: .translate(targetLanguage: "French"))
 
         let messages = capturedBody["messages"] as? [[String: String]] ?? []
@@ -188,7 +188,7 @@ struct INV05LLMServiceTests {
             }
             return okLLMResponse(body: openAIChatResponse(content: "Arrr!"))
         }
-        let service = LLMService(session: makeLLMSession(), apiKey: "sk-test")
+        let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
         let customMode = Mode.custom(systemPrompt: customPrompt,
                                      userTemplate: "{text}",
                                      temperature: 0.7,
@@ -207,7 +207,7 @@ struct INV05LLMServiceTests {
         LLMMockURLProtocol.requestHandler = { _ in
             okLLMResponse(body: openAIChatResponse(content: "Here is the polished text."))
         }
-        let service = LLMService(session: makeLLMSession(), apiKey: "sk-test")
+        let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
         let result = try await service.process(text: "raw text", mode: .polish)
         #expect(result == "Here is the polished text.")
     }
@@ -219,7 +219,7 @@ struct INV05LLMServiceTests {
         LLMMockURLProtocol.requestHandler = { _ in
             errorLLMResponse(statusCode: 500)
         }
-        let service = LLMService(session: makeLLMSession(), apiKey: "sk-test")
+        let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
         await #expect(throws: LLMError.self) {
             _ = try await service.process(text: "raw text", mode: .polish)
         }
@@ -237,7 +237,7 @@ struct INV05LLMServiceTests {
             }
             return okLLMResponse(body: openAIChatResponse(content: "done"))
         }
-        let service = LLMService(session: makeLLMSession(), apiKey: "sk-test",
+        let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test",
                                  modelID: "o3-mini")
         _ = try? await service.process(text: "hello", mode: .polish)
         // Reasoning models (o-series) must not include temperature
@@ -254,7 +254,7 @@ struct INV05LLMServiceTests {
             }
             return okLLMResponse(body: openAIChatResponse(content: "done"))
         }
-        let service = LLMService(session: makeLLMSession(), apiKey: "sk-test",
+        let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test",
                                  modelID: "gpt-4o")
         _ = try? await service.process(text: "hello", mode: .polish)
         #expect(capturedBody["temperature"] != nil)
@@ -272,11 +272,81 @@ struct INV05LLMServiceTests {
             }
             return okLLMResponse(body: openAIChatResponse(content: "done"))
         }
-        let service = LLMService(session: makeLLMSession(), apiKey: "sk-test",
+        let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test",
                                  modelID: "gpt-4o")
         _ = try? await service.process(text: "hello", mode: .polish)
         // OpenAI current API uses max_completion_tokens, not max_tokens
         #expect(capturedBody["max_completion_tokens"] != nil)
         #expect(capturedBody["max_tokens"] == nil)
+    }
+
+    @Test("Anthropic profiles use the Messages API contract")
+    func anthropicProviderContract() async throws {
+        var capturedRequest: URLRequest?
+        var capturedBody: [String: Any] = [:]
+        LLMMockURLProtocol.requestHandler = { request in
+            capturedRequest = request
+            if let body = request.httpBody {
+                capturedBody = try JSONSerialization.jsonObject(with: body) as? [String: Any] ?? [:]
+            }
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (response, Data(#"{"content":[{"type":"text","text":"Claude result"}]}"#.utf8))
+        }
+        let service = authorizedLLMService(
+            session: makeLLMSession(),
+            apiKey: "anthropic-key",
+            modelID: "claude-sonnet-4",
+            baseURL: "https://api.anthropic.com",
+            provider: "anthropic"
+        )
+
+        let result = try await service.process(text: "hello", mode: .polish)
+
+        #expect(capturedRequest?.url?.path == "/v1/messages")
+        #expect(capturedRequest?.value(forHTTPHeaderField: "x-api-key") == "anthropic-key")
+        #expect(capturedRequest?.value(forHTTPHeaderField: "anthropic-version") == "2023-06-01")
+        #expect(capturedBody["system"] as? String == Mode.polish.systemPrompt)
+        #expect((capturedBody["messages"] as? [[String: String]])?.allSatisfy {
+            $0["role"] != "system"
+        } == true)
+        #expect(result == "Claude result")
+    }
+
+    @Test("Google profiles use the Gemini generateContent contract")
+    func googleProviderContract() async throws {
+        var capturedRequest: URLRequest?
+        var capturedBody: [String: Any] = [:]
+        LLMMockURLProtocol.requestHandler = { request in
+            capturedRequest = request
+            if let body = request.httpBody {
+                capturedBody = try JSONSerialization.jsonObject(with: body) as? [String: Any] ?? [:]
+            }
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+            )!
+            return (
+                response,
+                Data(#"{"candidates":[{"content":{"parts":[{"text":"Gemini result"}]}}]}"#.utf8)
+            )
+        }
+        let service = authorizedLLMService(
+            session: makeLLMSession(),
+            apiKey: "google-key",
+            modelID: "gemini-2.5-flash",
+            baseURL: "https://generativelanguage.googleapis.com",
+            provider: "google"
+        )
+
+        let result = try await service.process(text: "hello", mode: .polish)
+
+        #expect(capturedRequest?.url?.path == "/v1beta/models/gemini-2.5-flash:generateContent")
+        #expect(URLComponents(url: capturedRequest!.url!, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "key" })?.value == "google-key")
+        #expect(capturedBody["systemInstruction"] != nil)
+        let contents = capturedBody["contents"] as? [[String: Any]]
+        #expect(contents?.first?["role"] as? String == "user")
+        #expect(result == "Gemini result")
     }
 }

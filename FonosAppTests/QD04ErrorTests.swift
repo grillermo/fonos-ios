@@ -66,7 +66,7 @@ struct QD04ErrorHandlingTests {
 
     @Test("WhisperSTT network timeout throws descriptive STTError.timeout (not crash)")
     func whisperSTTTimeoutDescriptive() async throws {
-        let stt = WhisperSTT(session: sessionWith(TimeoutMockURLProtocol.self), apiKey: "sk-test")
+        let stt = authorizedWhisperSTT(session: sessionWith(TimeoutMockURLProtocol.self), apiKey: "sk-test")
         do {
             _ = try await stt.transcribe(audioData: dummyAudio(), language: "en")
             Issue.record("Expected timeout error")
@@ -82,7 +82,7 @@ struct QD04ErrorHandlingTests {
 
     @Test("LLMService network timeout throws descriptive LLMError (not crash)")
     func llmServiceTimeoutDescriptive() async throws {
-        let service = LLMService(session: sessionWith(TimeoutMockURLProtocol.self), apiKey: "sk-test")
+        let service = authorizedLLMService(session: sessionWith(TimeoutMockURLProtocol.self), apiKey: "sk-test")
         do {
             _ = try await service.process(text: "hello", mode: .polish)
             Issue.record("Expected timeout error")
@@ -97,7 +97,7 @@ struct QD04ErrorHandlingTests {
 
     @Test("WhisperSTT 401 error throws STTError.authenticationFailed with clear message")
     func whisperSTTInvalidKeyError() async throws {
-        let stt = WhisperSTT(session: sessionWith(InvalidKeyMockURLProtocol.self), apiKey: "sk-bad")
+        let stt = authorizedWhisperSTT(session: sessionWith(InvalidKeyMockURLProtocol.self), apiKey: "sk-bad")
         do {
             _ = try await stt.transcribe(audioData: dummyAudio(), language: "en")
             Issue.record("Expected authentication error")
@@ -110,7 +110,7 @@ struct QD04ErrorHandlingTests {
 
     @Test("LLMService 401 error throws LLMError.authenticationFailed with clear message")
     func llmServiceInvalidKeyError() async throws {
-        let service = LLMService(session: sessionWith(InvalidKeyMockURLProtocol.self), apiKey: "sk-bad")
+        let service = authorizedLLMService(session: sessionWith(InvalidKeyMockURLProtocol.self), apiKey: "sk-bad")
         do {
             _ = try await service.process(text: "hello", mode: .polish)
             Issue.record("Expected authentication error")
@@ -126,7 +126,7 @@ struct QD04ErrorHandlingTests {
 
     @Test("WhisperSTT malformed JSON response throws STTError.parseError (not crash)")
     func whisperSTTMalformedResponseNoCrash() async throws {
-        let stt = WhisperSTT(session: sessionWith(MalformedResponseMockURLProtocol.self), apiKey: "sk-test")
+        let stt = authorizedWhisperSTT(session: sessionWith(MalformedResponseMockURLProtocol.self), apiKey: "sk-test")
         do {
             _ = try await stt.transcribe(audioData: dummyAudio(), language: "en")
             Issue.record("Expected parse error")
@@ -140,7 +140,7 @@ struct QD04ErrorHandlingTests {
 
     @Test("LLMService malformed JSON response throws LLMError.parseError (not crash)")
     func llmServiceMalformedResponseNoCrash() async throws {
-        let service = LLMService(session: sessionWith(MalformedResponseMockURLProtocol.self), apiKey: "sk-test")
+        let service = authorizedLLMService(session: sessionWith(MalformedResponseMockURLProtocol.self), apiKey: "sk-test")
         do {
             _ = try await service.process(text: "hello", mode: .polish)
             Issue.record("Expected parse error")
@@ -206,14 +206,12 @@ struct QD04ErrorHandlingTests {
 // MARK: - Mock helpers
 
 private final class PermissionDeniedMockRecognizer: SpeechRecognizerProtocol, @unchecked Sendable {
-    var stubbedTranscript: String? { nil }
-
     func requestAuthorization(_ handler: @escaping (SFSpeechRecognizerAuthorizationStatus) -> Void) {
         handler(.denied)
     }
 
     func recognize(request: SFSpeechAudioBufferRecognitionRequest,
-                   resultHandler: @escaping (SFSpeechRecognitionResult?, Error?) -> Void) -> SFSpeechRecognitionTask {
+                   resultHandler: @escaping (SpeechRecognitionOutput?, Error?) -> Void) -> SFSpeechRecognitionTask {
         resultHandler(nil, nil)
         return SFSpeechRecognitionTask()
     }

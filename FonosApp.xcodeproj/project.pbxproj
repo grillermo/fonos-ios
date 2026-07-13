@@ -10,6 +10,7 @@
 		663C34A9CC884E40AD59B701 /* FonosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663C34A9CC884E40AD59B711 /* FonosApp.swift */; };
 		663C34A9CC884E40AD59B702 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663C34A9CC884E40AD59B712 /* ContentView.swift */; };
 		663C34A9CC884E40AD59B703 /* DictationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663C34A9CC884E40AD59B713 /* DictationView.swift */; };
+		A30000000000000000000002 /* WorkflowProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* WorkflowProgressView.swift */; };
 		663C34A9CC884E40AD59B704 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A1 /* HistoryView.swift */; };
 		663C34A9CC884E40AD59B705 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A2 /* SettingsView.swift */; };
 		663C34A9CC884E40AD59B706 /* Color+Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A3 /* Color+Hex.swift */; };
@@ -23,26 +24,44 @@
 		FE0030AA0030AA0030AA02B /* ConfigBundleCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */; };
 		FE0035AA0035AA0035AA02B /* WAVSegment.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0035AA0035AA0035AA01A /* WAVSegment.swift */; };
 		FE0024AA0024AA0024AA0002 /* SetupDoctor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */; };
+		PRV001000000000000000002 /* RemoteAIConsentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = PRV001000000000000000001 /* RemoteAIConsentStore.swift */; };
+		PRV002000000000000000002 /* PrivacySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = PRV002000000000000000001 /* PrivacySettingsView.swift */; };
+		PRV003000000000000000002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = PRV003000000000000000001 /* PrivacyInfo.xcprivacy */; };
+		PRV004000000000000000002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = PRV004000000000000000001 /* PrivacyInfo.xcprivacy */; };
+		KBRDY1000000000000000002 /* KeyboardReadyViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBRDY1000000000000000001 /* KeyboardReadyViews.swift */; };
 		FE0025AA0025AA0025AA0002 /* SetupDoctorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */; };
 		FE0034AA0034AA0034AA02B /* ConfigSharingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0034AA0034AA0034AA01A /* ConfigSharingViews.swift */; };
 		663C34A9CC884E40AD59B709 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */; };
+		AC1000000000000000000002 /* AudioCaptureWAVCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1000000000000000000001 /* AudioCaptureWAVCodec.swift */; };
 		663C34A9CC884E40AD59B70A /* STTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A7 /* STTService.swift */; };
 		663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */; };
-		F10000000000000000000011 /* SpeechFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* SpeechFlow.swift */; };
-		F10000000000000000000012 /* SpeechFlowRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* SpeechFlowRunner.swift */; };
-		663C34A9CC884E40AD59B70C /* TextRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A9 /* TextRouter.swift */; };
+		F10000000000000000000011 /* VoiceWorkflowSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* VoiceWorkflowSupport.swift */; };
+		A20000000000000000000011 /* WorkflowDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* WorkflowDefinition.swift */; };
+		A20000000000000000000012 /* WorkflowMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* WorkflowMigration.swift */; };
+		A20000000000000000000014 /* VoiceWorkflowEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* VoiceWorkflowEngine.swift */; };
+		A20000000000000000000016 /* VoiceWorkflowContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* VoiceWorkflowContracts.swift */; };
+		A20000000000000000000017 /* VoiceWorkflowPlanFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* VoiceWorkflowPlanFactory.swift */; };
+		A20000000000000000000018 /* VoiceWorkflowCompiler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* VoiceWorkflowCompiler.swift */; };
+		VR0100000000000000000002 /* VoiceRecipeEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = VR0100000000000000000001 /* VoiceRecipeEditor.swift */; };
+		VR0200000000000000000002 /* VoiceRecipePipelineViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = VR0200000000000000000001 /* VoiceRecipePipelineViews.swift */; };
+		VR0300000000000000000002 /* VoiceRecipeDrafts.swift in Sources */ = {isa = PBXBuildFile; fileRef = VR0300000000000000000001 /* VoiceRecipeDrafts.swift */; };
+		VR0400000000000000000002 /* VoiceRecipeLLMDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = VR0400000000000000000001 /* VoiceRecipeLLMDraft.swift */; };
+		VR0500000000000000000002 /* VoiceRecipeDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = VR0500000000000000000001 /* VoiceRecipeDefaults.swift */; };
 		663C34A9CC884E40AD59B70D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645AA /* Assets.xcassets */; };
 		FE0026AA0026AA0026AA0002 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FE0026AA0026AA0026AA0001 /* Localizable.xcstrings */; };
+		IPL001000000000000000002 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = IPL001000000000000000001 /* InfoPlist.xcstrings */; };
+		KB12014AA012014AA012014D /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = FE0026AA0026AA0026AA0001 /* Localizable.xcstrings */; };
 		77D41ED5933B42BF9BE9C701 /* FonosAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C711 /* FonosAppTests.swift */; };
 		77D41ED5933B42BF9BE9C702 /* AudioCaptureServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C712 /* AudioCaptureServiceTests.swift */; };
 		77D41ED5933B42BF9BE9C703 /* STTServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C713 /* STTServiceTests.swift */; };
 		77D41ED5933B42BF9BE9C704 /* LLMServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C714 /* LLMServiceTests.swift */; };
 		77D41ED5933B42BF9BE9C705 /* ModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C715 /* ModeTests.swift */; };
-		77D41ED5933B42BF9BE9C706 /* TextRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C716 /* TextRouterTests.swift */; };
 		77D41ED5933B42BF9BE9C707 /* ConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C717 /* ConfigTests.swift */; };
 		77D41ED5933B42BF9BE9C708 /* HistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C718 /* HistoryTests.swift */; };
 		77D41ED5933B42BF9BE9C709 /* OfflineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C719 /* OfflineTests.swift */; };
-		F10000000000000000000013 /* SpeechFlowRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* SpeechFlowRunnerTests.swift */; };
+		F10000000000000000000013 /* VoiceWorkflowIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* VoiceWorkflowIntegrationTests.swift */; };
+		A20000000000000000000013 /* WorkflowMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* WorkflowMigrationTests.swift */; };
+		A20000000000000000000015 /* VoiceWorkflowEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* VoiceWorkflowEngineTests.swift */; };
 		AA01B001AA014D00AA014D01 /* Mode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01B001AA014D00AA014D11 /* Mode.swift */; };
 		AA01B001AA014D00AA014D02 /* ModelProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01B001AA014D00AA014D12 /* ModelProfile.swift */; };
 		AA01B001AA014D00AA014D03 /* Destination.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01B001AA014D00AA014D13 /* Destination.swift */; };
@@ -56,11 +75,11 @@
 		CC08001CC008001CC008001B /* INV08URLSchemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC08001CC008001CC008001A /* INV08URLSchemeTests.swift */; };
 		KB12001AA012001AA012001B /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = KB12001AA012001AA012001A /* KeyboardViewController.swift */; };
 		KB12002AA012002AA012002B /* KeyboardAudioService.swift in Sources */ = {isa = PBXBuildFile; fileRef = KB12002AA012002AA012002A /* KeyboardAudioService.swift */; };
-		KB12003AA012003AA012003B /* KeyboardSTTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = KB12003AA012003AA012003A /* KeyboardSTTService.swift */; };
 		KBIPC001AA001AA001AA01B /* KeyboardIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */; };
 		KBIPC001AA001AA001AA02B /* KeyboardIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */; };
 		KBIPC002AA002AA002AA01B /* KeyboardIPCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBIPC002AA002AA002AA01A /* KeyboardIPCTests.swift */; };
 		KB12004AA012004AA012004B /* FonosKeyboard.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = KB12004AA012004AA012004A /* FonosKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		D90100000000000000000001 /* FonosWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D90100000000000000000002 /* FonosWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		MP01001AA001001AA001001B /* ModelProbeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MP01001AA001001AA001001A /* ModelProbeService.swift */; };
 		UI13001AA013001AA013001B /* FonosAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UI13001AA013001AA013001A /* FonosAppUITests.swift */; };
 		FE0001AA0001AA0001AA0002 /* NotebookTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0001AA0001AA0001AA0001 /* NotebookTemplate.swift */; };
@@ -74,6 +93,8 @@
 		WP01VON002AA002AA002001B /* NoteEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP01VON002AA002AA002001A /* NoteEntry.swift */; };
 		WP01VON003AA003AA003001B /* NoteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP01VON003AA003AA003001A /* NoteService.swift */; };
 		WP01VON004AA004AA004001B /* NoteINV01ModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP01VON004AA004AA004001A /* NoteINV01ModelTests.swift */; };
+		NT0200000000000000000002 /* NoteINV02ServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NT0200000000000000000001 /* NoteINV02ServiceTests.swift */; };
+		NT0700000000000000000002 /* NoteINV07QuickNoteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NT0700000000000000000001 /* NoteINV07QuickNoteTests.swift */; };
 		FE0006AA0006AA0006AA0002 /* NoteINV14BackfillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0006AA0006AA0006AA0001 /* NoteINV14BackfillTests.swift */; };
 		FE0012AA0012AA0012AA0002 /* NoteINV12ExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0012AA0012AA0012AA0001 /* NoteINV12ExportTests.swift */; };
 		FE0016AA0016AA0016AA0002 /* RecordGestureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0016AA0016AA0016AA0001 /* RecordGestureTests.swift */; };
@@ -110,22 +131,18 @@
 		WP06002AA006002AA006002B /* RecordButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP06002AA006002AA006002A /* RecordButton.swift */; };
 		WP06003AA006003AA006003B /* INV01BuildTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP06003AA006003AA006003A /* INV01BuildTests.swift */; };
 		WP06004AA006004AA006004B /* INV11OfflineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP06004AA006004AA006004A /* INV11OfflineTests.swift */; };
-		WP07001AA007001AA007001B /* ModePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP07001AA007001AA007001A /* ModePicker.swift */; };
 		WP07002AA007002AA007002B /* ActivityCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP07002AA007002AA007002A /* ActivityCard.swift */; };
-		WP08001AA008001AA008001B /* ProvidersSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP08001AA008001AA008001A /* ProvidersSection.swift */; };
-		WP08002AA008002AA008002B /* ModesSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP08002AA008002AA008002A /* ModesSection.swift */; };
 		WP08003AA008003AA008003B /* DestinationsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP08003AA008003AA008003A /* DestinationsSection.swift */; };
-		WP08004AA008004AA008004B /* DestinationPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP08004AA008004AA008004A /* DestinationPicker.swift */; };
 		WP09001AA009001AA009001B /* FonosWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP09001AA009001AA009001A /* FonosWidget.swift */; };
 		WP09002AA009002AA009002B /* FonosLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP09002AA009002AA009002A /* FonosLiveActivity.swift */; };
 		WP09003AA009003AA009003B /* DictateIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP09003AA009003AA009003A /* DictateIntent.swift */; };
-		WP09004AA009004AA009004B /* FonosIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP09004AA009004AA009004A /* FonosIntents.swift */; };
 		WP10001AA010001AA010001B /* QD06BundleSizeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP10001AA010001AA010001A /* QD06BundleSizeTests.swift */; };
 		WP10002AA010002AA010002B /* QD07SwiftLintTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP10002AA010002AA010002A /* QD07SwiftLintTests.swift */; };
 		WP11001AA011001AA011001B /* ModeConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP11001AA011001AA011001A /* ModeConfig.swift */; };
 		WP11002AA011002AA011002B /* ModelsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP11002AA011002AA011002A /* ModelsTab.swift */; };
 		FE0020AA0020AA0020AA0002 /* VocabTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0020AA0020AA0020AA0001 /* VocabTab.swift */; };
 		WP11003AA011003AA011003B /* ModesTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP11003AA011003AA011003A /* ModesTab.swift */; };
+		WP11004AA011004AA011004B /* WorkflowRecipeStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP11004AA011004AA011004A /* WorkflowRecipeStrip.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -142,6 +159,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = KB12005AA012005AA012005C;
 			remoteInfo = FonosKeyboard;
+		};
+		D90100000000000000000004 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 11F387A36EAB42D7B29216FC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D90100000000000000000008;
+			remoteInfo = FonosWidget;
 		};
 		UI13002AA013002AA013002C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -160,6 +184,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				KB12004AA012004AA012004B /* FonosKeyboard.appex in Embed App Extensions */,
+				D90100000000000000000001 /* FonosWidget.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -180,31 +205,49 @@
 		FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigBundleCodec.swift; sourceTree = "<group>"; };
 		FE0035AA0035AA0035AA01A /* WAVSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WAVSegment.swift; sourceTree = "<group>"; };
 		FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctor.swift; sourceTree = "<group>"; };
+		PRV001000000000000000001 /* RemoteAIConsentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAIConsentStore.swift; sourceTree = "<group>"; };
+		PRV002000000000000000001 /* PrivacySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacySettingsView.swift; sourceTree = "<group>"; };
+		PRV003000000000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		PRV004000000000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		KBRDY1000000000000000001 /* KeyboardReadyViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardReadyViews.swift; sourceTree = "<group>"; };
 		FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctorView.swift; sourceTree = "<group>"; };
 		FE0034AA0034AA0034AA01A /* ConfigSharingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigSharingViews.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
+		AC1000000000000000000001 /* AudioCaptureWAVCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureWAVCodec.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A7 /* STTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STTService.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
-		F10000000000000000000001 /* SpeechFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechFlow.swift; sourceTree = "<group>"; };
-		F10000000000000000000002 /* SpeechFlowRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechFlowRunner.swift; sourceTree = "<group>"; };
-		50BA9D99CDBC44ABA7E645A9 /* TextRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextRouter.swift; sourceTree = "<group>"; };
+		F10000000000000000000001 /* VoiceWorkflowSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowSupport.swift; sourceTree = "<group>"; };
+		A20000000000000000000001 /* WorkflowDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowDefinition.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* WorkflowMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowMigration.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* VoiceWorkflowEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowEngine.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* VoiceWorkflowContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowContracts.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* VoiceWorkflowPlanFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowPlanFactory.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* VoiceWorkflowCompiler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowCompiler.swift; sourceTree = "<group>"; };
+		VR0100000000000000000001 /* VoiceRecipeEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecipeEditor.swift; sourceTree = "<group>"; };
+		VR0200000000000000000001 /* VoiceRecipePipelineViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecipePipelineViews.swift; sourceTree = "<group>"; };
+		VR0300000000000000000001 /* VoiceRecipeDrafts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecipeDrafts.swift; sourceTree = "<group>"; };
+		VR0400000000000000000001 /* VoiceRecipeLLMDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecipeLLMDraft.swift; sourceTree = "<group>"; };
+		VR0500000000000000000001 /* VoiceRecipeDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecipeDefaults.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		FE0026AA0026AA0026AA0001 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		IPL001000000000000000001 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645AB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		663C34A9CC884E40AD59B711 /* FonosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosApp.swift; sourceTree = "<group>"; };
 		663C34A9CC884E40AD59B712 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		663C34A9CC884E40AD59B713 /* DictationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationView.swift; sourceTree = "<group>"; };
+		A30000000000000000000001 /* WorkflowProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowProgressView.swift; sourceTree = "<group>"; };
 		6FA1E3408A1E47AF91355F0B /* FonosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FonosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		77D41ED5933B42BF9BE9C711 /* FonosAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosAppTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C712 /* AudioCaptureServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureServiceTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C713 /* STTServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STTServiceTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C714 /* LLMServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMServiceTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C715 /* ModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeTests.swift; sourceTree = "<group>"; };
-		77D41ED5933B42BF9BE9C716 /* TextRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextRouterTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C717 /* ConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C718 /* HistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C719 /* OfflineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineTests.swift; sourceTree = "<group>"; };
-		F10000000000000000000003 /* SpeechFlowRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechFlowRunnerTests.swift; sourceTree = "<group>"; };
+		F10000000000000000000003 /* VoiceWorkflowIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowIntegrationTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* WorkflowMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowMigrationTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* VoiceWorkflowEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowEngineTests.swift; sourceTree = "<group>"; };
 		AA01B001AA014D00AA014D11 /* Mode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Mode.swift; sourceTree = "<group>"; };
 		AA01B001AA014D00AA014D12 /* ModelProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProfile.swift; sourceTree = "<group>"; };
 		AA01B001AA014D00AA014D13 /* Destination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Destination.swift; sourceTree = "<group>"; };
@@ -220,12 +263,13 @@
 		CC08001CC008001CC008001A /* INV08URLSchemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = INV08URLSchemeTests.swift; sourceTree = "<group>"; };
 		KB12001AA012001AA012001A /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		KB12002AA012002AA012002A /* KeyboardAudioService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardAudioService.swift; sourceTree = "<group>"; };
-		KB12003AA012003AA012003A /* KeyboardSTTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardSTTService.swift; sourceTree = "<group>"; };
 		KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardIPC.swift; sourceTree = "<group>"; };
 		KBIPC002AA002AA002AA01A /* KeyboardIPCTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardIPCTests.swift; sourceTree = "<group>"; };
 		KB12004AA012004AA012004A /* FonosKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FonosKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		KB12006AA012006AA012006A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		KB12007AA012007AA012007A /* FonosKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FonosKeyboard.entitlements; sourceTree = "<group>"; };
+		D90100000000000000000002 /* FonosWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FonosWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D90100000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		MP01001AA001001AA001001A /* ModelProbeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProbeService.swift; sourceTree = "<group>"; };
 		UI13001AA013001AA013001A /* FonosAppUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosAppUITests.swift; sourceTree = "<group>"; };
 		UI13003AA013003AA013003A /* FonosAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FonosAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -240,6 +284,8 @@
 		WP01VON002AA002AA002001A /* NoteEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteEntry.swift; sourceTree = "<group>"; };
 		WP01VON003AA003AA003001A /* NoteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteService.swift; sourceTree = "<group>"; };
 		WP01VON004AA004AA004001A /* NoteINV01ModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV01ModelTests.swift; sourceTree = "<group>"; };
+		NT0200000000000000000001 /* NoteINV02ServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV02ServiceTests.swift; sourceTree = "<group>"; };
+		NT0700000000000000000001 /* NoteINV07QuickNoteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV07QuickNoteTests.swift; sourceTree = "<group>"; };
 		FE0006AA0006AA0006AA0001 /* NoteINV14BackfillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV14BackfillTests.swift; sourceTree = "<group>"; };
 		FE0012AA0012AA0012AA0001 /* NoteINV12ExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV12ExportTests.swift; sourceTree = "<group>"; };
 		FE0016AA0016AA0016AA0001 /* RecordGestureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordGestureTests.swift; sourceTree = "<group>"; };
@@ -276,22 +322,18 @@
 		WP06002AA006002AA006002A /* RecordButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordButton.swift; sourceTree = "<group>"; };
 		WP06003AA006003AA006003A /* INV01BuildTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = INV01BuildTests.swift; sourceTree = "<group>"; };
 		WP06004AA006004AA006004A /* INV11OfflineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = INV11OfflineTests.swift; sourceTree = "<group>"; };
-		WP07001AA007001AA007001A /* ModePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModePicker.swift; sourceTree = "<group>"; };
 		WP07002AA007002AA007002A /* ActivityCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCard.swift; sourceTree = "<group>"; };
-		WP08001AA008001AA008001A /* ProvidersSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProvidersSection.swift; sourceTree = "<group>"; };
-		WP08002AA008002AA008002A /* ModesSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModesSection.swift; sourceTree = "<group>"; };
 		WP08003AA008003AA008003A /* DestinationsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationsSection.swift; sourceTree = "<group>"; };
-		WP08004AA008004AA008004A /* DestinationPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationPicker.swift; sourceTree = "<group>"; };
 		WP09001AA009001AA009001A /* FonosWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosWidget.swift; sourceTree = "<group>"; };
 		WP09002AA009002AA009002A /* FonosLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosLiveActivity.swift; sourceTree = "<group>"; };
 		WP09003AA009003AA009003A /* DictateIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictateIntent.swift; sourceTree = "<group>"; };
-		WP09004AA009004AA009004A /* FonosIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosIntents.swift; sourceTree = "<group>"; };
 		WP10001AA010001AA010001A /* QD06BundleSizeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QD06BundleSizeTests.swift; sourceTree = "<group>"; };
 		WP10002AA010002AA010002A /* QD07SwiftLintTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QD07SwiftLintTests.swift; sourceTree = "<group>"; };
 		WP11001AA011001AA011001A /* ModeConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeConfig.swift; sourceTree = "<group>"; };
 		WP11002AA011002AA011002A /* ModelsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTab.swift; sourceTree = "<group>"; };
 		FE0020AA0020AA0020AA0001 /* VocabTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabTab.swift; sourceTree = "<group>"; };
 		WP11003AA011003AA011003A /* ModesTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModesTab.swift; sourceTree = "<group>"; };
+		WP11004AA011004AA011004A /* WorkflowRecipeStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowRecipeStrip.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -316,6 +358,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D90100000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		UI13004AA013004AA013004C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -329,14 +378,20 @@
 		125C680D279A4D5CB0E5B54D /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				PRV002000000000000000001 /* PrivacySettingsView.swift */,
+				KBRDY1000000000000000001 /* KeyboardReadyViews.swift */,
 				663C34A9CC884E40AD59B712 /* ContentView.swift */,
 				663C34A9CC884E40AD59B713 /* DictationView.swift */,
+				A30000000000000000000001 /* WorkflowProgressView.swift */,
 				50BA9D99CDBC44ABA7E645A1 /* HistoryView.swift */,
 				FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */,
 				FE0034AA0034AA0034AA01A /* ConfigSharingViews.swift */,
+				VR0100000000000000000001 /* VoiceRecipeEditor.swift */,
+				VR0200000000000000000001 /* VoiceRecipePipelineViews.swift */,
+				VR0300000000000000000001 /* VoiceRecipeDrafts.swift */,
+				VR0400000000000000000001 /* VoiceRecipeLLMDraft.swift */,
+				VR0500000000000000000001 /* VoiceRecipeDefaults.swift */,
 				50BA9D99CDBC44ABA7E645A2 /* SettingsView.swift */,
-				WP07001AA007001AA007001A /* ModePicker.swift */,
-				WP08004AA008004AA008004A /* DestinationPicker.swift */,
 				WP03VON002AA002AA002001A /* NotesView.swift */,
 				WP03VON003AA003AA003001A /* NotebookDetailView.swift */,
 				WP04VON003AA003AA003001A /* NotebookSettingsView.swift */,
@@ -352,6 +407,7 @@
 			children = (
 				50BA9D99CDBC44ABA7E645A4 /* DictationSession.swift */,
 				50BA9D99CDBC44ABA7E645A5 /* AppConfig.swift */,
+				A20000000000000000000001 /* WorkflowDefinition.swift */,
 				FE0018AA0018AA0018AA0001 /* VocabBook.swift */,
 				AA01B001AA014D00AA014D11 /* Mode.swift */,
 				AA01B001AA014D00AA014D12 /* ModelProfile.swift */,
@@ -373,11 +429,12 @@
 				77D41ED5933B42BF9BE9C713 /* STTServiceTests.swift */,
 				77D41ED5933B42BF9BE9C714 /* LLMServiceTests.swift */,
 				77D41ED5933B42BF9BE9C715 /* ModeTests.swift */,
-				77D41ED5933B42BF9BE9C716 /* TextRouterTests.swift */,
 				77D41ED5933B42BF9BE9C717 /* ConfigTests.swift */,
 				77D41ED5933B42BF9BE9C718 /* HistoryTests.swift */,
 				77D41ED5933B42BF9BE9C719 /* OfflineTests.swift */,
-				F10000000000000000000003 /* SpeechFlowRunnerTests.swift */,
+				F10000000000000000000003 /* VoiceWorkflowIntegrationTests.swift */,
+				A20000000000000000000003 /* WorkflowMigrationTests.swift */,
+				A20000000000000000000005 /* VoiceWorkflowEngineTests.swift */,
 				AA01B001AA014D00AA014D15 /* INV06ModeTests.swift */,
 				AA01B001AA014D00AA014D16 /* INV09ConfigTests.swift */,
 				AA01B001AA014D00AA014D17 /* INV10HistoryTests.swift */,
@@ -395,6 +452,8 @@
 				WP10001AA010001AA010001A /* QD06BundleSizeTests.swift */,
 				WP10002AA010002AA010002A /* QD07SwiftLintTests.swift */,
 				WP01VON004AA004AA004001A /* NoteINV01ModelTests.swift */,
+				NT0200000000000000000001 /* NoteINV02ServiceTests.swift */,
+				NT0700000000000000000001 /* NoteINV07QuickNoteTests.swift */,
 				WP01VON005AA005AA005001A /* NoteINV13ContainerTests.swift */,
 				WP01VON006AA006AA006001A /* NoteQD03SyncFriendlyTests.swift */,
 				WP03VON005AA005AA005001A /* NoteINV03TabTests.swift */,
@@ -426,6 +485,7 @@
 				BAC7AF7161324CE4AF50AD41 /* FonosApp.app */,
 				6FA1E3408A1E47AF91355F0B /* FonosAppTests.xctest */,
 				KB12004AA012004AA012004A /* FonosKeyboard.appex */,
+				D90100000000000000000002 /* FonosWidget.appex */,
 				UI13003AA013003AA013003A /* FonosAppUITests.xctest */,
 			);
 			name = Products;
@@ -436,6 +496,8 @@
 			children = (
 				50BA9D99CDBC44ABA7E645AA /* Assets.xcassets */,
 				FE0026AA0026AA0026AA0001 /* Localizable.xcstrings */,
+				IPL001000000000000000001 /* InfoPlist.xcstrings */,
+				PRV003000000000000000001 /* PrivacyInfo.xcprivacy */,
 				50BA9D99CDBC44ABA7E645AB /* Info.plist */,
 				AA01B001AA014D00AA014D18 /* FonosApp.entitlements */,
 			);
@@ -468,12 +530,16 @@
 			isa = PBXGroup;
 			children = (
 				50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */,
+				AC1000000000000000000001 /* AudioCaptureWAVCodec.swift */,
 				50BA9D99CDBC44ABA7E645A7 /* STTService.swift */,
 				WP03001AA003001AA003001A /* FonosSTT.swift */,
 				50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */,
-				F10000000000000000000001 /* SpeechFlow.swift */,
-				F10000000000000000000002 /* SpeechFlowRunner.swift */,
-				50BA9D99CDBC44ABA7E645A9 /* TextRouter.swift */,
+				F10000000000000000000001 /* VoiceWorkflowSupport.swift */,
+				A20000000000000000000002 /* WorkflowMigration.swift */,
+				A20000000000000000000006 /* VoiceWorkflowContracts.swift */,
+				A20000000000000000000007 /* VoiceWorkflowPlanFactory.swift */,
+				A20000000000000000000008 /* VoiceWorkflowCompiler.swift */,
+				A20000000000000000000004 /* VoiceWorkflowEngine.swift */,
 				AA01B001AA014D00AA014D14 /* KeychainStore.swift */,
 				WP04000000000000000011 /* DictationViewModel.swift */,
 				MP01001AA001001AA001001A /* ModelProbeService.swift */,
@@ -486,6 +552,7 @@
 				FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */,
 				FE0035AA0035AA0035AA01A /* WAVSegment.swift */,
 				FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */,
+				PRV001000000000000000001 /* RemoteAIConsentStore.swift */,
 				WP03VON001AA001AA001001A /* NoteViewModel.swift */,
 				FE0002AA0002AA0002AA0001 /* NotebookPipeline.swift */,
 				FE0004AA0004AA0004AA0001 /* SharedNotebookCatalog.swift */,
@@ -511,10 +578,10 @@
 			children = (
 				KB12001AA012001AA012001A /* KeyboardViewController.swift */,
 				KB12002AA012002AA012002A /* KeyboardAudioService.swift */,
-				KB12003AA012003AA012003A /* KeyboardSTTService.swift */,
 				KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */,
 				KB12006AA012006AA012006A /* Info.plist */,
 				KB12007AA012007AA012007A /* FonosKeyboard.entitlements */,
+				PRV004000000000000000001 /* PrivacyInfo.xcprivacy */,
 			);
 			path = FonosKeyboard;
 			sourceTree = "<group>";
@@ -540,12 +607,11 @@
 		WP08000AA008000AA008000C /* SettingsView */ = {
 			isa = PBXGroup;
 			children = (
-				WP08001AA008001AA008001A /* ProvidersSection.swift */,
-				WP08002AA008002AA008002A /* ModesSection.swift */,
 				WP08003AA008003AA008003A /* DestinationsSection.swift */,
 				WP11002AA011002AA011002A /* ModelsTab.swift */,
 				FE0020AA0020AA0020AA0001 /* VocabTab.swift */,
 				WP11003AA011003AA011003A /* ModesTab.swift */,
+				WP11004AA011004AA011004A /* WorkflowRecipeStrip.swift */,
 			);
 			path = SettingsView;
 			sourceTree = "<group>";
@@ -555,6 +621,7 @@
 			children = (
 				WP09001AA009001AA009001A /* FonosWidget.swift */,
 				WP09002AA009002AA009002A /* FonosLiveActivity.swift */,
+				D90100000000000000000003 /* Info.plist */,
 			);
 			path = FonosWidget;
 			sourceTree = "<group>";
@@ -563,7 +630,6 @@
 			isa = PBXGroup;
 			children = (
 				WP09003AA009003AA009003A /* DictateIntent.swift */,
-				WP09004AA009004AA009004A /* FonosIntents.swift */,
 				WP04VON001AA001AA001001A /* RecordNoteIntent.swift */,
 			);
 			path = FonosIntents;
@@ -585,6 +651,7 @@
 			);
 			dependencies = (
 				KB12009AA012009AA012009C /* PBXTargetDependency */,
+				D90100000000000000000009 /* PBXTargetDependency */,
 			);
 			name = FonosApp;
 			productName = FonosApp;
@@ -625,6 +692,23 @@
 			productReference = KB12004AA012004AA012004A /* FonosKeyboard.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		D90100000000000000000008 /* FonosWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D9010000000000000000000C /* Build configuration list for PBXNativeTarget "FonosWidget" */;
+			buildPhases = (
+				D90100000000000000000006 /* Sources */,
+				D90100000000000000000007 /* Resources */,
+				D90100000000000000000005 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FonosWidget;
+			productName = FonosWidget;
+			productReference = D90100000000000000000002 /* FonosWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		UI13006AA013006AA013006C /* FonosAppUITests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = UI13009AA013009AA013009C /* Build configuration list for PBXNativeTarget "FonosAppUITests" */;
@@ -662,6 +746,9 @@
 					KB12005AA012005AA012005C = {
 						CreatedOnToolsVersion = 17.0;
 					};
+					D90100000000000000000008 = {
+						CreatedOnToolsVersion = 17.0;
+					};
 				};
 			};
 			buildConfigurationList = 756B8C3D892E4965B3541FAA /* Build configuration list for PBXProject "FonosApp" */;
@@ -681,6 +768,7 @@
 				7E63F5454DE64F8A84201298 /* FonosApp */,
 				C4780AAF578C46BFBB87A7AA /* FonosAppTests */,
 				KB12005AA012005AA012005C /* FonosKeyboard */,
+				D90100000000000000000008 /* FonosWidget */,
 				UI13006AA013006AA013006C /* FonosAppUITests */,
 			);
 		};
@@ -693,10 +781,21 @@
 			files = (
 				663C34A9CC884E40AD59B70D /* Assets.xcassets in Resources */,
 				FE0026AA0026AA0026AA0002 /* Localizable.xcstrings in Resources */,
+				IPL001000000000000000002 /* InfoPlist.xcstrings in Resources */,
+				PRV003000000000000000002 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		KB12014AA012014AA012014C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				KB12014AA012014AA012014D /* Localizable.xcstrings in Resources */,
+				PRV004000000000000000002 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D90100000000000000000007 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -715,11 +814,12 @@
 				77D41ED5933B42BF9BE9C703 /* STTServiceTests.swift in Sources */,
 				77D41ED5933B42BF9BE9C704 /* LLMServiceTests.swift in Sources */,
 				77D41ED5933B42BF9BE9C705 /* ModeTests.swift in Sources */,
-				77D41ED5933B42BF9BE9C706 /* TextRouterTests.swift in Sources */,
 				77D41ED5933B42BF9BE9C707 /* ConfigTests.swift in Sources */,
 				77D41ED5933B42BF9BE9C708 /* HistoryTests.swift in Sources */,
 				77D41ED5933B42BF9BE9C709 /* OfflineTests.swift in Sources */,
-				F10000000000000000000013 /* SpeechFlowRunnerTests.swift in Sources */,
+				F10000000000000000000013 /* VoiceWorkflowIntegrationTests.swift in Sources */,
+				A20000000000000000000013 /* WorkflowMigrationTests.swift in Sources */,
+				A20000000000000000000015 /* VoiceWorkflowEngineTests.swift in Sources */,
 				AA01B001AA014D00AA014D05 /* INV06ModeTests.swift in Sources */,
 				AA01B001AA014D00AA014D06 /* INV09ConfigTests.swift in Sources */,
 				AA01B001AA014D00AA014D07 /* INV10HistoryTests.swift in Sources */,
@@ -737,6 +837,8 @@
 				WP10001AA010001AA010001B /* QD06BundleSizeTests.swift in Sources */,
 				WP10002AA010002AA010002B /* QD07SwiftLintTests.swift in Sources */,
 				WP01VON004AA004AA004001B /* NoteINV01ModelTests.swift in Sources */,
+				NT0200000000000000000002 /* NoteINV02ServiceTests.swift in Sources */,
+				NT0700000000000000000002 /* NoteINV07QuickNoteTests.swift in Sources */,
 				WP01VON005AA005AA005001B /* NoteINV13ContainerTests.swift in Sources */,
 				WP01VON006AA006AA006001B /* NoteQD03SyncFriendlyTests.swift in Sources */,
 				WP03VON005AA005AA005001B /* NoteINV03TabTests.swift in Sources */,
@@ -768,6 +870,7 @@
 				663C34A9CC884E40AD59B701 /* FonosApp.swift in Sources */,
 				663C34A9CC884E40AD59B702 /* ContentView.swift in Sources */,
 				663C34A9CC884E40AD59B703 /* DictationView.swift in Sources */,
+				A30000000000000000000002 /* WorkflowProgressView.swift in Sources */,
 				663C34A9CC884E40AD59B704 /* HistoryView.swift in Sources */,
 				663C34A9CC884E40AD59B705 /* SettingsView.swift in Sources */,
 				663C34A9CC884E40AD59B706 /* Color+Hex.swift in Sources */,
@@ -781,14 +884,25 @@
 				FE0030AA0030AA0030AA02B /* ConfigBundleCodec.swift in Sources */,
 				FE0035AA0035AA0035AA02B /* WAVSegment.swift in Sources */,
 				FE0024AA0024AA0024AA0002 /* SetupDoctor.swift in Sources */,
+				PRV001000000000000000002 /* RemoteAIConsentStore.swift in Sources */,
 				FE0025AA0025AA0025AA0002 /* SetupDoctorView.swift in Sources */,
 				FE0034AA0034AA0034AA02B /* ConfigSharingViews.swift in Sources */,
 				663C34A9CC884E40AD59B709 /* AudioCaptureService.swift in Sources */,
+				AC1000000000000000000002 /* AudioCaptureWAVCodec.swift in Sources */,
 				663C34A9CC884E40AD59B70A /* STTService.swift in Sources */,
 				663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */,
-				F10000000000000000000011 /* SpeechFlow.swift in Sources */,
-				F10000000000000000000012 /* SpeechFlowRunner.swift in Sources */,
-				663C34A9CC884E40AD59B70C /* TextRouter.swift in Sources */,
+				F10000000000000000000011 /* VoiceWorkflowSupport.swift in Sources */,
+				A20000000000000000000011 /* WorkflowDefinition.swift in Sources */,
+				A20000000000000000000012 /* WorkflowMigration.swift in Sources */,
+				A20000000000000000000016 /* VoiceWorkflowContracts.swift in Sources */,
+				A20000000000000000000017 /* VoiceWorkflowPlanFactory.swift in Sources */,
+				A20000000000000000000018 /* VoiceWorkflowCompiler.swift in Sources */,
+				A20000000000000000000014 /* VoiceWorkflowEngine.swift in Sources */,
+				VR0100000000000000000002 /* VoiceRecipeEditor.swift in Sources */,
+				VR0200000000000000000002 /* VoiceRecipePipelineViews.swift in Sources */,
+				VR0300000000000000000002 /* VoiceRecipeDrafts.swift in Sources */,
+				VR0400000000000000000002 /* VoiceRecipeLLMDraft.swift in Sources */,
+				VR0500000000000000000002 /* VoiceRecipeDefaults.swift in Sources */,
 				MP01001AA001001AA001001B /* ModelProbeService.swift in Sources */,
 				AA01B001AA014D00AA014D01 /* Mode.swift in Sources */,
 				AA01B001AA014D00AA014D02 /* ModelProfile.swift in Sources */,
@@ -799,20 +913,16 @@
 				WP03001AA003001AA003001B /* FonosSTT.swift in Sources */,
 				WP06001AA006001AA006001B /* WaveformView.swift in Sources */,
 				WP06002AA006002AA006002B /* RecordButton.swift in Sources */,
-				WP07001AA007001AA007001B /* ModePicker.swift in Sources */,
 				WP07002AA007002AA007002B /* ActivityCard.swift in Sources */,
-				WP08001AA008001AA008001B /* ProvidersSection.swift in Sources */,
-				WP08002AA008002AA008002B /* ModesSection.swift in Sources */,
 				WP08003AA008003AA008003B /* DestinationsSection.swift in Sources */,
-				WP08004AA008004AA008004B /* DestinationPicker.swift in Sources */,
 				WP11001AA011001AA011001B /* ModeConfig.swift in Sources */,
 				WP11002AA011002AA011002B /* ModelsTab.swift in Sources */,
 				FE0020AA0020AA0020AA0002 /* VocabTab.swift in Sources */,
 				WP11003AA011003AA011003B /* ModesTab.swift in Sources */,
-				WP09001AA009001AA009001B /* FonosWidget.swift in Sources */,
-				WP09002AA009002AA009002B /* FonosLiveActivity.swift in Sources */,
+				WP11004AA011004AA011004B /* WorkflowRecipeStrip.swift in Sources */,
+				PRV002000000000000000002 /* PrivacySettingsView.swift in Sources */,
+				KBRDY1000000000000000002 /* KeyboardReadyViews.swift in Sources */,
 				WP09003AA009003AA009003B /* DictateIntent.swift in Sources */,
-				WP09004AA009004AA009004B /* FonosIntents.swift in Sources */,
 				WP01VON001AA001AA001001B /* NoteContainer.swift in Sources */,
 				WP01VON002AA002AA002001B /* NoteEntry.swift in Sources */,
 				WP01VON003AA003AA003001B /* NoteService.swift in Sources */,
@@ -837,8 +947,16 @@
 			files = (
 				KB12001AA012001AA012001B /* KeyboardViewController.swift in Sources */,
 				KB12002AA012002AA012002B /* KeyboardAudioService.swift in Sources */,
-				KB12003AA012003AA012003B /* KeyboardSTTService.swift in Sources */,
 				KBIPC001AA001AA001AA01B /* KeyboardIPC.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D90100000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				WP09001AA009001AA009001B /* FonosWidget.swift in Sources */,
+				WP09002AA009002AA009002B /* FonosLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -863,6 +981,11 @@
 			target = KB12005AA012005AA012005C /* FonosKeyboard */;
 			targetProxy = KB12010AA012010AA012010C /* PBXContainerItemProxy */;
 		};
+		D90100000000000000000009 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D90100000000000000000008 /* FonosWidget */;
+			targetProxy = D90100000000000000000004 /* PBXContainerItemProxy */;
+		};
 		UI13008AA013008AA013008C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 7E63F5454DE64F8A84201298 /* FonosApp */;
@@ -878,10 +1001,12 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = FonosApp/Resources/FonosApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = SBU743JJ9S;
 				ENABLE_PREVIEWS = YES;
+				FONOS_PRIVACY_POLICY_URL = "";
+				FONOS_SUPPORT_URL = "https://github.com/ethannortharc/fonos/issues";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FonosApp/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -903,7 +1028,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = SBU743JJ9S;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -1041,10 +1166,12 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = FonosApp/Resources/FonosApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = SBU743JJ9S;
 				ENABLE_PREVIEWS = YES;
+				FONOS_PRIVACY_POLICY_URL = "";
+				FONOS_SUPPORT_URL = "https://github.com/ethannortharc/fonos/issues";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FonosApp/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -1066,7 +1193,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = SBU743JJ9S;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -1086,7 +1213,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = FonosKeyboard/FonosKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = SBU743JJ9S;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FonosKeyboard/Info.plist;
@@ -1112,7 +1239,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = FonosKeyboard/FonosKeyboard.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = SBU743JJ9S;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = FonosKeyboard/Info.plist;
@@ -1132,11 +1259,61 @@
 			};
 			name = Release;
 		};
+		D9010000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = SBU743JJ9S;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FonosWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fonos.ios.widget;
+				PRODUCT_NAME = FonosWidget;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		D9010000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = SBU743JJ9S;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FonosWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fonos.ios.widget;
+				PRODUCT_NAME = FonosWidget;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		UI13010AA013010AA013010C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = SBU743JJ9S;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -1154,7 +1331,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = SBU743JJ9S;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -1203,6 +1380,15 @@
 			buildConfigurations = (
 				KB12015AA012015AA012015C /* Debug */,
 				KB12016AA012016AA012016C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D9010000000000000000000C /* Build configuration list for PBXNativeTarget "FonosWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D9010000000000000000000A /* Debug */,
+				D9010000000000000000000B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

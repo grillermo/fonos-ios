@@ -1,8 +1,4 @@
-// The keyboard's continuous recorder reads kb_continuous.wav WHILE
-// AVAudioRecorder is still recording. AVAudioRecorder leaves the data-chunk
-// size at 0 until stop(), so the extractor must use the real file bytes, not
-// the declared size — otherwise a live recording extracts to nothing and the
-// keyboard shows "No audio captured."
+// Covers the in-memory Keyboard Ready PCM wrapper and robust WAV inspection.
 //
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/WAVSegmentTests
 
@@ -54,6 +50,20 @@ private func wav(declaredDataSize: UInt32, pcm: [UInt8],
 
 struct WAVSegmentTests {
 
+    @Test("in-memory keyboard PCM is wrapped as a valid 16 kHz mono WAV")
+    func inMemoryPCMBuildsValidWAV() {
+        let pcm = Data(repeating: 0x22, count: 32_000)
+        let output = WAVSegment.build(
+            from: pcm[pcm.startIndex..<pcm.endIndex],
+            sampleRate: 16_000
+        )
+
+        #expect(String(data: output[0..<4], encoding: .ascii) == "RIFF")
+        #expect(String(data: output[8..<12], encoding: .ascii) == "WAVE")
+        #expect(WAVSegment.pcmByteCount(in: output) == 32_000)
+        #expect(WAVSegment.duration(of: output, sampleRate: 16_000) == 1)
+    }
+
     // MARK: - The regression
 
     @Test("live recording (declared data size 0) exposes all appended PCM")
@@ -63,45 +73,6 @@ struct WAVSegmentTests {
         // data chunk header ends at offset 44 for a standard header.
         #expect(range.lowerBound == 44)
         #expect(range.count == 8000)
-    }
-
-    @Test("segment of a live recording returns the requested audio, not empty")
-    func liveSegmentNotEmpty() {
-        let data = wav(declaredDataSize: 0, pcmBytes: 32000)   // 1.0s
-        let seg = WAVSegment.segment(data, from: 0, to: 0.5, sampleRate: 16000)
-        #expect(seg.count > 100)
-        // 0.5s of 16-bit mono @16kHz = 16000 bytes PCM + 44 header.
-        #expect(seg.count == 44 + 16000)
-    }
-
-    @Test("time slicing never emits half-sample PCM")
-    func timeSegmentAlignsToInt16Samples() {
-        let data = wav(declaredDataSize: 0, pcmBytes: 32000)   // 1.0s
-        let seg = WAVSegment.segment(data, from: 1.0 / 32000.0, to: 0.5 + 1.0 / 32000.0, sampleRate: 16000)
-        let range = WAVSegment.pcmRange(in: seg)
-        #expect(range.count == 16000)
-        #expect(range.count.isMultiple(of: 2))
-    }
-
-    @Test("PCM byte slicing extracts the new utterance")
-    func byteSegmentExtractsCurrentUtterance() {
-        let previousPCM = Array(repeating: UInt8(0x01), count: 6400)
-        let currentPCM = Array(repeating: UInt8(0x7f), count: 9600)
-        let data = wav(declaredDataSize: 0, pcm: previousPCM + currentPCM)
-
-        let seg = WAVSegment.segment(data, fromPCMByteOffset: previousPCM.count,
-                                     toPCMByteOffset: previousPCM.count + currentPCM.count,
-                                     sampleRate: 16000)
-        let range = WAVSegment.pcmRange(in: seg)
-        #expect(range.count == currentPCM.count)
-        #expect(Array(seg[range].prefix(8)) == Array(repeating: UInt8(0x7f), count: 8))
-    }
-
-    @Test("tail of a live recording returns the requested audio, not empty")
-    func liveTailNotEmpty() {
-        let data = wav(declaredDataSize: 0, pcmBytes: 32000)
-        let tail = WAVSegment.tail(data, duration: 0.5, sampleRate: 16000)
-        #expect(tail.count > 100)
     }
 
     // MARK: - Header robustness

@@ -355,7 +355,7 @@ struct VocabPipelineTests {
         GlossaryCaptureURLProtocol.lastSystemPrompt = nil
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [GlossaryCaptureURLProtocol.self]
-        let llm = LLMService(session: URLSession(configuration: config), apiKey: "sk-test")
+        let llm = authorizedLLMService(session: URLSession(configuration: config), apiKey: "sk-test")
         let vm = DictationViewModel(sttProvider: VocabRecordingSTT(transcript: "hi"), llmService: llm)
         vm.vocabStore = storeWithGlobalBook()
         _ = try await vm.processAudio(Data(count: 44), language: nil, mode: .polish)
@@ -423,7 +423,7 @@ struct WhisperVocabPromptTests {
         WhisperPromptCaptureURLProtocol.lastBody = nil
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [WhisperPromptCaptureURLProtocol.self]
-        let stt = WhisperSTT(session: URLSession(configuration: config), apiKey: "sk-test")
+        let stt = authorizedWhisperSTT(session: URLSession(configuration: config), apiKey: "sk-test")
         _ = try await stt.transcribe(audioData: Data(count: 44), language: "en",
                                      vocabulary: ["Kubernetes", "kubectl"])
         let bodyText = String(data: WhisperPromptCaptureURLProtocol.lastBody ?? Data(),
@@ -437,7 +437,7 @@ struct WhisperVocabPromptTests {
         WhisperPromptCaptureURLProtocol.lastBody = nil
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [WhisperPromptCaptureURLProtocol.self]
-        let stt = WhisperSTT(session: URLSession(configuration: config), apiKey: "sk-test")
+        let stt = authorizedWhisperSTT(session: URLSession(configuration: config), apiKey: "sk-test")
         _ = try await stt.transcribe(audioData: Data(count: 44), language: "en", vocabulary: [])
         let bodyText = String(data: WhisperPromptCaptureURLProtocol.lastBody ?? Data(),
                               encoding: .utf8) ?? ""
@@ -451,7 +451,7 @@ struct WhisperVocabPromptTests {
         WhisperPromptCaptureURLProtocol.lastBody = nil
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [WhisperPromptCaptureURLProtocol.self]
-        let stt = WhisperSTT(session: URLSession(configuration: config), apiKey: "sk-test")
+        let stt = authorizedWhisperSTT(session: URLSession(configuration: config), apiKey: "sk-test")
         _ = try await stt.transcribe(audioData: Data(count: 44), language: "en",
                                      vocabulary: ["MRI"], promptHint: "Medical dictation.")
         let bodyText = String(data: WhisperPromptCaptureURLProtocol.lastBody ?? Data(),
@@ -465,7 +465,7 @@ struct WhisperVocabPromptTests {
         WhisperPromptCaptureURLProtocol.lastBody = nil
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [WhisperPromptCaptureURLProtocol.self]
-        let stt = WhisperSTT(session: URLSession(configuration: config), apiKey: "sk-test")
+        let stt = authorizedWhisperSTT(session: URLSession(configuration: config), apiKey: "sk-test")
         _ = try await stt.transcribe(audioData: Data(count: 44), language: "en",
                                      vocabulary: [], promptHint: "Legal deposition.")
         let bodyText = String(data: WhisperPromptCaptureURLProtocol.lastBody ?? Data(),

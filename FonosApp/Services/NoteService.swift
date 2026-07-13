@@ -126,8 +126,12 @@ final class NoteService {
     convenience init() {
         let schema = Schema([NoteContainer.self, NoteEntry.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try! ModelContainer(for: schema, configurations: [config])
-        self.init(modelContainer: container)
+        do {
+            let container = try ModelContainer(for: schema, configurations: [config])
+            self.init(modelContainer: container)
+        } catch {
+            fatalError("Failed to create the in-memory note container: \(error)")
+        }
     }
 
     // MARK: - Quick Note

@@ -1,39 +1,24 @@
-import AVFoundation
-import Speech
+import Foundation
 
-private struct UncheckedSendableBox<T>: @unchecked Sendable {
-    let value: T
-    init(_ value: T) { self.value = value }
-}
-
-/// Keyboard extension audio service with two strategies:
+/// App Group IPC client for keyboard dictation.
 ///
-/// Strategy 1: AVAudioRecorder (try first — may work with paid developer account)
-///   Records directly in keyboard extension → transcribes with SFSpeechURLRecognitionRequest.
-///
-/// Strategy 2: App Group IPC (fallback — always works)
-///   Keyboard sends command → Main app records in background → Result via shared UserDefaults.
-///   Supports third-party STT (Whisper, OMLX) and LLM processing because the main app handles everything.
+/// Apple doesn't give custom keyboard extensions microphone access, even with
+/// Full Access. Audio capture and the complete workflow therefore belong to
+/// the containing app; the extension only sends session-scoped commands and
+/// consumes the resulting text.
 final class KeyboardAudioService: NSObject, @unchecked Sendable {
-
-    enum Strategy {
-        case direct       // AVAudioRecorder in keyboard extension
-        case appGroup     // Main app records via App Group IPC
-    }
-
     private(set) var isRecording = false
-    private(set) var activeStrategy: Strategy?
 
-    // Strategy 1: Direct recording
-    private var recorder: AVAudioRecorder?
-    private var recordingURL: URL?
-
-    // Strategy 2: App Group IPC (file-based — UserDefaults unreliable cross-process)
-    private let groupID = "group.com.fonos.ios"
+    // File-based App Group IPC; UserDefaults notifications aren't reliable
+    // enough for cross-process command delivery.
+    private let groupID = KeyboardIPC.appGroupID
     private var pollTimer: Timer?
     private var observersRegistered = false
     private var sessionTracker = KeyboardIPCSessionTracker()
     private var activeAppInstanceID: String?
+    private var activeReadySessionID: String?
+
+    var activeSessionID: String? { sessionTracker.currentSessionID }
 
     private var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID)
@@ -65,80 +50,8 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         diagnosticLog = []
         onPartialResult = onPartial
         onStatusChange = onStatus
-
-        let session = AVAudioSession.sharedInstance()
-        let perm = session.recordPermission
-        diag("perm=\(perm == .granted ? "granted" : perm == .denied ? "DENIED" : "undetermined")")
-
-        if perm == .denied {
-            completion(makeError("Mic DENIED — Settings → Privacy → Microphone"))
-            return
-        }
-
-        // Wrap completion to satisfy Sendable requirement of requestRecordPermission
-        let completionBox = UncheckedSendableBox(completion)
-        session.requestRecordPermission { [self] granted in
-            let comp = completionBox.value
-            diag("micReq → \(granted)")
-            DispatchQueue.main.async {
-                guard granted else {
-                    comp(self.makeError("Mic denied"))
-                    return
-                }
-                // Skip direct recording — keyboard extensions can't capture audio,
-                // and trying activates an audio session that KILLS the main app's recorder.
-                self.tryAppGroupRecording(completion: comp)
-            }
-        }
-    }
-
-    // MARK: - Strategy 1: AVAudioRecorder (Direct)
-
-    private func tryDirectRecording(completion: @escaping (Error?) -> Void) {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.mixWithOthers, .allowBluetoothHFP])
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
-            diag("session OK")
-        } catch {
-            diag("session err: \(error.localizedDescription)")
-        }
-
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("kb_rec.wav")
-        try? FileManager.default.removeItem(at: url)
-        recordingURL = url
-
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatLinearPCM),
-            AVSampleRateKey: 16000,
-            AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsBigEndianKey: false,
-        ]
-
-        do {
-            let rec = try AVAudioRecorder(url: url, settings: settings)
-            rec.isMeteringEnabled = true
-            if rec.record() {
-                recorder = rec
-                isRecording = true
-                activeStrategy = .direct
-                diag("✅ AVAudioRecorder works!")
-                completion(nil)
-                return
-            }
-            diag("recorder.record()=false")
-        } catch {
-            diag("recorder err: \(error.localizedDescription)")
-        }
-
-        // Strategy 1 failed → try Strategy 2
-        diag("→ falling back to App Group")
         tryAppGroupRecording(completion: completion)
     }
-
-    // MARK: - Strategy 2: App Group IPC
 
     // MARK: - File-based IPC helpers
 
@@ -157,7 +70,7 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         try? FileManager.default.removeItem(at: url)
     }
 
-    // MARK: - Strategy 2: App Group IPC
+    // MARK: - App Group session
 
     private func tryAppGroupRecording(completion: @escaping (Error?) -> Void) {
         guard containerURL != nil else {
@@ -169,12 +82,29 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         let heartbeatStr = readFile(KeyboardIPC.FileName.heartbeat) ?? "0"
         let heartbeat = Double(heartbeatStr) ?? 0
         let appInstanceID = readFile(KeyboardIPC.FileName.appInstanceID) ?? ""
+        let readinessStatus = readFile(KeyboardIPC.FileName.readinessStatus)
+            .flatMap(KeyboardIPC.ReadinessStatus.init(rawValue:))
+        let readySessionID = readFile(KeyboardIPC.FileName.readySessionID) ?? ""
+        let readyExpiresAt = Double(
+            readFile(KeyboardIPC.FileName.readyExpiresAt) ?? "0"
+        ) ?? 0
         let now = Date().timeIntervalSince1970
         let age = now - heartbeat
-        diag("heartbeat: \(String(format: "%.1f", age))s ago, app=\(appInstanceID.prefix(8))")
+        diag("heartbeat: \(String(format: "%.1f", age))s ago, app=\(appInstanceID.prefix(8)), ready=\(readinessStatus?.rawValue ?? "missing")")
 
-        if !KeyboardIPC.hasLiveApp(heartbeat: heartbeat, appInstanceID: appInstanceID, now: now) {
-            completion(makeError("Fonos app not running.\nOpen Fonos app, keep it open, then try again."))
+        if !KeyboardIPC.hasReadyApp(
+            heartbeat: heartbeat,
+            appInstanceID: appInstanceID,
+            readinessStatus: readinessStatus,
+            readySessionID: readySessionID,
+            readyExpiresAt: readyExpiresAt,
+            now: now
+        ) {
+            completion(makeError(readinessErrorMessage(
+                status: readinessStatus,
+                readyExpiresAt: readyExpiresAt,
+                now: now
+            )))
             return
         }
 
@@ -184,6 +114,7 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         let sessionID = UUID().uuidString
         sessionTracker.begin(sessionID: sessionID)
         activeAppInstanceID = appInstanceID
+        activeReadySessionID = readySessionID
         writeFile(KeyboardIPC.FileName.sessionID, sessionID)
 
         registerObserversIfNeeded()
@@ -191,7 +122,7 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         // Send start command after observers/session are in place.
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),
-            CFNotificationName("com.fonos.ios.kb.start" as CFString),
+            CFNotificationName(KeyboardIPC.NotificationName.start as CFString),
             nil, nil, true
         )
         diag("sent start notification, session=\(sessionID.prefix(8))")
@@ -202,14 +133,15 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         }
 
         isRecording = true
-        activeStrategy = .appGroup
         diag("✅ App Group, waiting for main app...")
         completion(nil)
 
         // Start ack: stale heartbeats can survive briefly after the app is killed.
         // The current app process must acknowledge this exact session quickly.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-            guard let self, self.isRecording, self.activeStrategy == .appGroup else { return }
+            guard let self,
+                  self.isRecording,
+                  self.sessionTracker.currentSessionID == sessionID else { return }
             let ack = self.readFile(KeyboardIPC.FileName.startAckSessionID)
             if ack == sessionID { return }
             let status = self.readFile(KeyboardIPC.FileName.status) ?? ""
@@ -229,6 +161,7 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         deleteFile(KeyboardIPC.FileName.error)
         deleteFile(KeyboardIPC.FileName.startAckSessionID)
         deleteFile(KeyboardIPC.FileName.resultSessionID)
+        deleteFile(KeyboardIPC.FileName.delivery)
     }
 
     private func registerObserversIfNeeded() {
@@ -239,12 +172,12 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         CFNotificationCenterAddObserver(center, observer, { _, obs, _, _, _ in
             guard let obs else { return }
             Unmanaged<KeyboardAudioService>.fromOpaque(obs).takeUnretainedValue().onPartialReceived()
-        }, "com.fonos.ios.kb.partial" as CFString, nil, .deliverImmediately)
+        }, KeyboardIPC.NotificationName.partial as CFString, nil, .deliverImmediately)
 
         CFNotificationCenterAddObserver(center, observer, { _, obs, _, _, _ in
             guard let obs else { return }
             Unmanaged<KeyboardAudioService>.fromOpaque(obs).takeUnretainedValue().onResultReceived()
-        }, "com.fonos.ios.kb.result" as CFString, nil, .deliverImmediately)
+        }, KeyboardIPC.NotificationName.result as CFString, nil, .deliverImmediately)
 
         observersRegistered = true
     }
@@ -271,8 +204,11 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
             if status == "done" {
                 sessionTracker.markResultHandled()
                 let text = readFile(KeyboardIPC.FileName.final) ?? ""
+                let delivery = KeyboardIPC.resolvedDelivery(
+                    readFile(KeyboardIPC.FileName.delivery)
+                )
                 diag("✅ got result: \"\(text.prefix(40))...\"")
-                onStatusChange?("done:\(text)")
+                onStatusChange?(KeyboardIPC.callbackStatus(text: text, delivery: delivery))
             } else if status == "error" {
                 sessionTracker.markResultHandled()
                 let err = readFile(KeyboardIPC.FileName.error) ?? "Unknown error"
@@ -283,15 +219,34 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
     }
 
     private func pollFiles() {
-        guard activeStrategy == .appGroup, sessionTracker.hasActiveSession else { return }
+        guard sessionTracker.hasActiveSession else { return }
         let heartbeat = Double(readFile(KeyboardIPC.FileName.heartbeat) ?? "0") ?? 0
         let appInstanceID = readFile(KeyboardIPC.FileName.appInstanceID) ?? ""
+        let readySessionID = readFile(KeyboardIPC.FileName.readySessionID) ?? ""
+        let status = readFile(KeyboardIPC.FileName.status) ?? ""
         let statusChange = onStatusChange
+
+        // A completed operation may tear down an expired Ready window right
+        // after publishing its result. Consume the terminal payload before
+        // checking heartbeat or Ready-session identity.
+        if status == "done" || status == "error" {
+            onResultReceived()
+            return
+        }
         if activeAppInstanceID != nil && !KeyboardIPC.isSameAppInstance(activeAppInstanceID, current: appInstanceID) {
             diag("app instance changed while waiting: \((activeAppInstanceID ?? "-").prefix(8)) → \(appInstanceID.prefix(8))")
             isRecording = false
             cleanup()
             statusChange?("error:Fonos app reconnected. Tap the mic and try again.")
+            return
+        }
+
+        if activeReadySessionID != nil,
+           !KeyboardIPC.isSameAppInstance(activeReadySessionID, current: readySessionID) {
+            diag("ready session changed while waiting")
+            isRecording = false
+            cleanup()
+            statusChange?("error:Keyboard Ready ended in Fonos.")
             return
         }
 
@@ -304,14 +259,10 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
             return
         }
 
-        let status = readFile(KeyboardIPC.FileName.status) ?? ""
-
         if status == "recording" {
             if let text = readFile(KeyboardIPC.FileName.partial), !text.isEmpty {
                 DispatchQueue.main.async { [self] in onPartialResult?(text) }
             }
-        } else if status == "done" || status == "error" {
-            onResultReceived()
         }
     }
 
@@ -320,82 +271,27 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
     func stopRecording() {
         guard isRecording else { return }
 
-        switch activeStrategy {
-        case .direct:
-            recorder?.stop()
-            recorder = nil
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-
-        case .appGroup:
-            // Tell main app to stop via Darwin notification
-            CFNotificationCenterPostNotification(
-                CFNotificationCenterGetDarwinNotifyCenter(),
-                CFNotificationName("com.fonos.ios.kb.stop" as CFString),
-                nil, nil, true
-            )
-            diag("sent stop to main app")
-
-        case .none:
-            break
-        }
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName(KeyboardIPC.NotificationName.stop as CFString),
+            nil, nil, true
+        )
+        diag("sent stop to main app")
 
         isRecording = false
-    }
-
-    // MARK: - Transcribe (Strategy 1 only — direct recording)
-
-    func transcribeDirectRecording(language: String?, completion: @escaping (String?, Error?) -> Void) {
-        guard let url = recordingURL, FileManager.default.fileExists(atPath: url.path) else {
-            completion(nil, makeError("No recording file"))
-            return
-        }
-
-        let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        diag("file: \(fileSize)B")
-        guard fileSize > 100 else {
-            completion(nil, makeError("Too short (\(fileSize)B)"))
-            return
-        }
-
-        SFSpeechRecognizer.requestAuthorization { [self] status in
-            guard status == .authorized else {
-                completion(nil, makeError("Speech denied"))
-                return
-            }
-
-            let locale = language.map { Locale(identifier: $0) } ?? .current
-            guard let recognizer = SFSpeechRecognizer(locale: locale)
-                    ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US")) else {
-                completion(nil, makeError("No recognizer"))
-                return
-            }
-
-            let request = SFSpeechURLRecognitionRequest(url: url)
-            var done = false
-            recognizer.recognitionTask(with: request) { [self] result, error in
-                guard !done else { return }
-                if let error {
-                    done = true
-                    completion(nil, error)
-                    return
-                }
-                if let result, result.isFinal {
-                    done = true
-                    let text = result.bestTranscription.formattedString
-                    diag("transcribed: \"\(text.prefix(30))...\"")
-                    completion(text.isEmpty ? nil : text, nil)
-                }
-            }
-        }
     }
 
     // MARK: - Cleanup
 
     func cleanup() {
+        cancelActiveProducerSession()
         pollTimer?.invalidate()
         pollTimer = nil
+        deleteFile(KeyboardIPC.FileName.delivery)
         sessionTracker.clear()
         activeAppInstanceID = nil
+        activeReadySessionID = nil
+        isRecording = false
 
         // Remove Darwin notification observers
         let center = CFNotificationCenterGetDarwinNotifyCenter()
@@ -406,8 +302,39 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         onStatusChange = nil
     }
 
+    /// File payload supplies identity because Darwin notifications carry no
+    /// user info. The main app consumes this only if it still owns the same
+    /// session, making late timeout/keyboard-dismiss cleanup harmless.
+    private func cancelActiveProducerSession() {
+        guard let sessionID = sessionTracker.cancellationSessionID else { return }
+        writeFile(KeyboardIPC.FileName.cancelSessionID, sessionID)
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName(KeyboardIPC.NotificationName.cancel as CFString),
+            nil, nil, true
+        )
+        diag("sent cancel for session=\(sessionID.prefix(8))")
+    }
+
     private func makeError(_ msg: String) -> NSError {
         diag("❌ \(msg)")
         return NSError(domain: "KB", code: 1, userInfo: [NSLocalizedDescriptionKey: msg])
+    }
+
+    private func readinessErrorMessage(
+        status: KeyboardIPC.ReadinessStatus?,
+        readyExpiresAt: Double,
+        now: Double
+    ) -> String {
+        if status == .paused {
+            return "Fonos is using the microphone. Finish there, then try again."
+        }
+        if status == .finishing {
+            return "The previous dictation is finishing. Open Fonos to renew Keyboard Ready."
+        }
+        if status == .expired || (readyExpiresAt > 0 && readyExpiresAt <= now) {
+            return "Keyboard Ready expired. Open Fonos to enable it again."
+        }
+        return "Open Fonos and enable Keyboard Ready, then return here."
     }
 }

@@ -59,7 +59,7 @@ struct NotebookSettingsView: View {
     // MARK: - Computed
 
     private var modelProfiles: [ModelProfile] {
-        guard let data = UserDefaults.standard.data(forKey: "app_config"),
+        guard let data = UserDefaults.standard.data(forKey: KeyboardIPC.DefaultsKey.appConfig),
               let cfg = try? JSONDecoder().decode(AppConfig.self, from: data) else {
             return []
         }
@@ -382,10 +382,13 @@ struct NotebookSettingsView: View {
 #Preview {
     let schema = Schema([NoteContainer.self, NoteEntry.self])
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: schema, configurations: [config])
-    let service = NoteService(modelContainer: container)
-    let notebook = service.createNotebook(title: "My Notebook")
-    NavigationStack {
-        NotebookSettingsView(notebook: notebook, noteService: service)
+    if let container = try? ModelContainer(for: schema, configurations: [config]) {
+        let service = NoteService(modelContainer: container)
+        let notebook = service.createNotebook(title: "My Notebook")
+        NavigationStack {
+            NotebookSettingsView(notebook: notebook, noteService: service)
+        }
+    } else {
+        ContentUnavailableView("Preview unavailable", systemImage: "exclamationmark.triangle")
     }
 }

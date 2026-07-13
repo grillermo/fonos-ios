@@ -104,14 +104,24 @@ final class FonosAppUITests: XCTestCase {
             || errorText.waitForExistence(timeout: 1)
 
         XCTAssertTrue(reachedRecordFlow, "Expected tapping record to trigger permissions, recording, processing, or an error state")
+        if permissionAlert.exists {
+            let dismissButton = permissionAlert.buttons.firstMatch
+            if dismissButton.waitForExistence(timeout: 1) {
+                dismissButton.tap()
+            }
+        }
     }
 
     @MainActor
     func testCaptureAppStoreScreenshots() throws {
-        guard let outputDir = ProcessInfo.processInfo.environment["FONOS_SCREENSHOT_DIR"],
-              !outputDir.isEmpty else {
-            throw XCTSkip("Set FONOS_SCREENSHOT_DIR to generate App Store screenshots.")
-        }
+        let configuredDir = ProcessInfo.processInfo.environment["FONOS_SCREENSHOT_DIR"]
+        let outputDir = configuredDir.flatMap { value in
+            value.isEmpty || value.hasPrefix("$(") ? nil : value
+        } ?? URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("release/app-store/screenshots/iphone-17-pro-max")
+            .path
 
         try FileManager.default.createDirectory(
             at: URL(fileURLWithPath: outputDir), withIntermediateDirectories: true
@@ -119,23 +129,31 @@ final class FonosAppUITests: XCTestCase {
 
         let app = launchApp(screenshotMode: true)
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        dismissSystemAlertIfPresent(for: app)
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Demo Whisper STT"].waitForExistence(timeout: 3))
 
-        capture("01-dictate", outputDir: outputDir)
+        capture("01-dictate", app: app, outputDir: outputDir)
 
         tapTab("History", in: app)
-        XCTAssertTrue(app.staticTexts["Please send the launch checklist to Maya and ask her to review the privacy labels before Friday."].waitForExistence(timeout: 3))
-        capture("02-history", outputDir: outputDir)
+        let launchChecklist = app.staticTexts[
+            "Please send the launch checklist to Maya and ask her to review the privacy labels before Friday."
+        ]
+        XCTAssertTrue(launchChecklist.waitForExistence(timeout: 3))
+        capture("02-history", app: app, outputDir: outputDir)
 
         tapTab("Notes", in: app)
         XCTAssertTrue(app.staticTexts["Launch Notes"].waitForExistence(timeout: 3))
-        capture("03-notes", outputDir: outputDir)
+        capture("03-notes", app: app, outputDir: outputDir)
 
         tapTab("Settings", in: app)
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Demo Whisper STT"].waitForExistence(timeout: 3))
-        capture("04-settings", outputDir: outputDir)
+        let generalButton = app.buttons["General"]
+        XCTAssertTrue(generalButton.waitForExistence(timeout: 3))
+        generalButton.tap()
+        XCTAssertTrue(app.staticTexts["Start Keyboard Ready"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Privacy & Data Sharing"].waitForExistence(timeout: 3))
+        capture("04-settings", app: app, outputDir: outputDir)
     }
 
     @MainActor
@@ -156,7 +174,26 @@ final class FonosAppUITests: XCTestCase {
     }
 
     @MainActor
-    private func capture(_ name: String, outputDir: String) {
+    private func dismissSystemAlertIfPresent(for app: XCUIApplication) {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let alert = springboard.alerts.firstMatch
+        guard alert.waitForExistence(timeout: 1) else { return }
+        let dismissButton = alert.buttons.firstMatch
+        if dismissButton.waitForExistence(timeout: 1) {
+            dismissButton.tap()
+            app.activate()
+        }
+    }
+
+    @MainActor
+    private func capture(_ name: String, app: XCUIApplication, outputDir: String) {
+        // SwiftUI's tab transition can leave the native tab bar midway through
+        // its layout animation even after the destination content exists.
+        // Let the run loop settle so App Store assets never capture that frame.
+        for title in ["Dictate", "History", "Notes", "Settings"] {
+            XCTAssertTrue(app.tabBars.buttons[title].waitForExistence(timeout: 3))
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
         let screenshot = XCUIScreen.main.screenshot()
         let url = URL(fileURLWithPath: outputDir).appendingPathComponent("\(name).png")
         do {

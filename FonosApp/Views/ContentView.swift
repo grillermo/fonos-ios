@@ -10,9 +10,11 @@ import SwiftData
 /// Settings clobbering it, and vice versa. The keyboard override falls back to
 /// the main app's mode only until the keyboard picks one for the first time.
 enum AppConfigStorage {
-    static let appGroupID = "group.com.fonos.ios"
-    static let configKey = "app_config"
-    static let keyboardModeOverrideKey = "kb_active_mode_id"
+    static let appGroupID = KeyboardIPC.appGroupID
+    static let configKey = KeyboardIPC.DefaultsKey.appConfig
+    static let keyboardModeOverrideKey = KeyboardIPC.DefaultsKey.modeOverride
+    static let keyboardWorkflowOverrideKey = KeyboardIPC.DefaultsKey.workflowOverride
+    static let keyboardWorkflowManifestKey = KeyboardIPC.DefaultsKey.workflowManifest
 
     private static var sharedDefaults: UserDefaults? {
         UserDefaults(suiteName: appGroupID)
@@ -33,21 +35,29 @@ enum AppConfigStorage {
         keyboardModeID(shared: sharedDefaults)
     }
 
-    /// Persist the keyboard's chosen mode (owned by the keyboard extension UI).
-    static func setKeyboardModeID(_ modeID: String) {
-        setKeyboardModeID(modeID, shared: sharedDefaults)
+    /// The keyboard's workflow-authoritative selection. The legacy mode key
+    /// remains mirrored by the extension for older app builds.
+    static func keyboardWorkflowID() -> String? {
+        keyboardWorkflowID(shared: sharedDefaults)
     }
 
     // MARK: - Testable cores (injectable defaults)
 
     static func load(standard: UserDefaults, shared: UserDefaults?) -> AppConfig? {
         let data = shared?.data(forKey: configKey) ?? standard.data(forKey: configKey)
-        guard let data, let config = try? JSONDecoder().decode(AppConfig.self, from: data) else {
+        guard let data, var config = try? JSONDecoder().decode(AppConfig.self, from: data) else {
             return nil
         }
-        // Note: the keyboard mode override is deliberately NOT applied here — the
-        // main app uses its own activeModeID. The background recorder resolves the
-        // keyboard mode explicitly via resolveKeyboardMode(...).
+        // Materialize desktop-compatible workflow definitions exactly once on
+        // upgrade (and reconcile any legacy mode added by an older build).
+        // Persist immediately so the keyboard/background process sees the same
+        // recipe identities as the foreground app.
+        if WorkflowMigration.migrate(&config) {
+            save(config, standard: standard, shared: shared)
+        }
+        // The keyboard override is deliberately not applied here: the main app
+        // owns activeModeID, while the background recorder resolves the keyboard's
+        // workflow override explicitly.
         return config
     }
 
@@ -55,7 +65,31 @@ enum AppConfigStorage {
         guard let data = try? JSONEncoder().encode(config) else { return }
         standard.set(data, forKey: configKey)
         shared?.set(data, forKey: configKey)
+        if let manifest = try? JSONEncoder().encode(keyboardWorkflowManifest(config: config)) {
+            standard.set(manifest, forKey: keyboardWorkflowManifestKey)
+            shared?.set(manifest, forKey: keyboardWorkflowManifestKey)
+        }
         // Deliberately does NOT write keyboardModeOverrideKey — the keyboard owns it.
+    }
+
+    /// Prevalidated picker data for the extension. The extension cannot link
+    /// the app's workflow engine, so publishing this manifest prevents its
+    /// lightweight decoder from advertising a recipe the main app would
+    /// reject (malformed props, missing explicit profile, unsupported output).
+    static func keyboardWorkflowManifest(config: AppConfig) -> [KeyboardIPC.WorkflowManifestEntry] {
+        let catalog = config.workflowCatalog
+        return catalog.workflows.compactMap { workflow in
+            guard (try? VoiceWorkflowOperationalValidator.validateMicrophone(
+                definition: workflow,
+                catalog: catalog,
+                config: config
+            )) != nil else { return nil }
+            return KeyboardIPC.WorkflowManifestEntry(
+                id: workflow.id,
+                name: workflow.name,
+                icon: workflow.icon
+            )
+        }
     }
 
     static func keyboardModeID(shared: UserDefaults?) -> String? {
@@ -63,16 +97,19 @@ enum AppConfigStorage {
         return (id?.isEmpty == false) ? id : nil
     }
 
+    static func keyboardWorkflowID(shared: UserDefaults?) -> String? {
+        let id = shared?.string(forKey: keyboardWorkflowOverrideKey)
+        return (id?.isEmpty == false) ? id : nil
+    }
+
     static func setKeyboardModeID(_ modeID: String, shared: UserDefaults?) {
         shared?.set(modeID, forKey: keyboardModeOverrideKey)
     }
 
-    /// Resolve the effective keyboard dictation mode id: the keyboard's own
-    /// choice if it made one, otherwise the main app's mode.
-    static func resolveKeyboardMode(override: String?, configActiveModeID: String) -> String {
-        if let override, !override.isEmpty { return override }
-        return configActiveModeID
+    static func setKeyboardWorkflowID(_ workflowID: String, shared: UserDefaults?) {
+        shared?.set(workflowID, forKey: keyboardWorkflowOverrideKey)
     }
+
 }
 
 struct ContentView: View {
@@ -103,11 +140,15 @@ struct ContentView: View {
 
     /// Convenience init for previews/tests — uses in-memory container.
     init() {
-        let container = try! ModelContainer(
-            for: NoteContainer.self, NoteEntry.self, DictationSession.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
-        )
-        self.init(modelContainer: container)
+        do {
+            let container = try ModelContainer(
+                for: NoteContainer.self, NoteEntry.self, DictationSession.self,
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            )
+            self.init(modelContainer: container)
+        } catch {
+            fatalError("Failed to create the in-memory preview container: \(error)")
+        }
     }
 
     var body: some View {
@@ -143,6 +184,9 @@ struct ContentView: View {
             }
             .tag(AppTab.settings)
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            KeyboardReadyBanner()
+        }
         .preferredColorScheme(.dark)
         .tint(Color(hex: "#fbbf24"))
         .onAppear {
@@ -166,11 +210,27 @@ struct ContentView: View {
             AppConfigStorage.save(dictationViewModel.config)
 #endif
         }
+        // Dictate chips and deep links mutate the view model directly rather
+        // than going through Settings' Binding. Persist every workflow change
+        // here so app restart and the keyboard read the same authority.
+        .onChange(of: dictationViewModel.config) { _, newConfig in
+            noteViewModel.config = newConfig
+#if DEBUG
+            if !ScreenshotDemoData.isEnabled {
+                AppConfigStorage.save(newConfig)
+            }
+#else
+            AppConfigStorage.save(newConfig)
+#endif
+        }
         // fonos://record — widget tap or "Dictate with Fonos" App Intent (spec Flow 2)
         .onReceive(NotificationCenter.default.publisher(for: .fonosStartRecording)) { notification in
             selectedTab = .dictate
             if let modeID = notification.userInfo?["mode"] as? String {
-                dictationViewModel.config.activeModeID = modeID
+                // `mode` remains the public deep-link query name for
+                // compatibility, but accepts either a recipe id or a legacy
+                // mode id and always selects the workflow authority.
+                dictationViewModel.selectMode(id: modeID)
             }
             if !dictationViewModel.isRecording {
                 dictationViewModel.startRecording()
@@ -257,6 +317,7 @@ enum ScreenshotDemoData {
         seeded.llmProfile = llm.id
         seeded.activeModeID = "polish"
         seeded.translateTargetLanguage = "English"
+        WorkflowMigration.migrate(&seeded)
         return seeded
     }
 
@@ -268,6 +329,8 @@ enum ScreenshotDemoData {
         let sessions = [
             DictationSession(
                 date: now.addingTimeInterval(-8 * 60),
+                workflowID: "wf.voice.polish",
+                workflowName: "Polish",
                 mode: "polish",
                 inputText: "um can you send the launch checklist to maya and ask her to review the privacy labels before friday",
                 outputText: "Please send the launch checklist to Maya and ask her to review the privacy labels before Friday.",
@@ -276,6 +339,8 @@ enum ScreenshotDemoData {
             ),
             DictationSession(
                 date: now.addingTimeInterval(-38 * 60),
+                workflowID: "wf.voice.formal",
+                workflowName: "Formal",
                 mode: "formal",
                 inputText: "hey thanks for the quick pass i fixed the keyboard issue and will send a new build tonight",
                 outputText: "Thank you for the quick review. I fixed the keyboard issue and will send a new build tonight.",
@@ -284,6 +349,8 @@ enum ScreenshotDemoData {
             ),
             DictationSession(
                 date: now.addingTimeInterval(-96 * 60),
+                workflowID: "wf.voice.translate",
+                workflowName: "Translate",
                 mode: "translate",
                 inputText: "我们明天上午同步一下发布材料和截图顺序",
                 outputText: "Let's sync tomorrow morning on the release materials and screenshot order.",
@@ -329,7 +396,8 @@ enum ScreenshotDemoData {
             NoteEntry(
                 createdAt: now.addingTimeInterval(-12 * 60),
                 rawText: "Need final screenshots, privacy labels, review notes, and one clean TestFlight build before submission.",
-                processedText: "Release prep: finalize screenshots, complete privacy labels, confirm review notes, and upload one clean TestFlight build.",
+                processedText: "Release prep: finalize screenshots, complete privacy labels, "
+                    + "confirm review notes, and upload one clean TestFlight build.",
                 containerId: notebooks[0].id,
                 mode: "polish",
                 durationMs: 9200,
@@ -338,7 +406,8 @@ enum ScreenshotDemoData {
             NoteEntry(
                 createdAt: now.addingTimeInterval(-54 * 60),
                 rawText: "The main question is whether keyboard dictation should require the app to stay open during review.",
-                processedText: "Decision: explain in review notes that the keyboard extension communicates with the main app for dictation.",
+                processedText: "Decision: explain in review notes that the keyboard extension "
+                    + "communicates with the main app for dictation.",
                 containerId: notebooks[1].id,
                 mode: "summarize",
                 durationMs: 12800,

@@ -30,6 +30,11 @@ struct ModelProbeService {
     ///   - provider: Provider identifier (e.g., "omlx", "ollama", "lmstudio")
     static func probe(baseURL: String, apiKey: String?, provider: String) async throws -> ProbeResult {
         let cleanURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        guard RemoteAITransportPolicy.allows(cleanURL) else {
+            throw ProbeError.invalidURL(
+                RemoteAITransportPolicy.validationMessage(for: cleanURL) ?? cleanURL
+            )
+        }
         guard let url = URL(string: "\(cleanURL)/v1/models") else {
             throw ProbeError.invalidURL(baseURL)
         }
@@ -60,13 +65,19 @@ struct ModelProbeService {
         log.info("🔍 Probed endpoint: \(cleanURL), provider: \(provider)")
 
         let discovered = modelsResponse.data.map { model in
-            log.info("📋 Model: \(model.id), type=\(model.type ?? "nil"), task_type=\(model.task_type ?? "nil"), resolved=\(model.resolvedType ?? "nil")")
+            let modelType = model.type ?? "nil"
+            let taskType = model.task_type ?? "nil"
+            let resolvedType = model.resolvedType ?? "nil"
+            log.info("📋 Model: \(model.id), type=\(modelType), task_type=\(taskType), resolved=\(resolvedType)")
 
             // Only use API-provided type info. If none available, leave empty for user to choose.
             let apiCaps = capabilitiesFromAPIType(model)
             let autoDetected = apiCaps != nil
             let caps = apiCaps ?? []  // empty = user must choose
-            log.info("📋 → caps: \(caps.isEmpty ? "NONE (user must choose)" : caps.joined(separator: ",")) (autoDetected=\(autoDetected)), baseURL=\(cleanURL)")
+            let capabilitySummary = caps.isEmpty
+                ? "NONE (user must choose)"
+                : caps.joined(separator: ",")
+            log.info("📋 → caps: \(capabilitySummary) (autoDetected=\(autoDetected)), baseURL=\(cleanURL)")
 
             return DiscoveredModel(
                 id: model.id,
@@ -123,56 +134,6 @@ struct ModelProbeService {
         }
 
         return nil // No type info — fall back to name inference
-    }
-
-    /// Infer capabilities from model name patterns — NO LONGER used by probe.
-    /// Kept for potential future use (e.g., manual model add hints).
-    static func inferCapabilities(modelID: String, provider: String) -> [String] {
-        let lower = modelID.lowercased()
-        var caps: [String] = []
-
-        // STT detection
-        if lower.contains("whisper") || lower.contains("stt") || lower.contains("speech")
-            || lower.contains("audio") || lower.contains("transcri") || lower.contains("asr") {
-            caps.append("stt")
-        }
-
-        // Skip TTS models — they're not LLM or STT
-        if lower.contains("tts") || lower.contains("text-to-speech") {
-            if caps.isEmpty { return ["tts"] }
-            return caps
-        }
-
-        // Skip speech enhancement / noise reduction models
-        if lower.contains("mossformer") || lower.contains("-se") && lower.count < 20 {
-            return caps.isEmpty ? ["other"] : caps
-        }
-
-        // LLM detection
-        if lower.contains("llama") || lower.contains("mistral") || lower.contains("phi")
-            || lower.contains("gemma") || lower.contains("gpt")
-            || lower.contains("chat") || lower.contains("instruct") || lower.contains("codellama")
-            || lower.contains("deepseek") || lower.contains("yi-") || lower.contains("command")
-            || lower.contains("claude") || lower.contains("llm") {
-            caps.append("llm")
-        }
-
-        // Qwen without ASR/TTS suffix is LLM
-        if lower.contains("qwen") && !lower.contains("asr") && !lower.contains("tts") {
-            if !caps.contains("llm") { caps.append("llm") }
-        }
-
-        // If no specific pattern matched, default to LLM for most providers
-        if caps.isEmpty {
-            // Embedding models are not LLM
-            if lower.contains("embed") || lower.contains("bge-") || lower.contains("e5-") {
-                // Not LLM — skip
-            } else {
-                caps.append("llm")
-            }
-        }
-
-        return caps
     }
 
     /// Convert model ID to human-readable name.

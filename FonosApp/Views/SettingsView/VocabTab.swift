@@ -30,7 +30,13 @@ struct VocabTab: View {
             } header: {
                 Text("Vocab Books")
             } footer: {
-                Text("Terms bias speech recognition and LLM cleanup; rules apply deterministic corrections to every transcript. Globally mounted books apply everywhere.")
+                Text(
+                    """
+                    Terms bias speech recognition and LLM cleanup; \
+                    rules apply deterministic corrections to every transcript. \
+                    Globally mounted books apply everywhere.
+                    """
+                )
             }
 
             Section {
@@ -142,7 +148,7 @@ private struct VocabBookEditor: View {
             }
 
             Section("Correction Rules") {
-                ForEach(Array(book.rules.enumerated()), id: \.offset) { index, rule in
+                ForEach(Array(book.rules.enumerated()), id: \.offset) { _, rule in
                     HStack {
                         Text(rule.from)
                             .font(.system(size: 13, design: .monospaced))

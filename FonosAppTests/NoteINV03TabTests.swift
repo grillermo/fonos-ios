@@ -27,6 +27,7 @@ struct NoteINV03TabTests {
     // MARK: - Level 2: Unit — ContentView tab structure
 
     @Test("ContentView initialises without crash when Notes tab is present")
+    @MainActor
     func contentViewInitialises() throws {
         // ContentView must be constructible; if it references NotesView, that type must exist.
         let view = ContentView()
@@ -35,6 +36,7 @@ struct NoteINV03TabTests {
     }
 
     @Test("NotesView initialises without crash")
+    @MainActor
     func notesViewInitialises() throws {
         let view = NotesView()
         _ = view
@@ -42,6 +44,7 @@ struct NoteINV03TabTests {
     }
 
     @Test("ContentView tab count is 4")
+    @MainActor
     func contentViewHasFourTabs() throws {
         // TODO: Once ContentView exposes a tabCount property or similar introspection,
         // replace this sentinel with a direct assertion:

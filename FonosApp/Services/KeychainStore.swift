@@ -151,7 +151,7 @@ final class SimulatorKeychain: @unchecked Sendable {
     }
 
     func delete(service: String, key: String) {
-        lock.withLock {
+        _ = lock.withLock {
             store.removeValue(forKey: "\(service):\(key)")
         }
     }

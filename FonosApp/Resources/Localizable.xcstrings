@@ -4,432 +4,432 @@
     "" : {
 
     },
-    "Active" : {
+    "%1$@ and %2$@" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前使用"
+            "value" : "%1$@和%2$@"
           }
         }
       }
     },
-    "Active mode" : {
+    "%1$@ at %2$@" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前模式"
+            "value" : "%1$@（%2$@）"
           }
         }
       }
     },
-    "AI" : {
+    "After withdrawal, network STT and LLM requests are blocked until you review and allow the endpoint again. Local Apple Speech remains available." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AI"
+            "value" : "撤回后，网络 STT 和 LLM 请求会被阻止，直到您重新检查并允许相应端点。本地 Apple 语音识别仍可使用。"
           }
         }
       }
     },
-    "AI Processing" : {
+    "Allow" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AI 处理"
+            "value" : "允许"
           }
         }
       }
     },
-    "AI processing complete" : {
+    "Allow & Add" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AI 处理已完成"
+            "value" : "允许并添加"
           }
         }
       }
     },
-    "AI processing is not configured; transcript fallback will be used" : {
+    "Allow & Save" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未配置 AI 处理；将回退到转写文本"
+            "value" : "允许并保存"
           }
         }
       }
     },
-    "AI processing is skipped for a raw transcript" : {
+    "Allow Remote AI Processing?" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "原始转写模式会跳过 AI 处理"
+            "value" : "允许远程 AI 处理？"
           }
         }
       }
     },
-    "AI unavailable — transcript used" : {
+    "API keys" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AI 不可用，已使用转写文本"
+            "value" : "API 密钥"
           }
         }
       }
     },
-    "All three steps are configured" : {
+    "API keys are stored in Apple Keychain. They are not stored in AppConfig or ordinary UserDefaults." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "三个步骤均已配置"
+            "value" : "API 密钥存储在 Apple 钥匙串中，不会存入 AppConfig 或普通的 UserDefaults。"
           }
         }
       }
     },
-    "Applying vocabulary…" : {
+    "Before Fonos sends voice or text to a configured AI endpoint, it identifies the recipient and asks for your permission. The provider processes that content under its own terms and privacy policy." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在应用词汇…"
+            "value" : "在 Fonos 将语音或文本发送到已配置的 AI 端点前，会先标明接收方并征求您的许可。服务提供商会依据其自身的条款和隐私政策处理这些内容。"
           }
         }
       }
     },
-    "Cancelled" : {
+    "Configured AI services" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已取消"
+            "value" : "已配置的 AI 服务"
           }
         }
       }
     },
-    "Collapses flow details" : {
+    "Configured endpoints are ready" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "收起流程详情"
+            "value" : "已配置的端点均已就绪"
           }
         }
       }
     },
-    "Deterministic corrections" : {
+    "Copies the same final text after earlier outputs succeed." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "确定性校正"
+            "value" : "前面的输出成功后，将同一份最终文本复制到剪贴板。"
           }
         }
       }
     },
-    "Main-app dictation follows a clear path. Speech is transcribed first, your vocabulary is applied deterministically, then AI processing runs only when the selected mode requests it." : {
+    "Data on this iPhone" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "主 App 听写遵循清晰流程：先将语音转写为文字，再以确定性方式应用词汇，最后仅在所选模式需要时运行 AI 处理。"
+            "value" : "此 iPhone 上的数据"
           }
         }
       }
     },
-    "Expands flow details" : {
+    "Deleting data" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "展开流程详情"
+            "value" : "删除数据"
           }
         }
       }
     },
-    "Flow complete" : {
+    "Dictation history, notes, vocabulary, and configuration stay on this device unless you choose an output or network model that sends content elsewhere." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "处理流程已完成"
+            "value" : "除非您选择会将内容发送到其他位置的输出或网络模型，否则听写历史、笔记、词汇和配置都只保留在此设备上。"
           }
         }
       }
     },
-    "Flow failed" : {
+    "Fonos blocks voice and text requests to a configured endpoint until you review the recipient and allow that destination. Permissions can be withdrawn under General → Privacy & Data Sharing." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "处理流程失败"
+            "value" : "在您检查接收方并允许相应目标前，Fonos 会阻止向已配置端点发送语音和文本。您可以在“通用”→“隐私与数据共享”中撤回权限。"
           }
         }
       }
     },
-    "Flow progress" : {
+    "Fonos contains no third-party advertising or analytics SDK and does not track you across other companies’ apps or websites." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "流程进度"
+            "value" : "Fonos 不含第三方广告或分析 SDK，也不会跨其他公司的 App 或网站跟踪您。"
           }
         }
       }
     },
-    "Flow result" : {
+    "Fonos records only for features you start and uses microphone and Speech permissions granted through iOS. During an explicit, time-limited Keyboard Ready session, microphone input stays active but idle buffers are discarded; Fonos retains audio only after you tap the keyboard microphone and releases it after that recipe finishes." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "流程结果"
+            "value" : "Fonos 只会为您主动启动的功能录音，并使用您通过 iOS 授予的麦克风和语音识别权限。在您明确启动且有时间限制的“键盘语音待命”会话期间，麦克风输入会保持启用，但空闲音频缓冲区会被丢弃；只有当您轻点 Fonos 键盘上的麦克风后，Fonos 才会保留音频，并在该配方运行结束后释放。"
           }
         }
       }
     },
-    "Inactive mode" : {
+    "Fonos will send %1$@ to %2$@ only when you run a recipe that uses this model. The provider may process the content under its own privacy policy. Your API key remains in Apple Keychain." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "非当前模式"
+            "value" : "Fonos 仅会在您运行使用此模型的配方时，将%1$@发送给%2$@。服务提供商可能会依据其自身的隐私政策处理这些内容。您的 API 密钥会继续保存在 Apple 钥匙串中。"
           }
         }
       }
     },
-    "Model not configured" : {
+    "HTTPS required for %@" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未配置模型"
+            "value" : "%@ 需要使用 HTTPS"
           }
         }
       }
     },
-    "No LLM configured — transcript used" : {
+    "Microphone and Apple Speech" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未配置大语言模型，已使用转写文本"
+            "value" : "麦克风与 Apple 语音识别"
           }
         }
       }
     },
-    "Not configured — transcript fallback" : {
+    "No configured AI endpoint currently has permission to receive voice or text." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未配置，已回退到转写文本"
+            "value" : "目前没有已配置的 AI 端点获准接收语音或文本。"
           }
         }
       }
     },
-    "Preparing flow…" : {
+    "Not Now" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在准备处理流程…"
+            "value" : "暂不"
           }
         }
       }
     },
-    "Processing with AI…" : {
+    "Open Fonos Support" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在使用 AI 处理…"
+            "value" : "打开 Fonos 支持页面"
           }
         }
       }
     },
-    "Read only" : {
+    "Open Published Privacy Policy" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "只读"
+            "value" : "打开已发布的隐私政策"
           }
         }
       }
     },
-    "Skipped — raw transcript" : {
+    "Outputs receive the same final text in listed order; they do not feed into one another." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已跳过，使用原始转写文本"
+            "value" : "各输出会按列表顺序接收同一份最终文本，彼此不会串联。"
           }
         }
       }
     },
-    "Speech" : {
+    "Privacy" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "语音"
+            "value" : "隐私"
           }
         }
       }
     },
-    "Speech, then Vocabulary, then AI" : {
+    "Privacy & Data Sharing" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "语音、词汇，然后 AI"
+            "value" : "隐私与数据共享"
           }
         }
       }
     },
-    "Speech-to-Text" : {
+    "Privacy Policy" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "语音转文字"
+            "value" : "隐私政策"
           }
         }
       }
     },
-    "Step 1: Speech-to-Text" : {
+    "Remote AI Data Sharing" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "步骤 1：语音转文字"
+            "value" : "远程 AI 数据共享"
           }
         }
       }
     },
-    "Step 2: Vocabulary" : {
+    "Remote AI Permissions" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "步骤 2：词汇"
+            "value" : "远程 AI 权限"
           }
         }
       }
     },
-    "Step 3: AI Processing" : {
+    "Required" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "步骤 3：AI 处理"
+            "value" : "需要授权"
           }
         }
       }
     },
-    "Total" : {
+    "Review %@" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "总计"
+            "value" : "检查 %@"
           }
         }
       }
     },
-    "Transcribe" : {
+    "Support" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "转写"
+            "value" : "支持"
           }
         }
       }
     },
-    "Transcribing…" : {
+    "The selected recipe runs its real source, ordered processors, and outputs in listed delivery order. Vocabulary is mounted where it is used: recognition and correction at STT, glossary context at each AI step." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在转写…"
+            "value" : "所选配方会使用其实际来源、按顺序运行处理器，并按列表中的交付顺序执行输出。词汇会挂载到实际使用的位置：在 STT 阶段用于识别和纠错，在每个 AI 步骤中作为术语上下文。"
           }
         }
       }
     },
-    "Transcript fallback" : {
+    "the configured provider endpoint" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已回退到转写文本"
+            "value" : "已配置的服务提供商端点"
           }
         }
       }
     },
-    "Transcript ready" : {
+    "Tracking" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "转写文本已就绪"
+            "value" : "跟踪"
           }
         }
       }
     },
-    "Unavailable — Apple Speech fallback" : {
+    "transcripts and text prompts" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "不可用，已回退到 Apple Speech"
+            "value" : "转写文本和文字提示"
           }
         }
       }
     },
-    "Use this mode" : {
+    "voice or text data" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用此模式"
+            "value" : "语音或文本数据"
           }
         }
       }
     },
-    "Vocabulary entries for this mode are applied after transcription and before AI processing." : {
+    "voice recordings" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此模式的词汇条目会在转写后、AI 处理前应用。"
+            "value" : "语音录音"
           }
         }
       }
     },
-    "Vocabulary is applied automatically after transcription and before AI processing." : {
+    "Withdraw All Remote AI Permissions" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "词汇会在转写后、AI 处理前自动应用。"
+            "value" : "撤回所有远程 AI 权限"
           }
         }
       }
     },
-    "Voice flow" : {
+    "You can delete history, notes, model profiles, and permissions in Fonos. Deleting the app removes app-local data managed by iOS. Contact a configured provider about data it may retain." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "语音处理流程"
+            "value" : "您可以在 Fonos 中删除历史记录、笔记、模型配置和权限。删除 App 会移除由 iOS 管理的本地 App 数据。对于已配置服务提供商可能保留的数据，请联系相应提供商。"
           }
         }
       }
@@ -447,17 +447,11 @@
             "state" : "new",
             "value" : "%1$@ · %2$@"
           }
-        }
-      }
-    },
-    "%@ %@" : {
-      "comment" : "A tag for each custom mode, displayed as a combination of an emoji flag and the mode's name.",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "en" : {
+        },
+        "zh-Hans" : {
           "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ %2$@"
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
           }
         }
       }
@@ -469,6 +463,19 @@
     "%lld" : {
       "comment" : "A small badge with a number and a title, used to group related settings in a notebook's settings view. The argument is a number, the second is a title.",
       "isCommentAutoGenerated" : true
+    },
+    "%lld · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld · %2$@"
+          }
+        }
+      }
+    },
+    "%lld desktop Insert recipes will return their final text to the current iPhone surface; the keyboard inserts it explicitly." : {
+
     },
     "%lld entries" : {
       "localizations" : {
@@ -502,6 +509,26 @@
       "comment" : "A note below the count of imported model profiles, indicating that some of them need an API key. The number is dynamically inserted.",
       "isCommentAutoGenerated" : true
     },
+    "%lld recipe entries and %lld component entries are unsupported or invalid. Decodable definitions are kept for sharing, but cannot run on this iPhone." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld recipe entries and %2$lld component entries are unsupported or invalid. Decodable definitions are kept for sharing, but cannot run on this iPhone."
+          }
+        }
+      }
+    },
+    "%lld selected" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选 %lld 项"
+          }
+        }
+      }
+    },
     "%lld terms · %lld rules" : {
       "comment" : "A subline displaying the number of terms and rules in a vocabulary book.",
       "isCommentAutoGenerated" : true,
@@ -514,6 +541,9 @@
         }
       }
     },
+    "%lld vocabulary terms applied inside transcription" : {
+
+    },
     "%lldms" : {
       "comment" : "A badge displaying the latency of a particular service in milliseconds. The argument is the latency in milliseconds.",
       "isCommentAutoGenerated" : true
@@ -522,21 +552,55 @@
       "comment" : "A chevron icon that indicates a transition between different stages of a data processing pipeline.",
       "isCommentAutoGenerated" : true
     },
-    "✨ Polish" : {
-      "comment" : "A mode name that translates to \"Polish\" in English.",
-      "isCommentAutoGenerated" : true
+    "1 · Identity" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 · 标识"
+          }
+        }
+      }
     },
-    "🌐 Translate" : {
-      "comment" : "A text description for the \"Translate\" mode in the settings.",
-      "isCommentAutoGenerated" : true
+    "2 · Capture" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2 · 采集"
+          }
+        }
+      }
     },
-    "👔 Formal" : {
-      "comment" : "A description of the \"Formal\" mode.",
-      "isCommentAutoGenerated" : true
+    "3 · Transcription" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 · 转写"
+          }
+        }
+      }
     },
-    "📝 Raw" : {
-      "comment" : "A text description for the \"Raw\" mode in the settings.",
-      "isCommentAutoGenerated" : true
+    "4 · AI processors" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "4 · AI 处理器"
+          }
+        }
+      }
+    },
+    "5 · Outputs" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5 · 输出"
+          }
+        }
+      }
     },
     "7 Days" : {
       "localizations" : {
@@ -592,6 +656,39 @@
       "comment" : "A footer section below the \"Saved config sets\" section of the `ConfigSetsView`.",
       "isCommentAutoGenerated" : true
     },
+    "Active" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前使用"
+          }
+        }
+      }
+    },
+    "Active mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前模式"
+          }
+        }
+      }
+    },
+    "Active Recipe Capture" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前配方采集方式"
+          }
+        }
+      }
+    },
+    "Active voice recipe" : {
+
+    },
     "Add" : {
       "localizations" : {
         "zh-Hans" : {
@@ -608,6 +705,16 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Add %1$lld Model%2$@"
+          }
+        }
+      }
+    },
+    "Add AI processor" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加 AI 处理器"
           }
         }
       }
@@ -633,6 +740,7 @@
       }
     },
     "Add Mode" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -670,6 +778,132 @@
       "comment" : "A section that can be expanded to show advanced options for the Speech-to-Text feature.",
       "isCommentAutoGenerated" : true
     },
+    "AI" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI"
+          }
+        }
+      }
+    },
+    "AI Processing" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 处理"
+          }
+        }
+      }
+    },
+    "AI processing complete" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 处理已完成"
+          }
+        }
+      }
+    },
+    "AI processing is not configured; transcript fallback will be used" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置 AI 处理；将回退到转写文本"
+          }
+        }
+      }
+    },
+    "AI processing is skipped for a raw transcript" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原始转写模式会跳过 AI 处理"
+          }
+        }
+      }
+    },
+    "AI processor" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 处理器"
+          }
+        }
+      }
+    },
+    "AI processor %lld max tokens must be between 1 and 128000." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 处理器 %lld 的最大 token 数必须在 1 到 128000 之间。"
+          }
+        }
+      }
+    },
+    "AI processor %lld model '%@' is unavailable. Choose another model or Use default." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "AI processor %1$lld model '%2$@' is unavailable. Choose another model or Use default."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 处理器 %1$lld 的模型“%2$@”不可用。请选择其他模型或“使用默认值”。"
+          }
+        }
+      }
+    },
+    "AI processor %lld needs a name." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 处理器 %lld 需要填写名称。"
+          }
+        }
+      }
+    },
+    "AI processor %lld uses a fixed user template. It will not include text from the previous step." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 处理器 %lld 使用固定的用户模板，不会包含上一步的文本。"
+          }
+        }
+      }
+    },
+    "AI transform" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 转换"
+          }
+        }
+      }
+    },
+    "AI unavailable — transcript used" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 不可用，已使用转写文本"
+          }
+        }
+      }
+    },
     "All" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -677,6 +911,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "全部"
+          }
+        }
+      }
+    },
+    "All three steps are configured" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "三个步骤均已配置"
           }
         }
       }
@@ -701,6 +945,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "App Group 容器可访问;键盘与主应用可以通信。"
+          }
+        }
+      }
+    },
+    "Apple Speech · On-device" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple 语音识别 · 设备端"
           }
         }
       }
@@ -730,6 +984,17 @@
         }
       }
     },
+    "Applying vocabulary…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在应用词汇…"
+          }
+        }
+      }
+    },
     "Auto" : {
       "localizations" : {
         "zh-Hans" : {
@@ -740,9 +1005,27 @@
         }
       }
     },
+    "Auto · Keep input language" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动 · 保持输入语言"
+          }
+        }
+      }
+    },
     "Auto-detect" : {
       "comment" : "A language option in the STT Language picker that allows the app to automatically detect the user's language.",
-      "isCommentAutoGenerated" : true
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动检测"
+          }
+        }
+      }
     },
     "Auto-detect models" : {
       "localizations" : {
@@ -755,6 +1038,7 @@
       }
     },
     "Auto-paste Result" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -775,6 +1059,7 @@
       }
     },
     "Automatically insert the result into the active text field." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -852,6 +1137,29 @@
         }
       }
     },
+    "Cancelled" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取消"
+          }
+        }
+      }
+    },
+    "Capture is stored in the selected recipe. The keyboard adapts microphone recipes to its tap control. Auto-send is added as a traced iOS output for each run." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "采集方式存储在所选配方中。键盘会将麦克风配方适配为轻点控制。每次运行时，自动发送都会作为可追踪的 iOS 输出加入。"
+          }
+        }
+      }
+    },
+    "Chat with input_audio" : {
+
+    },
     "Check permissions, keyboard setup, endpoints, and configuration in one place." : {
       "localizations" : {
         "zh-Hans" : {
@@ -865,6 +1173,36 @@
     "Chinese" : {
       "comment" : "A language option in the LLM Processing section of the ModeConfigForm.",
       "isCommentAutoGenerated" : true
+    },
+    "Choose at least one output." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请至少选择一个输出。"
+          }
+        }
+      }
+    },
+    "Clipboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "剪贴板"
+          }
+        }
+      }
+    },
+    "Collapses flow details" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起流程详情"
+          }
+        }
+      }
     },
     "Common" : {
       "comment" : "A section header in the Settings View that says \"Common\".",
@@ -897,6 +1235,9 @@
           }
         }
       }
+    },
+    "Copies the same final text as a parallel output." : {
+
     },
     "Copy" : {
       "extractionState" : "stale",
@@ -935,6 +1276,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "从转写文本中复制误听的片段,然后定义它的纠正。"
+          }
+        }
+      }
+    },
+    "Copy to clipboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制到剪贴板"
           }
         }
       }
@@ -1138,6 +1489,16 @@
         }
       }
     },
+    "Deterministic corrections" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确定性校正"
+          }
+        }
+      }
+    },
     "Deutsch (German)" : {
       "comment" : "The following languages are from https://github.com/SpeechRecognition/speech-to-text-web-api/blob/master/docs/languages.md#supported-languages",
       "isCommentAutoGenerated" : true
@@ -1162,6 +1523,16 @@
     },
     "Dictation defaults" : {
 
+    },
+    "Disabled" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已停用"
+          }
+        }
+      }
     },
     "DISCOVERED %lld MODELS" : {
 
@@ -1207,6 +1578,26 @@
     "Edit Model" : {
       "comment" : "The title of the navigation bar for editing a model profile.",
       "isCommentAutoGenerated" : true
+    },
+    "Edit recipe" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑配方"
+          }
+        }
+      }
+    },
+    "Emoji or SF Symbol" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表情符号或 SF Symbol"
+          }
+        }
+      }
     },
     "Enable LLM Processing" : {
       "localizations" : {
@@ -1272,6 +1663,16 @@
       "comment" : "Placeholder text for a language option in the STT Language picker.",
       "isCommentAutoGenerated" : true
     },
+    "Enter a recipe name." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请输入配方名称。"
+          }
+        }
+      }
+    },
     "Error" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1288,6 +1689,16 @@
     },
     "Existing items with the same id are updated; nothing else is removed." : {
 
+    },
+    "Expands flow details" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开流程详情"
+          }
+        }
+      }
     },
     "Export as JSON" : {
       "localizations" : {
@@ -1329,6 +1740,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "查找(误听文本或正则)"
+          }
+        }
+      }
+    },
+    "Flow complete" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理流程已完成"
+          }
+        }
+      }
+    },
+    "Flow failed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理流程失败"
+          }
+        }
+      }
+    },
+    "Flow progress" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "流程进度"
+          }
+        }
+      }
+    },
+    "Flow result" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "流程结果"
           }
         }
       }
@@ -1413,6 +1864,26 @@
         }
       }
     },
+    "Hold" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按住"
+          }
+        }
+      }
+    },
+    "Hold and toggle are stored in the recipe source. A calling surface may disclose and apply its own capture adapter." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“按住”和“轻点切换”会存储在配方来源中。调用界面可说明并应用自己的采集适配方式。"
+          }
+        }
+      }
+    },
     "Hold to dictate" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1463,6 +1934,20 @@
         }
       }
     },
+    "Identity" : {
+      "comment" : "Header text for the \"Identity\" section in the ModeConfigForm.",
+      "isCommentAutoGenerated" : true
+    },
+    "If this step fails" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此步骤失败时"
+          }
+        }
+      }
+    },
     "Import" : {
       "comment" : "The text of a button that imports a configuration.",
       "isCommentAutoGenerated" : true
@@ -1506,9 +1991,42 @@
       "comment" : "A button that allows importing a scenario file.",
       "isCommentAutoGenerated" : true
     },
+    "Inactive mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非当前模式"
+          }
+        }
+      }
+    },
     "Include API keys" : {
       "comment" : "A toggle that lets the user decide whether to include their API keys in the exported configuration.",
       "isCommentAutoGenerated" : true
+    },
+    "Insert" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插入"
+          }
+        }
+      }
+    },
+    "Insert at cursor" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在光标处插入"
+          }
+        }
+      }
+    },
+    "iPhone compatibility" : {
+
     },
     "Italiano (Italian)" : {
       "comment" : "Additional languages supported by the app.",
@@ -1518,12 +2036,232 @@
       "comment" : "A language option in the LLM Processing section of the ModeConfigForm.",
       "isCommentAutoGenerated" : true
     },
+    "Keeps %@'s existing identity and output properties." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留“%@”原有的标识和输出属性。"
+          }
+        }
+      }
+    },
     "Keyboard ↔ app bridge (App Group)" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "键盘与主应用桥接 (App Group)"
+          }
+        }
+      }
+    },
+    "Keyboard Ready" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键盘语音待命"
+          }
+        }
+      }
+    },
+    "Keyboard Ready off" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键盘语音待命已关闭"
+          }
+        }
+      }
+    },
+    "Keyboard Ready paused" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键盘语音待命已暂停"
+          }
+        }
+      }
+    },
+    "Keyboard Ready expired" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键盘语音待命已过期"
+          }
+        }
+      }
+    },
+    "Keyboard Ready Couldn’t Start" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法开启键盘语音待命"
+          }
+        }
+      }
+    },
+    "Keyboard Ready, %@, %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "键盘语音待命，%1$@，%2$@"
+          }
+        }
+      }
+    },
+    "Keep Fonos available for no-jump keyboard dictation for 15 minutes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 Fonos 保持 15 分钟可用，键盘听写无需跳转。"
+          }
+        }
+      }
+    },
+    "Finishing current dictation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在完成当前听写"
+          }
+        }
+      }
+    },
+    "Fonos will keep microphone input active in the background, and iOS will show its microphone indicator. Audio buffers are discarded unless you tap the microphone in the Fonos keyboard. A captured utterance is removed from memory after its recipe finishes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonos 将在后台保持麦克风输入，iOS 会显示麦克风指示器。只有当你点击 Fonos 键盘上的麦克风时才会保留音频缓冲；配方处理完成后，捕获的语音会从内存中删除。"
+          }
+        }
+      }
+    },
+    "Microphone active · %lld:%02lld" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风正在工作 · %1$lld:%2$02lld"
+          }
+        }
+      }
+    },
+    "Microphone paused · %lld:%02lld remaining" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风已暂停 · 剩余 %1$lld:%2$02lld"
+          }
+        }
+      }
+    },
+    "Microphone recording · %lld:%02lld remaining" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在录音 · 剩余 %1$lld:%2$02lld"
+          }
+        }
+      }
+    },
+    "No new dictations · Finishing the current one" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不再接受新听写 · 正在完成当前听写"
+          }
+        }
+      }
+    },
+    "Recording from Fonos keyboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在通过 Fonos 键盘录音"
+          }
+        }
+      }
+    },
+    "Start a new session to use keyboard dictation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请开启新的待命会话以使用键盘听写。"
+          }
+        }
+      }
+    },
+    "Start a session to use keyboard dictation." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启待命会话后即可使用键盘听写。"
+          }
+        }
+      }
+    },
+    "Start for 15 Minutes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启 15 分钟"
+          }
+        }
+      }
+    },
+    "Start Keyboard Ready" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启键盘语音待命"
+          }
+        }
+      }
+    },
+    "Start Keyboard Ready?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要开启键盘语音待命吗？"
+          }
+        }
+      }
+    },
+    "Stop" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止"
+          }
+        }
+      }
+    },
+    "Unknown error" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知错误"
           }
         }
       }
@@ -1558,12 +2296,43 @@
         }
       }
     },
+    "LLM glossary" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LLM 术语表"
+          }
+        }
+      }
+    },
     "LLM Model" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "语言模型"
+          }
+        }
+      }
+    },
+    "Main-app dictation follows a clear path. Speech is transcribed first, your vocabulary is applied deterministically, then AI processing runs only when the selected mode requests it." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主 App 听写遵循清晰流程：先将语音转写为文字，再以确定性方式应用词汇，最后仅在所选模式需要时运行 AI 处理。"
+          }
+        }
+      }
+    },
+    "Max tokens" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最大 token 数"
           }
         }
       }
@@ -1579,12 +2348,41 @@
       }
     },
     "Messages" : {
-      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "信息"
+          }
+        }
+      }
+    },
+    "Mic · hold" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风 · 按住"
+          }
+        }
+      }
+    },
+    "Mic · toggle" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风 · 轻点切换"
+          }
+        }
+      }
+    },
+    "Microphone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风"
           }
         }
       }
@@ -1605,6 +2403,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "误听文本(如 “my sequel”)"
+          }
+        }
+      }
+    },
+    "Missing · %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缺失 · %@"
+          }
+        }
+      }
+    },
+    "Missing on this device" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备上缺失"
           }
         }
       }
@@ -1649,6 +2467,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "模型 ID"
+          }
+        }
+      }
+    },
+    "Model not configured" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置模型"
           }
         }
       }
@@ -1699,6 +2528,16 @@
       "comment" : "A language option in the Settings View.",
       "isCommentAutoGenerated" : true
     },
+    "Needs attention" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要处理"
+          }
+        }
+      }
+    },
     "New Book" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1719,6 +2558,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新建笔记本"
+          }
+        }
+      }
+    },
+    "New recipe" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建配方"
+          }
+        }
+      }
+    },
+    "New voice recipe" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建语音配方"
+          }
+        }
+      }
+    },
+    "No {text}: this is a valid fixed prompt and will ignore the previous step's text." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有 {text}：这是有效的固定提示词，将忽略上一步的文本。"
+          }
+        }
+      }
+    },
+    "No AI processor" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无 AI 处理器"
           }
         }
       }
@@ -1773,6 +2652,16 @@
         }
       }
     },
+    "No LLM configured — transcript used" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置大语言模型，已使用转写文本"
+          }
+        }
+      }
+    },
     "No LLM processing (raw transcripts only)." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1794,6 +2683,16 @@
         }
       }
     },
+    "No output" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无输出"
+          }
+        }
+      }
+    },
     "No results found." : {
       "localizations" : {
         "zh-Hans" : {
@@ -1803,6 +2702,12 @@
           }
         }
       }
+    },
+    "No runnable microphone recipe remains after this import. The active recipe will be cleared; imported definitions are still retained for editing or sharing." : {
+
+    },
+    "No runnable voice recipe. Open Fonos Settings." : {
+
     },
     "No vocab books yet — create them in Settings › Vocab." : {
       "localizations" : {
@@ -1814,12 +2719,32 @@
         }
       }
     },
+    "No vocabulary books are available." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可用的词汇簿。"
+          }
+        }
+      }
+    },
     "Not configured" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "未配置"
+          }
+        }
+      }
+    },
+    "Not configured — transcript fallback" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置，已回退到转写文本"
           }
         }
       }
@@ -1850,6 +2775,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尚未请求——录音时会弹出授权。"
+          }
+        }
+      }
+    },
+    "Not selected" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未选择"
           }
         }
       }
@@ -1964,12 +2899,65 @@
         }
       }
     },
+    "Output" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输出"
+          }
+        }
+      }
+    },
+    "OUTPUT" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输出"
+          }
+        }
+      }
+    },
+    "Output language" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输出语言"
+          }
+        }
+      }
+    },
     "Output Language" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "输出语言"
+          }
+        }
+      }
+    },
+    "OUTPUTS · %lld" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输出 · %lld"
+          }
+        }
+      }
+    },
+    "Outputs branch from the same final text; they do not feed into one another." : {
+
+    },
+    "Outputs, %lld" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输出，共 %lld 项"
           }
         }
       }
@@ -1988,6 +2976,16 @@
         }
       }
     },
+    "Polish text" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "润色文本"
+          }
+        }
+      }
+    },
     "Polski (Polish)" : {
       "comment" : "A language option in the Settings View.",
       "isCommentAutoGenerated" : true
@@ -1999,6 +2997,26 @@
     "Portuguese" : {
       "comment" : "A language option for the Portuguese model.",
       "isCommentAutoGenerated" : true
+    },
+    "Preparing flow…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备处理流程…"
+          }
+        }
+      }
+    },
+    "Press Enter after insertion" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插入后按下回车键"
+          }
+        }
+      }
     },
     "Probe" : {
       "localizations" : {
@@ -2021,6 +3039,7 @@
       }
     },
     "Processing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2044,12 +3063,53 @@
         }
       }
     },
+    "Processing with AI…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在使用 AI 处理…"
+          }
+        }
+      }
+    },
     "Processing..." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "处理中…"
+          }
+        }
+      }
+    },
+    "Processor %lld" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理器 %lld"
+          }
+        }
+      }
+    },
+    "Processors run from top to bottom. Each one receives the previous processor's text." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "处理器会从上到下依次运行，每个处理器都会接收上一个处理器的文本。"
+          }
+        }
+      }
+    },
+    "Prompt hint" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "识别提示"
           }
         }
       }
@@ -2105,6 +3165,16 @@
         }
       }
     },
+    "Read only" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只读"
+          }
+        }
+      }
+    },
     "Ready" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2115,11 +3185,82 @@
         }
       }
     },
+    "Recipe" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配方"
+          }
+        }
+      }
+    },
+    "Recipe components" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配方组件"
+          }
+        }
+      }
+    },
+    "Recipe could not be saved" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存配方"
+          }
+        }
+      }
+    },
+    "Recipe name" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配方名称"
+          }
+        }
+      }
+    },
+    "Recipe topology" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配方结构"
+          }
+        }
+      }
+    },
+    "Recognition books bias STT and correct its transcript. Each AI processor can mount separate glossary books below." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "识别词汇簿会为 STT 提供偏置并修正转写文本。每个 AI 处理器可在下方挂载独立的术语词汇簿。"
+          }
+        }
+      }
+    },
+    "Recognition vocabulary" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "识别词汇"
+          }
+        }
+      }
+    },
     "Record a Note" : {
       "comment" : "Title of the \"Record a Note\" intent.",
       "isCommentAutoGenerated" : true
     },
     "Record Mode" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2207,6 +3348,16 @@
         }
       }
     },
+    "Resolve the listed recipe issues before saving" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先解决列出的配方问题再保存"
+          }
+        }
+      }
+    },
     "Result" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2227,12 +3378,35 @@
         }
       }
     },
+    "Return to app (adapted)" : {
+
+    },
+    "Review" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查"
+          }
+        }
+      }
+    },
     "Run Again" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "重新检查"
+          }
+        }
+      }
+    },
+    "Running %@…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在运行 %@…"
           }
         }
       }
@@ -2323,6 +3497,16 @@
       "comment" : "A section header in the config sets view, indicating that there are saved config sets.",
       "isCommentAutoGenerated" : true
     },
+    "Saves this recipe" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存此配方"
+          }
+        }
+      }
+    },
     "Scan a config QR" : {
       "comment" : "A button that, when tapped, presents a view for scanning a QR code.",
       "isCommentAutoGenerated" : true
@@ -2374,6 +3558,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请先为每个模型选择类型"
+          }
+        }
+      }
+    },
+    "Selected" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选择"
           }
         }
       }
@@ -2459,13 +3653,43 @@
         }
       }
     },
+    "Skipped — raw transcript" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已跳过，使用原始转写文本"
+          }
+        }
+      }
+    },
     "Skipped (not applicable on iOS): %@" : {
       "comment" : "A list of features that were not imported from the bundle, because the current platform doesn't support them.",
       "isCommentAutoGenerated" : true
     },
+    "Source" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来源"
+          }
+        }
+      }
+    },
     "Spanish" : {
       "comment" : "A language option in the LLM Processing section of the ModeConfigForm.",
       "isCommentAutoGenerated" : true
+    },
+    "Speech" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音"
+          }
+        }
+      }
     },
     "Speech recognition permission" : {
       "localizations" : {
@@ -2477,12 +3701,32 @@
         }
       }
     },
+    "Speech-to-Text" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音转文字"
+          }
+        }
+      }
+    },
     "Speech-to-Text (STT)" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "语音转文字 (STT)"
+          }
+        }
+      }
+    },
+    "Speech, then Vocabulary, then AI" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音、词汇，然后 AI"
           }
         }
       }
@@ -2501,6 +3745,69 @@
         }
       }
     },
+    "Step 1: Speech-to-Text" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步骤 1：语音转文字"
+          }
+        }
+      }
+    },
+    "Step 2: Vocabulary" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步骤 2：词汇"
+          }
+        }
+      }
+    },
+    "Step 3: AI Processing" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步骤 3：AI 处理"
+          }
+        }
+      }
+    },
+    "Step name" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "步骤名称"
+          }
+        }
+      }
+    },
+    "Stop the recipe" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止配方"
+          }
+        }
+      }
+    },
+    "Stops recipe on failure" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败时停止配方"
+          }
+        }
+      }
+    },
+    "STT API" : {
+
+    },
     "STT Language" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2517,6 +3824,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "语音识别模型"
+          }
+        }
+      }
+    },
+    "Surface adaptation" : {
+
+    },
+    "System instructions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统指令"
           }
         }
       }
@@ -2588,6 +3908,16 @@
         }
       }
     },
+    "Tap to toggle" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点切换"
+          }
+        }
+      }
+    },
     "Tap to try again" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2629,6 +3959,16 @@
         }
       }
     },
+    "Terms bias recognition; rules correct the transcript before AI steps." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "词条会增强识别倾向，规则会在 AI 步骤前修正转写文本。"
+          }
+        }
+      }
+    },
     "Terms bias speech recognition and LLM cleanup; rules apply deterministic corrections to every transcript. Globally mounted books apply everywhere." : {
       "localizations" : {
         "zh-Hans" : {
@@ -2639,12 +3979,88 @@
         }
       }
     },
+    "Terms from these books are appended as glossary context for this processor." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些词汇簿中的词条会作为术语上下文附加到此处理器。"
+          }
+        }
+      }
+    },
+    "The corrected transcript goes straight to the selected outputs." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修正后的转写文本会直接发送到所选输出。"
+          }
+        }
+      }
+    },
+    "The keyboard submits the inserted text after a successful delivery." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "成功交付后，键盘会提交插入的文本。"
+          }
+        }
+      }
+    },
+    "The main app returns the result; the keyboard inserts it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主 App 返回结果，由键盘将其插入。"
+          }
+        }
+      }
+    },
     "The Quick Note notebook cannot be deleted." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "“快速笔记”笔记本不能删除。"
+          }
+        }
+      }
+    },
+    "The recipe id stays stable when its name or icon changes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "修改名称或图标时，配方 ID 保持不变。"
+          }
+        }
+      }
+    },
+    "The requested recipe cannot run on this iPhone. Fonos will use %@ instead." : {
+
+    },
+    "The selected recipe runs its real source, ordered processors, and parallel outputs. Vocabulary is mounted where it is used: recognition and correction at STT, glossary context at each AI step." : {
+
+    },
+    "The transcription model '%@' is unavailable. Choose another model or Use default." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "转写模型“%@”不可用。请选择其他模型或“使用默认值”。"
+          }
+        }
+      }
+    },
+    "This legacy return output does not support press_enter." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个旧版返回输出不支持 press_enter。"
           }
         }
       }
@@ -2663,12 +4079,63 @@
       "comment" : "The following languages are not supported by Apple's speech recognition engine.",
       "isCommentAutoGenerated" : true
     },
+    "Total" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "总计"
+          }
+        }
+      }
+    },
+    "Transcribe" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "转写"
+          }
+        }
+      }
+    },
+    "Transcribing…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在转写…"
+          }
+        }
+      }
+    },
     "Transcript" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "转写文本"
+          }
+        }
+      }
+    },
+    "Transcript fallback" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已回退到转写文本"
+          }
+        }
+      }
+    },
+    "Transcript ready" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "转写文本已就绪"
           }
         }
       }
@@ -2720,6 +4187,36 @@
     "Type:" : {
 
     },
+    "Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不可用"
+          }
+        }
+      }
+    },
+    "Unavailable — Apple Speech fallback" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不可用，已回退到 Apple Speech"
+          }
+        }
+      }
+    },
+    "Unavailable component" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不可用的组件"
+          }
+        }
+      }
+    },
     "Unknown state." : {
       "localizations" : {
         "zh-Hans" : {
@@ -2741,6 +4238,9 @@
         }
       }
     },
+    "URL Scheme" : {
+
+    },
     "URL TEMPLATE" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2761,12 +4261,72 @@
         }
       }
     },
+    "Use default" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用默认值"
+          }
+        }
+      }
+    },
+    "Use this mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用此模式"
+          }
+        }
+      }
+    },
+    "Use this recipe" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用此配方"
+          }
+        }
+      }
+    },
+    "Use this step's input" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用此步骤的输入"
+          }
+        }
+      }
+    },
+    "User template" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用户模板"
+          }
+        }
+      }
+    },
     "User Template ({text})" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "用户模板 ({text})"
+          }
+        }
+      }
+    },
+    "Uses input on failure" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败时使用输入"
           }
         }
       }
@@ -2802,6 +4362,57 @@
         }
       }
     },
+    "Vocabulary entries for this mode are applied after transcription and before AI processing." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此模式的词汇条目会在转写后、AI 处理前应用。"
+          }
+        }
+      }
+    },
+    "Vocabulary is applied automatically after transcription and before AI processing." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "词汇会在转写后、AI 处理前自动应用。"
+          }
+        }
+      }
+    },
+    "Vocabulary resolves per processor: STT bias and correction, then optional AI glossary context." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "词汇按处理器解析：先用于 STT 识别偏置和纠错，再可选地作为 AI 术语上下文。"
+          }
+        }
+      }
+    },
+    "Voice flow" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音处理流程"
+          }
+        }
+      }
+    },
+    "Voice Recipes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音配方"
+          }
+        }
+      }
+    },
     "Where to send the transcribed text." : {
       "comment" : "Label for a parameter in the \"Dictate with Fonos\" intent that allows the user to specify where to send the transcribed text from a dictation session.",
       "isCommentAutoGenerated" : true
@@ -2809,6 +4420,9 @@
     "Which notebook to record into." : {
       "comment" : "Label for the \"Notebook\" parameter in the \"Record a Note\" intent.",
       "isCommentAutoGenerated" : true
+    },
+    "Whisper audio endpoint" : {
+
     },
     "Whisper Prompt Hint" : {
       "localizations" : {

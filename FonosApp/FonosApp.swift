@@ -4,12 +4,13 @@ import SwiftData
 @main
 struct FonosApp: App {
 
-    private static let appGroupID = "group.com.fonos.ios"
+    private static let appGroupID = KeyboardIPC.appGroupID
 
     let modelContainer: ModelContainer
 
     init() {
-        // Register background recording service for keyboard extension IPC
+        // Register IPC observers only. Microphone input starts after the user
+        // explicitly enables Keyboard Ready or begins foreground dictation.
         BackgroundRecordingService.shared.register()
         do {
             try Self.ensureSharedApplicationSupportDirectory()
@@ -22,6 +23,9 @@ struct FonosApp: App {
             let configuration = ModelConfiguration()
 #endif
             modelContainer = try ModelContainer(for: schema, configurations: [configuration])
+            BackgroundRecordingService.shared.configure(
+                modelContext: modelContainer.mainContext
+            )
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }

@@ -151,7 +151,7 @@ struct INV09ConfigTests {
 
     @Test("API keys are NOT stored in plain AppConfig UserDefaults payload")
     func apiKeysNotInUserDefaults() throws {
-        var config = AppConfig()
+        let config = AppConfig()
         // Simulate a config that has been populated — apiKey should not appear in JSON
         let data = try JSONEncoder().encode(config)
         let jsonString = String(data: data, encoding: .utf8) ?? ""

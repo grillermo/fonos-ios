@@ -9,6 +9,7 @@
 
 import Testing
 import Foundation
+import os
 @testable import FonosApp
 
 // MARK: - Tests
@@ -20,60 +21,68 @@ struct NoteINV10DeepLinkTests {
 
     @Test("handleDeepLink with fonos://note posts a notification")
     func deepLinkNotePostsNotification() async throws {
-        // Register an observer before triggering the deep link
-        let expectation = NotificationExpectation(name: .fonosOpenNotes)
-        await withCheckedContinuation { continuation in
-            expectation.onFire = { continuation.resume() }
+        await confirmation("Expected .fonosOpenNotes notification to be posted") { confirm in
+            let token = NotificationCenter.default.addObserver(
+                forName: .fonosOpenNotes,
+                object: nil,
+                queue: .main
+            ) { _ in
+                confirm()
+            }
+            defer { NotificationCenter.default.removeObserver(token) }
+
             let url = URL(string: "fonos://note")!
-            // TODO: Replace with actual deep link handler entry point once it is known.
-            // Candidates: FonosApp.handleOpenURL(_:), AppDelegate.application(_:open:),
-            // or a static DeepLinkRouter.handle(_:) method.
             DeepLinkRouter.handle(url)
         }
-        #expect(expectation.fired, "Expected .fonosOpenNotes notification to be posted")
     }
 
     @Test("handleDeepLink with fonos://note posts notification with no notebookId userInfo")
-    func deepLinkNoteNoNotebookId() throws {
-        var receivedUserInfo: [AnyHashable: Any]? = nil
-        let token = NotificationCenter.default.addObserver(
-            forName: .fonosOpenNotes,
-            object: nil,
-            queue: .main
-        ) { notification in
-            receivedUserInfo = notification.userInfo
-        }
-        defer { NotificationCenter.default.removeObserver(token) }
+    func deepLinkNoteNoNotebookId() async throws {
+        let receivedNotebookID = OSAllocatedUnfairLock<String?>(initialState: nil)
+        await confirmation("Expected .fonosOpenNotes notification to be posted") { confirm in
+            let token = NotificationCenter.default.addObserver(
+                forName: .fonosOpenNotes,
+                object: nil,
+                queue: .main
+            ) { notification in
+                let notebookID = notification.userInfo?["notebookId"] as? String
+                receivedNotebookID.withLock { $0 = notebookID }
+                confirm()
+            }
+            defer { NotificationCenter.default.removeObserver(token) }
 
-        let url = URL(string: "fonos://note")!
-        DeepLinkRouter.handle(url)
+            let url = URL(string: "fonos://note")!
+            DeepLinkRouter.handle(url)
+        }
 
         // No notebookId query parameter → userInfo should not contain one
-        let notebookId = receivedUserInfo?["notebookId"] as? String
-        #expect(notebookId == nil)
+        #expect(receivedNotebookID.withLock { $0 } == nil)
     }
 
     // MARK: - fonos://note?notebook=<id>
 
     @Test("handleDeepLink with fonos://note?notebook=<uuid> posts notification with correct notebookId")
-    func deepLinkNoteWithNotebookId() throws {
+    func deepLinkNoteWithNotebookId() async throws {
         let targetId = UUID()
-        var receivedNotebookId: UUID? = nil
-        let token = NotificationCenter.default.addObserver(
-            forName: .fonosOpenNotes,
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let idString = notification.userInfo?["notebookId"] as? String {
-                receivedNotebookId = UUID(uuidString: idString)
+        let receivedNotebookID = OSAllocatedUnfairLock<UUID?>(initialState: nil)
+        await confirmation("Expected .fonosOpenNotes notification to be posted") { confirm in
+            let token = NotificationCenter.default.addObserver(
+                forName: .fonosOpenNotes,
+                object: nil,
+                queue: .main
+            ) { notification in
+                let notebookID = (notification.userInfo?["notebookId"] as? String)
+                    .flatMap(UUID.init(uuidString:))
+                receivedNotebookID.withLock { $0 = notebookID }
+                confirm()
             }
+            defer { NotificationCenter.default.removeObserver(token) }
+
+            let url = URL(string: "fonos://note?notebook=\(targetId.uuidString)")!
+            DeepLinkRouter.handle(url)
         }
-        defer { NotificationCenter.default.removeObserver(token) }
 
-        let url = URL(string: "fonos://note?notebook=\(targetId.uuidString)")!
-        DeepLinkRouter.handle(url)
-
-        #expect(receivedNotebookId == targetId)
+        #expect(receivedNotebookID.withLock { $0 } == targetId)
     }
 
     @Test("handleDeepLink with malformed UUID in notebook param does not crash")
@@ -87,19 +96,23 @@ struct NoteINV10DeepLinkTests {
     // MARK: - Unrelated URL is not handled as a note deep link
 
     @Test("handleDeepLink with fonos://record does not post .fonosOpenNotes notification")
-    func deepLinkRecordDoesNotPostNotesNotification() throws {
-        var fired = false
-        let token = NotificationCenter.default.addObserver(
-            forName: .fonosOpenNotes,
-            object: nil,
-            queue: .main
-        ) { _ in fired = true }
-        defer { NotificationCenter.default.removeObserver(token) }
+    func deepLinkRecordDoesNotPostNotesNotification() async throws {
+        await confirmation(
+            "fonos://record must not trigger the Notes deep link handler",
+            expectedCount: 0
+        ) { confirm in
+            let token = NotificationCenter.default.addObserver(
+                forName: .fonosOpenNotes,
+                object: nil,
+                queue: .main
+            ) { _ in
+                confirm()
+            }
+            defer { NotificationCenter.default.removeObserver(token) }
 
-        let url = URL(string: "fonos://record")!
-        DeepLinkRouter.handle(url)
-
-        #expect(!fired, "fonos://record must not trigger the Notes deep link handler")
+            let url = URL(string: "fonos://record")!
+            DeepLinkRouter.handle(url)
+        }
     }
 
     @Test("handleDeepLink with unrecognised scheme does not crash")
@@ -116,30 +129,4 @@ private extension Notification.Name {
     // TODO: Move this extension to the production code (e.g. Notifications.swift)
     // and import it here via @testable import FonosApp.
     static let fonosOpenNotes = Notification.Name("fonos.openNotes")
-}
-
-// MARK: - NotificationExpectation helper
-
-/// A lightweight observer that records whether a notification fired.
-private final class NotificationExpectation {
-    let name: Notification.Name
-    var fired: Bool = false
-    var onFire: (() -> Void)?
-    private var token: NSObjectProtocol?
-
-    init(name: Notification.Name) {
-        self.name = name
-        token = NotificationCenter.default.addObserver(
-            forName: name,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.fired = true
-            self?.onFire?()
-        }
-    }
-
-    deinit {
-        if let token { NotificationCenter.default.removeObserver(token) }
-    }
 }
