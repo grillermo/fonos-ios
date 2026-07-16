@@ -1,6 +1,5 @@
-// Main app and keyboard extension keep SEPARATE, independently-persisted
-// dictation modes: the main app owns config.activeModeID; the keyboard owns
-// kb_active_mode_id. Neither clobbers the other.
+// Main app and keyboard extension keep separate workflow selections. The
+// keyboard's legacy mode mirror remains readable for older extension builds.
 //
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/AppConfigStorageTests
 
@@ -15,9 +14,9 @@ private func freshDefaults() -> UserDefaults {
     return d
 }
 
-private func configWith(activeModeID: String) -> AppConfig {
-    var c = AppConfig()
-    c.activeModeID = activeModeID
+private func configWith(activeWorkflowID: String) -> AppConfig {
+    var c = WorkflowMigration.migrated(AppConfig())
+    c.activeVoiceWorkflowID = activeWorkflowID
     return c
 }
 
@@ -31,7 +30,11 @@ struct AppConfigStorageTests {
         let shared = freshDefaults()
         AppConfigStorage.setKeyboardModeID("polish", shared: shared)
 
-        AppConfigStorage.save(configWith(activeModeID: "raw"), standard: standard, shared: shared)
+        AppConfigStorage.save(
+            configWith(activeWorkflowID: "wf.dictation"),
+            standard: standard,
+            shared: shared
+        )
 
         #expect(AppConfigStorage.keyboardModeID(shared: shared) == "polish")
     }
@@ -40,11 +43,15 @@ struct AppConfigStorageTests {
     func loadDoesNotInheritKeyboardMode() {
         let standard = freshDefaults()
         let shared = freshDefaults()
-        AppConfigStorage.save(configWith(activeModeID: "raw"), standard: standard, shared: shared)
+        AppConfigStorage.save(
+            configWith(activeWorkflowID: "wf.dictation"),
+            standard: standard,
+            shared: shared
+        )
         AppConfigStorage.setKeyboardModeID("formal", shared: shared)
 
         let loaded = AppConfigStorage.load(standard: standard, shared: shared)
-        #expect(loaded?.activeModeID == "raw")
+        #expect(loaded?.activeVoiceWorkflowID == "wf.dictation")
     }
 
     @Test("a main-app mode change and a keyboard mode change persist independently")
@@ -55,10 +62,15 @@ struct AppConfigStorageTests {
         // Keyboard picks "polish"
         AppConfigStorage.setKeyboardModeID("polish", shared: shared)
         // Main app later changes its own mode to "formal" and saves
-        AppConfigStorage.save(configWith(activeModeID: "formal"), standard: standard, shared: shared)
+        AppConfigStorage.save(
+            configWith(activeWorkflowID: "wf.voice.formal"),
+            standard: standard,
+            shared: shared
+        )
 
         // Both survive, each on its own key.
-        #expect(AppConfigStorage.load(standard: standard, shared: shared)?.activeModeID == "formal")
+        #expect(AppConfigStorage.load(standard: standard, shared: shared)?
+            .activeVoiceWorkflowID == "wf.voice.formal")
         #expect(AppConfigStorage.keyboardModeID(shared: shared) == "polish")
     }
 

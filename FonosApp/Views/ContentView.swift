@@ -4,11 +4,9 @@ import SwiftData
 /// Shared config storage for the main app, keyboard extension, and background
 /// recorder (all read/write the App Group container).
 ///
-/// The main app's dictation mode (`config.activeModeID`) and the keyboard's
-/// dictation mode (`kb_active_mode_id`) are kept SEPARATE and persist
-/// independently: the keyboard can pick its own mode without the main app's
-/// Settings clobbering it, and vice versa. The keyboard override falls back to
-/// the main app's mode only until the keyboard picks one for the first time.
+/// The main app and keyboard keep separate workflow selections. The legacy
+/// keyboard mode key remains readable only for compatibility with older
+/// extension builds.
 enum AppConfigStorage {
     static let appGroupID = KeyboardIPC.appGroupID
     static let configKey = KeyboardIPC.DefaultsKey.appConfig
@@ -48,24 +46,28 @@ enum AppConfigStorage {
         guard let data, var config = try? JSONDecoder().decode(AppConfig.self, from: data) else {
             return nil
         }
-        // Materialize desktop-compatible workflow definitions exactly once on
-        // upgrade (and reconcile any legacy mode added by an older build).
+        // Materialize desktop-compatible workflow definitions during the
+        // one-way legacy upgrade. Schema 3 never re-reads retired Mode data.
         // Persist immediately so the keyboard/background process sees the same
         // recipe identities as the foreground app.
         if WorkflowMigration.migrate(&config) {
             save(config, standard: standard, shared: shared)
         }
         // The keyboard override is deliberately not applied here: the main app
-        // owns activeModeID, while the background recorder resolves the keyboard's
-        // workflow override explicitly.
+        // owns activeVoiceWorkflowID while the background recorder resolves the
+        // keyboard workflow override explicitly.
         return config
     }
 
     static func save(_ config: AppConfig, standard: UserDefaults, shared: UserDefaults?) {
-        guard let data = try? JSONEncoder().encode(config) else { return }
+        var persistedConfig = config
+        WorkflowMigration.migrate(&persistedConfig)
+        guard let data = try? JSONEncoder().encode(persistedConfig) else { return }
         standard.set(data, forKey: configKey)
         shared?.set(data, forKey: configKey)
-        if let manifest = try? JSONEncoder().encode(keyboardWorkflowManifest(config: config)) {
+        if let manifest = try? JSONEncoder().encode(
+            keyboardWorkflowManifest(config: persistedConfig)
+        ) {
             standard.set(manifest, forKey: keyboardWorkflowManifestKey)
             shared?.set(manifest, forKey: keyboardWorkflowManifestKey)
         }
@@ -114,13 +116,16 @@ enum AppConfigStorage {
 
 struct ContentView: View {
 
-    enum AppTab: Hashable {
+    enum AppTab: Hashable, CaseIterable {
         case dictate, history, notes, settings
     }
 
     @StateObject private var dictationViewModel = DictationViewModel()
     @State private var selectedTab: AppTab = .dictate
     @State private var pendingConfigImport: PendingConfigImport?
+    @State private var configImportError: String?
+    @State private var noteRecordingRequest: NoteRecordingDeepLinkRequest?
+    @State private var handledDeepLinkIDs: Set<UUID> = []
     private let modelContainer: ModelContainer
     private let noteService: NoteService
     @StateObject private var noteViewModel: NoteViewModel
@@ -165,7 +170,11 @@ struct ContentView: View {
                 }
                 .tag(AppTab.history)
 
-            NotesView(noteService: noteService, noteViewModel: noteViewModel)
+            NotesView(
+                noteService: noteService,
+                noteViewModel: noteViewModel,
+                recordingRequest: noteRecordingRequest
+            )
                 .tabItem {
                     Label("Notes", systemImage: "note.text")
                 }
@@ -209,6 +218,7 @@ struct ContentView: View {
 #else
             AppConfigStorage.save(dictationViewModel.config)
 #endif
+            drainPendingDeepLinks()
         }
         // Dictate chips and deep links mutate the view model directly rather
         // than going through Settings' Binding. Persist every workflow change
@@ -225,49 +235,123 @@ struct ContentView: View {
         }
         // fonos://record — widget tap or "Dictate with Fonos" App Intent (spec Flow 2)
         .onReceive(NotificationCenter.default.publisher(for: .fonosStartRecording)) { notification in
-            selectedTab = .dictate
-            if let modeID = notification.userInfo?["mode"] as? String {
-                // `mode` remains the public deep-link query name for
-                // compatibility, but accepts either a recipe id or a legacy
-                // mode id and always selects the workflow authority.
-                dictationViewModel.selectMode(id: modeID)
-            }
-            if !dictationViewModel.isRecording {
-                dictationViewModel.startRecording()
-            }
+            let request = (notification.userInfo?["request"] as? DictationDeepLinkRequest)
+                ?? DictationDeepLinkRequest(
+                    modeID: notification.userInfo?["mode"] as? String,
+                    destinationID: notification.userInfo?["destination"] as? String
+                )
+            handleDictationDeepLink(request)
+            DeepLinkRouter.acknowledge(request.id)
         }
-        // fonos://note — "Record a Note" App Intent (spec Flow 3); NotesView
-        // handles navigating to the requested notebook.
-        .onReceive(NotificationCenter.default.publisher(for: .fonosOpenNotes)) { _ in
-            selectedTab = .notes
+        // fonos://note — the root owns the event so a cold-start notification
+        // cannot be lost between the TabView and the Notes NavigationStack.
+        .onReceive(NotificationCenter.default.publisher(for: .fonosOpenNotes)) { notification in
+            let request = (notification.userInfo?["request"] as? NoteRecordingDeepLinkRequest)
+                ?? NoteRecordingDeepLinkRequest(
+                    notebookID: notification.userInfo?["notebookId"] as? String
+                )
+            handleNoteDeepLink(request)
+            DeepLinkRouter.acknowledge(request.id)
         }
         // fonos://config?d=… — a shared config bundle (e.g. scanned QR). Decode
         // and show a preview; never apply untrusted input silently.
         .onReceive(NotificationCenter.default.publisher(for: .fonosImportConfig)) { notification in
-            guard let payload = notification.userInfo?["payload"] as? String,
-                  let data = try? ConfigBundleCodec.decode(payload),
-                  let summary = try? ScenarioImporter.preview(data: data) else { return }
-            pendingConfigImport = PendingConfigImport(data: data, summary: summary)
+            let request = notification.userInfo?["request"] as? ConfigImportDeepLinkRequest
+            let payload = request?.payload ?? notification.userInfo?["payload"] as? String
+            if let payload { handleConfigDeepLink(payload, id: request?.id ?? UUID()) }
+            if let request { DeepLinkRouter.acknowledge(request.id) }
         }
         .sheet(item: $pendingConfigImport) { pending in
             ConfigImportPreviewView(
                 summary: pending.summary,
                 onImport: {
                     applyImportedConfig(pending.data)
-                    pendingConfigImport = nil
                 },
-                onCancel: { pendingConfigImport = nil }
+                onCancel: {
+                    configImportError = nil
+                    pendingConfigImport = nil
+                }
             )
+            .alert(
+                "Config Import Failed",
+                isPresented: Binding(
+                    get: { configImportError != nil && pendingConfigImport != nil },
+                    set: { if !$0 { configImportError = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { configImportError = nil }
+            } message: {
+                Text(configImportError ?? "")
+            }
+        }
+        .alert(
+            "Config Import Failed",
+            isPresented: Binding(
+                get: { configImportError != nil && pendingConfigImport == nil },
+                set: { if !$0 { configImportError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { configImportError = nil }
+        } message: {
+            Text(configImportError ?? "")
         }
     }
 
     /// Apply an imported config bundle to the live config, Notes VM, and storage.
     private func applyImportedConfig(_ data: Data) {
-        guard let (newConfig, _) = try? ScenarioImporter.apply(
-            data: data, to: dictationViewModel.config, vocabStore: VocabStore()) else { return }
-        dictationViewModel.config = newConfig
-        noteViewModel.config = newConfig
-        AppConfigStorage.save(newConfig)
+        do {
+            let (newConfig, _) = try ScenarioImporter.apply(
+                data: data,
+                to: dictationViewModel.config,
+                vocabStore: VocabStore()
+            )
+            dictationViewModel.config = newConfig
+            noteViewModel.config = newConfig
+            AppConfigStorage.save(newConfig)
+            pendingConfigImport = nil
+        } catch {
+            // Keep the preview open so the user can retry after correcting a
+            // Keychain or validation failure.
+            configImportError = error.localizedDescription
+        }
+    }
+
+    private func handleDictationDeepLink(_ request: DictationDeepLinkRequest) {
+        guard handledDeepLinkIDs.insert(request.id).inserted else { return }
+        selectedTab = .dictate
+        dictationViewModel.startRecording(from: request)
+    }
+
+    private func handleNoteDeepLink(_ request: NoteRecordingDeepLinkRequest) {
+        guard handledDeepLinkIDs.insert(request.id).inserted else { return }
+        selectedTab = .notes
+        noteRecordingRequest = request
+    }
+
+    private func handleConfigDeepLink(_ payload: String, id: UUID) {
+        guard handledDeepLinkIDs.insert(id).inserted else { return }
+        do {
+            let data = try ConfigBundleCodec.decode(payload)
+            let summary = try ScenarioImporter.preview(data: data)
+            pendingConfigImport = PendingConfigImport(data: data, summary: summary)
+        } catch {
+            configImportError = error.localizedDescription
+        }
+    }
+
+    /// Replays URLs received while SwiftUI was still constructing ContentView.
+    /// Requests handled live have already been acknowledged and are absent.
+    private func drainPendingDeepLinks() {
+        for request in DeepLinkRouter.takePendingRequests() {
+            switch request {
+            case .dictation(let value):
+                handleDictationDeepLink(value)
+            case .noteRecording(let value):
+                handleNoteDeepLink(value)
+            case .configImport(let value):
+                handleConfigDeepLink(value.payload, id: value.id)
+            }
+        }
     }
 }
 
@@ -285,10 +369,9 @@ enum ScreenshotDemoData {
     @MainActor
     static func seed(modelContainer: ModelContainer) -> AppConfig {
         let context = modelContainer.mainContext
-        var seededConfig = seedConfig()
+        let seededConfig = seedConfig()
         seedHistoryIfNeeded(in: context)
         seedNotesIfNeeded(in: context)
-        seededConfig.activeModeID = seededConfig.activeModeID.isEmpty ? "polish" : seededConfig.activeModeID
         return seededConfig
     }
 
@@ -315,9 +398,8 @@ enum ScreenshotDemoData {
         seeded.modelProfiles = [stt, llm]
         seeded.sttProfile = stt.id
         seeded.llmProfile = llm.id
-        seeded.activeModeID = "polish"
-        seeded.translateTargetLanguage = "English"
         WorkflowMigration.migrate(&seeded)
+        seeded.activeVoiceWorkflowID = "wf.voice.polish"
         return seeded
     }
 

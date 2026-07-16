@@ -6,11 +6,14 @@ struct NotesView: View {
 
     @StateObject private var noteViewModel: NoteViewModel
     private let noteService: NoteService
+    private let recordingRequest: NoteRecordingDeepLinkRequest?
 
     @State private var notebooks: [NoteContainer] = []
     @State private var showNewNotebookSheet = false
     @State private var newNotebookTitle = ""
     @State private var selectedNotebook: NoteContainer?
+    @State private var automaticRecordingRequestID: UUID?
+    @State private var routeError: String?
 
     // MARK: - Init
 
@@ -25,11 +28,17 @@ struct NotesView: View {
         let service = NoteService(modelContainer: container)
         self._noteViewModel = StateObject(wrappedValue: NoteViewModel(noteService: service))
         self.noteService = service
+        self.recordingRequest = nil
     }
 
-    init(noteService: NoteService, noteViewModel: NoteViewModel) {
+    init(
+        noteService: NoteService,
+        noteViewModel: NoteViewModel,
+        recordingRequest: NoteRecordingDeepLinkRequest? = nil
+    ) {
         self.noteService = noteService
         self._noteViewModel = StateObject(wrappedValue: noteViewModel)
+        self.recordingRequest = recordingRequest
     }
 
     // MARK: - Body
@@ -70,31 +79,38 @@ struct NotesView: View {
                 NotebookDetailView(
                     notebook: notebook,
                     noteService: noteService,
-                    noteViewModel: noteViewModel
+                    noteViewModel: noteViewModel,
+                    autoRecordRequestID: automaticRecordingRequestID
                 )
             }
-            // fonos://note?notebook=<uuid> — open the requested notebook,
-            // falling back to Quick Note when no id is given.
-            .onReceive(NotificationCenter.default.publisher(for: .fonosOpenNotes)) { notification in
-                reloadNotebooks()
-                let requested = (notification.userInfo?["notebookId"] as? String)
-                    .flatMap(UUID.init(uuidString:))
-                    .flatMap { noteService.notebook(id: $0) }
-                selectedNotebook = requested ?? noteService.quickNoteNotebook()
+            .task(id: recordingRequest?.id) {
+                guard let recordingRequest else { return }
+                openAndRecord(request: recordingRequest)
             }
             .sheet(isPresented: $showNewNotebookSheet, onDismiss: reloadNotebooks) {
                 NewNotebookSheet(
                     title: $newNotebookTitle,
                     onCreate: { title, template in
-                        let nb = noteService.createNotebook(title: title)
-                        if !template.systemPromptSeed.isEmpty {
-                            noteService.updateNotebookConfigV2(nb.id, systemPrompt: template.systemPromptSeed)
-                        }
+                        _ = try noteService.createNotebook(
+                            title: title,
+                            systemPrompt: template.systemPromptSeed
+                        )
                         showNewNotebookSheet = false
                         reloadNotebooks()
                     },
                     onCancel: { showNewNotebookSheet = false }
                 )
+            }
+            .alert(
+                "Notebook Unavailable",
+                isPresented: Binding(
+                    get: { routeError != nil },
+                    set: { if !$0 { routeError = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { routeError = nil }
+            } message: {
+                Text(routeError ?? "")
             }
         }
         .preferredColorScheme(.dark)
@@ -131,6 +147,44 @@ struct NotesView: View {
     private func reloadNotebooks() {
         notebooks = noteService.allNotebooks()
     }
+
+    /// Resolves the requested notebook before navigating. An invalid explicit
+    /// target is reported instead of silently recording into another notebook;
+    /// an omitted target intentionally means Quick Note.
+    private func openAndRecord(request: NoteRecordingDeepLinkRequest) {
+        guard !noteViewModel.isCapturePendingOrActive else {
+            routeError = "A voice note is already starting or recording. Finish it before starting another."
+            return
+        }
+        switch noteViewModel.recordingState {
+        case .recording, .processing:
+            routeError = "A voice note is already in progress. Finish it before starting another."
+            return
+        case .idle, .done, .error:
+            break
+        }
+
+        reloadNotebooks()
+        let target: NoteContainer
+        if let value = request.notebookID {
+            if let id = UUID(uuidString: value),
+               let requested = noteService.notebook(id: id) {
+                target = requested
+            } else {
+                routeError = "The requested notebook could not be found. No recording was started."
+                return
+            }
+        } else {
+            do {
+                target = try noteService.quickNoteNotebook()
+            } catch {
+                routeError = error.localizedDescription
+                return
+            }
+        }
+        automaticRecordingRequestID = request.id
+        selectedNotebook = target
+    }
 }
 
 // MARK: - NotebookCard
@@ -139,7 +193,7 @@ private struct NotebookCard: View {
     let notebook: NoteContainer
     let entryCount: Int
 
-    private var isQuickNote: Bool { notebook.title == "Quick Note" }
+    private var isQuickNote: Bool { NoteService.isQuickNote(notebook) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -183,7 +237,7 @@ private struct NotebookCard: View {
 
     @ViewBuilder
     private var modeBadge: some View {
-        Text(notebook.processingMode)
+        Text(NotebookPipeline.displayLabel(for: notebook))
             .font(.system(size: 9, weight: .semibold, design: .monospaced))
             .foregroundColor(Color(hex: "#fbbf24").opacity(0.8))
             .padding(.horizontal, 6)
@@ -199,10 +253,11 @@ private struct NotebookCard: View {
 
 private struct NewNotebookSheet: View {
     @Binding var title: String
-    let onCreate: (String, NotebookTemplate) -> Void
+    let onCreate: (String, NotebookTemplate) throws -> Void
     let onCancel: () -> Void
 
     @State private var selectedTemplate: NotebookTemplate = .raw
+    @State private var creationError: String?
 
     var body: some View {
         NavigationStack {
@@ -249,10 +304,27 @@ private struct NewNotebookSheet: View {
                     Button("Cancel") { onCancel() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") { onCreate(title, selectedTemplate) }
-                        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Create") {
+                        do {
+                            try onCreate(title, selectedTemplate)
+                        } catch {
+                            creationError = error.localizedDescription
+                        }
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+        }
+        .alert(
+            "Notebook Could Not Be Created",
+            isPresented: Binding(
+                get: { creationError != nil },
+                set: { if !$0 { creationError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { creationError = nil }
+        } message: {
+            Text(creationError ?? "")
         }
         .preferredColorScheme(.dark)
     }

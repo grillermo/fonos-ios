@@ -254,6 +254,32 @@ struct VocabStoreTests {
         #expect(store.books.isEmpty)
         #expect(store.mountedIDs(forKey: VocabStore.globalMountKey).isEmpty)
     }
+
+    @Test("snapshot replacement is atomic and prunes obsolete scoped mounts")
+    func snapshotReplacement() {
+        let store = VocabStore(defaults: freshDefaults())
+        let notebookID = UUID()
+        store.upsert(VocabBook(id: "old", name: "Old"))
+        store.upsert(VocabBook(id: "keep", name: "Phone copy"))
+        store.setMounted(["old"], forKey: VocabStore.globalMountKey)
+        store.setMounted(["old", "keep", "missing"], forKey: VocabStore.modeMountKey("formal"))
+        store.setMounted(["old"], forKey: VocabStore.notebookMountKey(notebookID))
+
+        store.replace(
+            books: [
+                VocabBook(id: "keep", name: "Desktop copy"),
+                VocabBook(id: "new", name: "New")
+            ],
+            globalMountIDs: ["new", "future"]
+        )
+
+        #expect(store.books.map(\.id) == ["keep", "new"])
+        #expect(store.book(id: "keep")?.name == "Desktop copy")
+        #expect(store.book(id: "old") == nil)
+        #expect(store.mountedIDs(forKey: VocabStore.globalMountKey) == ["new", "future"])
+        #expect(store.mountedIDs(forKey: VocabStore.modeMountKey("formal")) == ["keep"])
+        #expect(store.mountedIDs(forKey: VocabStore.notebookMountKey(notebookID)).isEmpty)
+    }
 }
 
 // MARK: - Pipeline integration
@@ -315,6 +341,22 @@ private final class GlossaryCaptureURLProtocol: URLProtocol {
 @Suite(.serialized)
 struct VocabPipelineTests {
 
+    @MainActor
+    private func waitForDictation(_ viewModel: DictationViewModel) async {
+        for _ in 0..<2_000 {
+            switch viewModel.recordingState {
+            case .result:
+                return
+            case .error(let message):
+                Issue.record("Dictation ended in error: \(message)")
+                return
+            case .idle, .starting, .recording, .processing:
+                await Task.yield()
+            }
+        }
+        Issue.record("Timed out waiting for dictation")
+    }
+
     private func freshStore() -> VocabStore {
         let name = "vocab-pipeline-\(UUID().uuidString)"
         let d = UserDefaults(suiteName: name)!
@@ -334,31 +376,46 @@ struct VocabPipelineTests {
     }
 
     @Test("dictation pipeline applies correction rules to the transcript")
+    @MainActor
     func dictationAppliesRules() async throws {
         let vm = DictationViewModel(sttProvider: VocabRecordingSTT(transcript: "I use my sequel daily"))
         vm.vocabStore = storeWithGlobalBook()
-        let result = try await vm.processAudio(Data(count: 44), language: nil, mode: .raw)
-        #expect(result.text == "I use MySQL daily")
+        vm.finishRecording(wavData: Data(count: 44))
+        await waitForDictation(vm)
+        if case .result(let transcript, let processed) = vm.recordingState {
+            #expect(transcript == "I use MySQL daily")
+            #expect(processed == nil)
+        } else {
+            Issue.record("Expected corrected dictation result")
+        }
     }
 
     @Test("dictation pipeline offers vocabulary terms to the STT provider")
+    @MainActor
     func dictationOffersVocabularyToSTT() async throws {
         let stt = VocabRecordingSTT(transcript: "hello")
         let vm = DictationViewModel(sttProvider: stt)
         vm.vocabStore = storeWithGlobalBook()
-        _ = try await vm.processAudio(Data(count: 44), language: nil, mode: .raw)
+        vm.finishRecording(wavData: Data(count: 44))
+        await waitForDictation(vm)
         #expect(stt.receivedVocabulary == ["MySQL", "Kubernetes"])
     }
 
     @Test("dictation pipeline appends the vocab glossary to the LLM system prompt")
+    @MainActor
     func dictationAppendsGlossaryToLLM() async throws {
         GlossaryCaptureURLProtocol.lastSystemPrompt = nil
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [GlossaryCaptureURLProtocol.self]
         let llm = authorizedLLMService(session: URLSession(configuration: config), apiKey: "sk-test")
-        let vm = DictationViewModel(sttProvider: VocabRecordingSTT(transcript: "hi"), llmService: llm)
+        let vm = DictationViewModel(
+            sttProvider: VocabRecordingSTT(transcript: "hi"),
+            llmProvider: llm
+        )
         vm.vocabStore = storeWithGlobalBook()
-        _ = try await vm.processAudio(Data(count: 44), language: nil, mode: .polish)
+        vm.selectMode(id: "polish")
+        vm.finishRecording(wavData: Data(count: 44))
+        await waitForDictation(vm)
         let prompt = GlossaryCaptureURLProtocol.lastSystemPrompt ?? ""
         #expect(prompt.contains("Domain vocabulary: MySQL, Kubernetes"))
     }
@@ -367,7 +424,7 @@ struct VocabPipelineTests {
     @MainActor
     func notePipelineAppliesRules() async throws {
         let noteService = NoteService()
-        let notebook = noteService.createNotebook(title: "Vocab NB")
+        let notebook = try noteService.createNotebook(title: "Vocab NB")
         let store = freshStore()
         store.upsert(VocabBook(id: "nb", name: "NB",
                                rules: [VocabRule(from: "my sequel", to: "MySQL")]))

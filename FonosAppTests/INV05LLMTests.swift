@@ -94,8 +94,8 @@ struct INV05LLMServiceTests {
 
     // --- "polish" mode prompt ---
 
-    @Test("LLMService polish mode includes correct system prompt keywords")
-    func polishModeSystemPrompt() async throws {
+    @Test("workflow polish configuration includes transformation instructions")
+    func polishWorkflowInstructions() async throws {
         var capturedBody: [String: Any] = [:]
         LLMMockURLProtocol.requestHandler = { req in
             if let body = req.httpBody,
@@ -105,13 +105,15 @@ struct INV05LLMServiceTests {
             return okLLMResponse(body: openAIChatResponse(content: "polished text"))
         }
         let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "raw input", mode: .polish)
+        _ = try? await service.process(
+            text: "raw input",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
 
         let messages = capturedBody["messages"] as? [[String: String]] ?? []
-        let systemMsg = messages.first(where: { $0["role"] == "system" })?["content"] ?? ""
-        // Polish mode must mention removing fillers and preserving tone
-        #expect(systemMsg.localizedCaseInsensitiveContains("filler") ||
-                systemMsg.localizedCaseInsensitiveContains("polish"))
+        let userMsg = messages.first(where: { $0["role"] == "user" })?["content"] ?? ""
+        #expect(userMsg.localizedCaseInsensitiveContains("speech artifacts"))
+        #expect(userMsg.localizedCaseInsensitiveContains("tone"))
     }
 
     @Test("LLMService polish mode substitutes {text} in user message")
@@ -125,7 +127,10 @@ struct INV05LLMServiceTests {
             return okLLMResponse(body: openAIChatResponse(content: "polished"))
         }
         let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "um yeah so basically", mode: .polish)
+        _ = try? await service.process(
+            text: "um yeah so basically",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
 
         let messages = capturedBody["messages"] as? [[String: String]] ?? []
         let userMsg = messages.first(where: { $0["role"] == "user" })?["content"] ?? ""
@@ -146,7 +151,10 @@ struct INV05LLMServiceTests {
             return okLLMResponse(body: openAIChatResponse(content: "formal text"))
         }
         let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "hey just checking in", mode: .formal)
+        _ = try? await service.process(
+            text: "hey just checking in",
+            configuration: workflowLLMConfiguration(for: .formal)
+        )
 
         let messages = capturedBody["messages"] as? [[String: String]] ?? []
         let systemMsg = messages.first(where: { $0["role"] == "system" })?["content"] ?? ""
@@ -168,11 +176,16 @@ struct INV05LLMServiceTests {
             return okLLMResponse(body: openAIChatResponse(content: "Bonjour"))
         }
         let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "hello", mode: .translate(targetLanguage: "French"))
+        _ = try? await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(
+                for: .translate(targetLanguage: "French")
+            )
+        )
 
         let messages = capturedBody["messages"] as? [[String: String]] ?? []
-        let systemMsg = messages.first(where: { $0["role"] == "system" })?["content"] ?? ""
-        #expect(systemMsg.contains("French"))
+        let userMsg = messages.first(where: { $0["role"] == "user" })?["content"] ?? ""
+        #expect(userMsg.contains("French"))
     }
 
     // --- "custom" mode prompt ---
@@ -193,7 +206,10 @@ struct INV05LLMServiceTests {
                                      userTemplate: "{text}",
                                      temperature: 0.7,
                                      maxTokens: 100)
-        _ = try? await service.process(text: "hello friend", mode: customMode)
+        _ = try? await service.process(
+            text: "hello friend",
+            configuration: workflowLLMConfiguration(for: customMode)
+        )
 
         let messages = capturedBody["messages"] as? [[String: String]] ?? []
         let systemMsg = messages.first(where: { $0["role"] == "system" })?["content"] ?? ""
@@ -208,7 +224,10 @@ struct INV05LLMServiceTests {
             okLLMResponse(body: openAIChatResponse(content: "Here is the polished text."))
         }
         let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
-        let result = try await service.process(text: "raw text", mode: .polish)
+        let result = try await service.process(
+            text: "raw text",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
         #expect(result == "Here is the polished text.")
     }
 
@@ -221,7 +240,10 @@ struct INV05LLMServiceTests {
         }
         let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test")
         await #expect(throws: LLMError.self) {
-            _ = try await service.process(text: "raw text", mode: .polish)
+            _ = try await service.process(
+                text: "raw text",
+                configuration: workflowLLMConfiguration(for: .polish)
+            )
         }
     }
 
@@ -239,7 +261,10 @@ struct INV05LLMServiceTests {
         }
         let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test",
                                  modelID: "o3-mini")
-        _ = try? await service.process(text: "hello", mode: .polish)
+        _ = try? await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
         // Reasoning models (o-series) must not include temperature
         #expect(capturedBody["temperature"] == nil)
     }
@@ -256,7 +281,10 @@ struct INV05LLMServiceTests {
         }
         let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test",
                                  modelID: "gpt-4o")
-        _ = try? await service.process(text: "hello", mode: .polish)
+        _ = try? await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
         #expect(capturedBody["temperature"] != nil)
     }
 
@@ -274,7 +302,10 @@ struct INV05LLMServiceTests {
         }
         let service = authorizedLLMService(session: makeLLMSession(), apiKey: "sk-test",
                                  modelID: "gpt-4o")
-        _ = try? await service.process(text: "hello", mode: .polish)
+        _ = try? await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
         // OpenAI current API uses max_completion_tokens, not max_tokens
         #expect(capturedBody["max_completion_tokens"] != nil)
         #expect(capturedBody["max_tokens"] == nil)
@@ -302,12 +333,15 @@ struct INV05LLMServiceTests {
             provider: "anthropic"
         )
 
-        let result = try await service.process(text: "hello", mode: .polish)
+        let result = try await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
 
         #expect(capturedRequest?.url?.path == "/v1/messages")
         #expect(capturedRequest?.value(forHTTPHeaderField: "x-api-key") == "anthropic-key")
         #expect(capturedRequest?.value(forHTTPHeaderField: "anthropic-version") == "2023-06-01")
-        #expect(capturedBody["system"] as? String == Mode.polish.systemPrompt)
+        #expect(capturedBody["system"] as? String == WorkflowCanonicalLLM.polish.system)
         #expect((capturedBody["messages"] as? [[String: String]])?.allSatisfy {
             $0["role"] != "system"
         } == true)
@@ -339,7 +373,10 @@ struct INV05LLMServiceTests {
             provider: "google"
         )
 
-        let result = try await service.process(text: "hello", mode: .polish)
+        let result = try await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
 
         #expect(capturedRequest?.url?.path == "/v1beta/models/gemini-2.5-flash:generateContent")
         #expect(URLComponents(url: capturedRequest!.url!, resolvingAgainstBaseURL: false)?

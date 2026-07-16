@@ -226,8 +226,3 @@ struct AnyTextDestination: Codable, Equatable, Sendable {
         type(of: lhs._destination) == type(of: rhs._destination)
     }
 }
-
-// MARK: - Legacy type alias
-
-/// Backward-compatible alias retained for any code using the old name.
-typealias TextRoutingError = DestinationError

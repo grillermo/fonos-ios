@@ -2,6 +2,20 @@ import AppIntents
 import Foundation
 import UIKit
 
+enum DictateIntentLaunchError: LocalizedError, Equatable {
+    case invalidDeepLink
+    case couldNotOpenApp
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidDeepLink:
+            "Fonos could not create the requested dictation link."
+        case .couldNotOpenApp:
+            "Fonos could not open the dictation screen."
+        }
+    }
+}
+
 // MARK: - DictateIntent
 
 /// AppIntent for Siri Shortcuts: "Dictate with Fonos"
@@ -33,30 +47,38 @@ struct DictateIntent: AppIntent {
 
     // MARK: - Perform
 
-    @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<String> {
-        // Build the deep link URL with optional parameters
-        var components = URLComponents(string: "fonos://record")!
+    /// Pure URL construction used by perform and contract tests. Keeping this
+    /// separate also makes malformed URL construction an explicit error rather
+    /// than a force-unwrap crash.
+    func deepLinkURL() throws -> URL {
+        guard var components = URLComponents(string: "fonos://record") else {
+            throw DictateIntentLaunchError.invalidDeepLink
+        }
         var queryItems: [URLQueryItem] = []
 
-        if let mode = mode, !mode.isEmpty {
+        if let mode = mode?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !mode.isEmpty {
             queryItems.append(URLQueryItem(name: "mode", value: mode))
         }
-        if let destination = destination, !destination.isEmpty {
+        if let destination = destination?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !destination.isEmpty {
             queryItems.append(URLQueryItem(name: "destination", value: destination))
         }
-        if !queryItems.isEmpty {
-            components.queryItems = queryItems
+        components.queryItems = queryItems.isEmpty ? nil : queryItems
+        guard let url = components.url else {
+            throw DictateIntentLaunchError.invalidDeepLink
+        }
+        return url
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        let url = try deepLinkURL()
+        guard await UIApplication.shared.open(url) else {
+            throw DictateIntentLaunchError.couldNotOpenApp
         }
 
-        // Open the deep link — the app handles recording in FonosApp.swift
-        if let url = components.url {
-            await UIApplication.shared.open(url)
-        }
-
-        // Return a descriptive result string for Shortcuts automation
-        let resultDescription = "Fonos dictation started"
-        return .result(value: resultDescription)
+        return .result(value: "Fonos opened and requested dictation")
     }
 }
 

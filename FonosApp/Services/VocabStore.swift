@@ -72,6 +72,32 @@ final class VocabStore: @unchecked Sendable {
         }
     }
 
+    /// Replaces the desktop-owned vocabulary snapshot in one persisted state
+    /// write. Scenario import uses replacement (not upsert) semantics so a
+    /// book removed on desktop does not remain active on the phone.
+    ///
+    /// Global ids are restored verbatim to mirror fonos-core. iOS-only scoped
+    /// mounts are retained when their books still exist and pruned otherwise,
+    /// preventing stale mode/notebook references without erasing valid local
+    /// scope choices.
+    func replace(books: [VocabBook], globalMountIDs: [String]) {
+        var replacement = state
+        replacement.books = books
+
+        let validBookIDs = Set(books.map(\.id))
+        for key in Array(replacement.mounts.keys) where key != Self.globalMountKey {
+            let retained = replacement.mounts[key, default: []]
+                .filter(validBookIDs.contains)
+            if retained.isEmpty {
+                replacement.mounts.removeValue(forKey: key)
+            } else {
+                replacement.mounts[key] = retained
+            }
+        }
+        replacement.mounts[Self.globalMountKey] = globalMountIDs
+        state = replacement
+    }
+
     // MARK: - Mounts
 
     func mountedIDs(forKey key: String) -> [String] {

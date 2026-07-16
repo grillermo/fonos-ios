@@ -1066,6 +1066,27 @@ struct VoiceWorkflowExecutionTests {
 }
 
 struct VoiceRecipeDraftTests {
+    @Test("iOS carries every portable desktop LLM builtin")
+    func portableDesktopLLMBuiltinsArePresent() throws {
+        let expected: [(String, Double, Int64)] = [
+            ("llm.polish", 0.1, 4_096),
+            ("llm.formal", 0.2, 4_096),
+            ("llm.translate", 0.3, 4_096),
+            ("llm.summarize", 0.2, 4_096),
+            ("llm.listen", 0.3, 2_048),
+            ("llm.explain", 0.3, 1_024)
+        ]
+
+        for (id, temperature, maxTokens) in expected {
+            let widget = try #require(WorkflowCatalog.builtIn.widget(id: id))
+            #expect(widget.role == .processor)
+            #expect(widget.typeTag == "llm")
+            #expect(widget.props["temperature"]?.doubleValue == temperature)
+            #expect(widget.props["max_tokens"]?.intValue == Int(maxTokens))
+            #expect(widget.props["failure_policy"]?.stringValue == "use_input")
+        }
+    }
+
     @Test("untouched builtin materializes without redundant widget overlays")
     func untouchedBuiltinIsIdentity() throws {
         let definition = try #require(

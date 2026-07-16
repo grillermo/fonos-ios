@@ -4,8 +4,6 @@
 // Verifier: auto
 // Level: unit (type introspection via Mirror + SwiftData fetch)
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/NoteQD03SyncFriendlyTests
-//
-// TDD status: FAILING until NoteContainer.swift and NoteEntry.swift are created.
 
 import Testing
 import SwiftData
@@ -230,7 +228,7 @@ struct NoteQD03SyncFriendlyTests {
 
         var ids = Set<UUID>()
         for i in 0..<10 {
-            let notebook = service.createNotebook(title: "Notebook \(i)")
+            let notebook = try service.createNotebook(title: "Notebook \(i)")
             ids.insert(notebook.id)
         }
         // All 10 UUIDs must be distinct
@@ -241,11 +239,11 @@ struct NoteQD03SyncFriendlyTests {
     func noteEntryUUIDsAreUnique() throws {
         let modelContainer = try makeSyncTestContainer()
         let service = NoteService(modelContainer: modelContainer)
-        let notebook = service.createNotebook(title: "UUID Uniqueness Test")
+        let notebook = try service.createNotebook(title: "UUID Uniqueness Test")
 
         var ids = Set<UUID>()
         for i in 0..<10 {
-            let entry = service.addEntry(
+            let entry = try service.addEntry(
                 to: notebook.id,
                 rawText: "entry \(i)",
                 processedText: nil,

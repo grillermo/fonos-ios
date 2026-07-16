@@ -5,9 +5,24 @@ struct NotebookDetailView: View {
     let notebook: NoteContainer
     let noteService: NoteService
     @ObservedObject var noteViewModel: NoteViewModel
+    let autoRecordRequestID: UUID?
 
     @State private var entries: [NoteEntry] = []
     @State private var showRecordSheet = false
+    @State private var handledAutoRecordRequestID: UUID?
+    @State private var persistenceError: String?
+
+    init(
+        notebook: NoteContainer,
+        noteService: NoteService,
+        noteViewModel: NoteViewModel,
+        autoRecordRequestID: UUID? = nil
+    ) {
+        self.notebook = notebook
+        self.noteService = noteService
+        self._noteViewModel = ObservedObject(wrappedValue: noteViewModel)
+        self.autoRecordRequestID = autoRecordRequestID
+    }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -66,12 +81,29 @@ struct NotebookDetailView: View {
             }
         }
         .onAppear { reloadEntries() }
+        .task(id: autoRecordRequestID) {
+            guard let autoRecordRequestID,
+                  handledAutoRecordRequestID != autoRecordRequestID else { return }
+            handledAutoRecordRequestID = autoRecordRequestID
+            showRecordSheet = true
+        }
         .sheet(isPresented: $showRecordSheet, onDismiss: reloadEntries) {
             RecordNoteSheet(
                 notebook: notebook,
                 noteViewModel: noteViewModel,
                 onDismiss: { showRecordSheet = false }
             )
+        }
+        .alert(
+            "Entry Could Not Be Deleted",
+            isPresented: Binding(
+                get: { persistenceError != nil },
+                set: { if !$0 { persistenceError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { persistenceError = nil }
+        } message: {
+            Text(persistenceError ?? "")
         }
     }
 
@@ -103,10 +135,13 @@ struct NotebookDetailView: View {
                     .listRowSeparatorTint(Color(hex: "#fafaf9").opacity(0.08))
             }
             .onDelete { indexSet in
-                indexSet.forEach { i in
-                    noteService.deleteEntry(entries[i].id)
+                let ids = indexSet.map { entries[$0].id }
+                do {
+                    try noteService.deleteEntries(ids)
+                    reloadEntries()
+                } catch {
+                    persistenceError = error.localizedDescription
                 }
-                reloadEntries()
             }
         }
         .listStyle(.plain)

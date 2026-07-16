@@ -51,6 +51,18 @@ private final class OnDeviceMockRecognizer: SpeechRecognizerProtocol, @unchecked
 
 private func dummyAudioData() -> Data { Data(count: 44) }
 
+@MainActor
+private func waitForOfflineDictation(
+    _ viewModel: DictationViewModel,
+    terminal: (DictationViewModel.RecordingState) -> Bool
+) async {
+    for _ in 0..<2_000 {
+        if terminal(viewModel.recordingState) { return }
+        await Task.yield()
+    }
+    Issue.record("Timed out waiting for dictation")
+}
+
 // MARK: - Tests
 
 struct INV11OfflineTests {
@@ -110,7 +122,10 @@ struct INV11OfflineTests {
     func llmServiceOfflineThrowsConnectivityError() async throws {
         let service = authorizedLLMService(session: makeOfflineSession(), apiKey: "sk-test")
         await #expect(throws: LLMError.networkUnavailable) {
-            _ = try await service.process(text: "some text", mode: .polish)
+            _ = try await service.process(
+                text: "some text",
+                configuration: workflowLLMConfiguration(for: .polish)
+            )
         }
     }
 
@@ -118,7 +133,10 @@ struct INV11OfflineTests {
     func llmOfflineErrorDescriptive() async throws {
         let service = authorizedLLMService(session: makeOfflineSession(), apiKey: "sk-test")
         do {
-            _ = try await service.process(text: "hello", mode: .polish)
+            _ = try await service.process(
+                text: "hello",
+                configuration: workflowLLMConfiguration(for: .polish)
+            )
             Issue.record("Expected LLMError to be thrown")
         } catch let error as LLMError {
             #expect(!error.localizedDescription.isEmpty)
@@ -130,26 +148,44 @@ struct INV11OfflineTests {
     // MARK: - DictationSession orchestration
 
     @Test("DictationSession with STT offline error surfaces error to caller (does not crash)")
+    @MainActor
     func dictationSessionSTTOfflineError() async throws {
         let stt = authorizedWhisperSTT(session: makeOfflineSession(), apiKey: "sk-test")
         let vm = DictationViewModel(sttProvider: stt)
-        // Starting a dictation that immediately fails at STT step must set an error state
-        await #expect(throws: STTError.networkUnavailable) {
-            _ = try await vm.transcribeAudio(dummyAudioData(), language: "en")
+        vm.finishRecording(wavData: dummyAudioData())
+        await waitForOfflineDictation(vm) {
+            if case .error = $0 { return true }
+            return false
+        }
+        if case .error(let message) = vm.recordingState {
+            #expect(message == STTError.networkUnavailable.localizedDescription)
+        } else {
+            Issue.record("Expected the canonical workflow to surface an STT error")
         }
     }
 
     @Test("DictationViewModel falls back to raw transcript when LLM is offline")
+    @MainActor
     func dictationViewModelFallsBackToRawOnLLMFailure() async throws {
         // STT succeeds; LLM fails; result should be the raw STT transcript
         let mockRecognizer = OnDeviceMockRecognizer()
         let stt = AppleSTT(recognizer: mockRecognizer)
         let llm = authorizedLLMService(session: makeOfflineSession(), apiKey: "sk-test")
-        let vm = DictationViewModel(sttProvider: stt, llmService: llm)
+        let vm = DictationViewModel(sttProvider: stt, llmProvider: llm)
 
-        let result = try await vm.processAudio(dummyAudioData(), language: "en", mode: .polish)
-        // Falls back to the raw STT text — the LLM error must NOT propagate as a crash
-        #expect(!result.text.isEmpty)
-        #expect(result.isRawFallback == true)
+        vm.selectMode(id: "polish")
+        vm.finishRecording(wavData: dummyAudioData())
+        await waitForOfflineDictation(vm) {
+            if case .result = $0 { return true }
+            return false
+        }
+        // use_input fallback returns the corrected STT text without crashing.
+        if case .result(let transcript, let processed) = vm.recordingState {
+            #expect(!transcript.isEmpty)
+            #expect(processed == nil)
+            #expect(vm.workflowPresentation.phase == .degraded)
+        } else {
+            Issue.record("Expected raw fallback result")
+        }
     }
 }

@@ -135,11 +135,15 @@ struct ScenarioImportTests {
     func appliesDictation() throws {
         let (config, _) = try ScenarioImporter.apply(
             data: sampleScenario, to: AppConfig(), vocabStore: freshStore())
-        #expect(config.activeModeID == "polish")
-        #expect(config.translateTargetLanguage == "French")
+        #expect(config.activeVoiceWorkflowID == "wf.voice.polish")
+        #expect(config.activeVoiceWorkflow?.processors == ["stt.default", "llm.polish"])
+        #expect(config.workflowCatalog.widget(id: "llm.translate")?
+            .props["output_language"]?.stringValue == "French")
+        #expect(config.workflowCatalog.widget(id: "llm.translate")?
+            .props["user_template"]?.stringValue?.contains("to French") == true)
     }
 
-    @Test("legacy translate target refreshes an already materialized builtin processor")
+    @Test("legacy translate target is persisted on the schema-3 processor")
     func legacyTranslateTargetRefreshesProcessor() throws {
         var base = WorkflowMigration.migrated(AppConfig())
         base.translateTargetLanguage = "English"
@@ -150,22 +154,105 @@ struct ScenarioImportTests {
         let (config, _) = try ScenarioImporter.apply(
             data: data, to: base, vocabStore: freshStore())
 
-        #expect(config.translateTargetLanguage == "French")
         #expect(config.workflowCatalog.widget(id: "llm.translate")?
             .props["user_template"]?.stringValue?.contains("to French") == true)
+        #expect(config.workflowCatalog.widget(id: "llm.translate")?
+            .props["output_language"]?.stringValue == "French")
+
+        let restored = try JSONDecoder().decode(
+            AppConfig.self,
+            from: JSONEncoder().encode(config)
+        )
+        #expect(restored.workflowCatalog.widget(id: "llm.translate")?
+            .props["output_language"]?.stringValue == "French")
+
+        let exported = ConfigBundleExporter.bundleJSON(
+            config: restored,
+            vocabStore: freshStore(),
+            name: "Translated",
+            includeKeys: false,
+            keyLookup: { _ in nil }
+        )
+        let root = try #require(JSONSerialization.jsonObject(with: exported) as? [String: Any])
+        let dictation = try #require(root["dictation"] as? [String: Any])
+        #expect(dictation["translate_target"] as? String == "French")
     }
 
-    @Test("nonempty pre-Workbench user_modes is reported instead of silently dropped")
-    func legacyUserModesAreReported() throws {
+    @Test("legacy translate target updates custom output language without replacing its prompt")
+    func legacyTranslateTargetPreservesCustomPrompt() throws {
+        var base = AppConfig()
+        base.workflowSchemaVersion = WorkflowMigration.currentSchemaVersion
+        base.widgets = [WorkflowWidget(
+            id: "llm.translate",
+            role: .processor,
+            typeTag: "llm",
+            name: "My translator",
+            props: .object([
+                "system": .string("Keep this custom system prompt"),
+                "user_template": .string("CUSTOM::{text}"),
+                "output_language": .string("Italian"),
+                "temperature": .number(0.7)
+            ]),
+            builtin: false
+        )]
+        let data = #"{"dictation":{"translate_target":"French"}}"#.data(using: .utf8)!
+
+        let (config, _) = try ScenarioImporter.apply(
+            data: data,
+            to: base,
+            vocabStore: freshStore()
+        )
+        let translated = try #require(config.workflowCatalog.widget(id: "llm.translate"))
+
+        #expect(translated.props["system"]?.stringValue == "Keep this custom system prompt")
+        #expect(translated.props["user_template"]?.stringValue == "CUSTOM::{text}")
+        #expect(translated.props["temperature"]?.doubleValue == 0.7)
+        #expect(translated.props["output_language"]?.stringValue == "French")
+        #expect(!translated.builtin)
+    }
+
+    @Test("pre-Workbench user_modes become usable LLM widget overlays")
+    func legacyUserModesBecomeWidgets() throws {
         let data = """
-        {"dictation":{"user_modes":{"custom":{"name":"Legacy"}}}}
+        {"dictation":{"user_modes":{
+          "custom":{
+            "name":"Legacy editor","icon":"🧰","system":"Rewrite safely.",
+            "user_template":"Input: {text}","temperature":0.4,"max_tokens":2048,
+            "output_language":"French","vocab_books":["tech"],
+            "model":"raw-model-id-is-not-a-profile","model_profile":"llm-profile",
+            "failure_policy":"fail_run"
+          },
+          "listen":{"name":"My Listen","system":"Make a spoken briefing."},
+          "summarize":{"name":"Old builtin","system":"Must not replace the builtin."},
+          "plain":{"name":"No LLM content"},
+          "broken":{"system":"x","max_tokens":"many"}
+        }}}
         """.data(using: .utf8)!
 
-        let (_, summary) = try ScenarioImporter.apply(
+        let (config, summary) = try ScenarioImporter.apply(
             data: data, to: AppConfig(), vocabStore: freshStore())
-        #expect(summary.skippedSections.contains("dictation.user_modes (legacy)"))
-        #expect(try ScenarioImporter.preview(data: data).skippedSections
-            .contains("dictation.user_modes (legacy)"))
+        let custom = try #require(config.widgets.first { $0.id == "llm.custom" })
+        #expect(custom.name == "Legacy editor")
+        #expect(custom.icon == "🧰")
+        #expect(custom.props["system"]?.stringValue == "Rewrite safely.")
+        #expect(custom.props["user_template"]?.stringValue == "Input: {text}")
+        #expect(custom.props["temperature"]?.doubleValue == 0.4)
+        #expect(custom.props["max_tokens"]?.intValue == 2048)
+        #expect(custom.props["output_language"]?.stringValue == "French")
+        #expect(custom.props["vocab_books"]?.stringArray == ["tech"])
+        #expect(custom.props["model_profile"]?.stringValue == "llm-profile")
+        #expect(custom.props["failure_policy"]?.stringValue == "fail_run")
+        #expect(config.widgets.contains { $0.id == "llm.listen" && $0.name == "My Listen" })
+        #expect(!config.widgets.contains { $0.id == "llm.summarize" })
+        #expect(!config.widgets.contains { $0.id == "llm.plain" })
+        #expect(!summary.skippedSections.contains("dictation.user_modes (legacy)"))
+        #expect(summary.importedWidgets == 2)
+        #expect(summary.unsupportedWidgets == 1)
+
+        let preview = try ScenarioImporter.preview(data: data)
+        #expect(preview.importedWidgets == 2)
+        #expect(preview.unsupportedWidgets == 1)
+        #expect(!preview.skippedSections.contains("dictation.user_modes (legacy)"))
     }
 
     @Test("imports vocab books and global mounts into the store")
@@ -178,6 +265,38 @@ struct ScenarioImportTests {
         #expect(out == "MySQL")
     }
 
+    @Test("vocab section replaces desktop snapshot and prunes stale phone mounts")
+    func vocabSnapshotReplacesExistingPhoneState() throws {
+        let store = freshStore()
+        let notebookID = UUID()
+        store.upsert(VocabBook(id: "old", name: "Phone only"))
+        store.upsert(VocabBook(id: "keep", name: "Old copy"))
+        store.setMounted(["old"], forKey: VocabStore.globalMountKey)
+        store.setMounted(["old", "keep", "missing"], forKey: VocabStore.modeMountKey("polish"))
+        store.setMounted(["old"], forKey: VocabStore.notebookMountKey(notebookID))
+        let data = """
+        {"vocab":{
+          "vocab_books":[
+            {"id":"keep","name":"Desktop copy","terms":["updated"]},
+            {"id":"fresh","name":"Fresh"}
+          ],
+          "global_vocab_books":["fresh","future-book"]
+        }}
+        """.data(using: .utf8)!
+
+        let (_, summary) = try ScenarioImporter.apply(
+            data: data, to: AppConfig(), vocabStore: store)
+
+        #expect(store.books.map(\.id) == ["keep", "fresh"])
+        #expect(store.book(id: "old") == nil)
+        #expect(store.book(id: "keep")?.name == "Desktop copy")
+        #expect(store.mountedIDs(forKey: VocabStore.globalMountKey) == ["fresh", "future-book"])
+        #expect(store.mountedIDs(forKey: VocabStore.modeMountKey("polish")) == ["keep"])
+        #expect(store.mountedIDs(forKey: VocabStore.notebookMountKey(notebookID)).isEmpty)
+        #expect(summary.vocabApplied)
+        #expect(summary.vocabBooksImported == 2)
+    }
+
     @Test("skips speech and hotkeys sections")
     func skipsIOSIrrelevantSections() throws {
         let (_, summary) = try ScenarioImporter.apply(
@@ -186,16 +305,52 @@ struct ScenarioImportTests {
         #expect(summary.name == "Home Lab")
     }
 
-    @Test("a scenario with no sections imports as a no-op")
-    func emptyScenarioNoOp() throws {
+    @Test("an object with no scenario section is rejected")
+    func noSectionIsRejected() throws {
         let data = #"{"id":"x","name":"Empty"}"#.data(using: .utf8)!
+        #expect(throws: ScenarioImporter.ImportError.self) {
+            _ = try ScenarioImporter.preview(data: data)
+        }
+        #expect(throws: ScenarioImporter.ImportError.self) {
+            _ = try ScenarioImporter.apply(
+                data: data, to: AppConfig(), vocabStore: freshStore())
+        }
+    }
+
+    @Test("desktop legacy flat profiles and assignments migrate into models")
+    func legacyFlatModelsMigrate() throws {
+        let data = """
+        {"name":"Legacy flat","profiles":[
+          {"id":"flat-stt","name":"Flat STT","provider":"openai",
+           "model":"whisper-1","capabilities":["stt"]}
+        ],"assignments":{"stt_profile":"flat-stt","llm_profile":""}}
+        """.data(using: .utf8)!
+
+        let preview = try ScenarioImporter.preview(data: data)
+        #expect(preview.importedProfiles == 1)
+        #expect(preview.sttProfileSet)
+
+        let (config, summary) = try ScenarioImporter.apply(
+            data: data,
+            to: AppConfig(),
+            vocabStore: freshStore(),
+            keyReader: { _ in nil },
+            keyWriter: { _, _ in },
+            keyDeleter: { _ in }
+        )
+        #expect(config.modelProfiles.first { $0.id == "flat-stt" }?.modelID == "whisper-1")
+        #expect(config.sttProfile == "flat-stt")
+        #expect(summary.importedProfiles == 1)
+    }
+
+    @Test("an explicitly present empty section remains a valid no-op")
+    func emptyModelsSectionIsValid() throws {
+        let data = #"{"models":{}}"#.data(using: .utf8)!
         let base = AppConfig()
         let (config, summary) = try ScenarioImporter.apply(
             data: data, to: base, vocabStore: freshStore())
         #expect(config == base)
         #expect(summary.importedProfiles == 0)
-        #expect(summary.vocabBooksImported == 0)
-        #expect(summary.skippedSections.isEmpty)
     }
 
     @Test("malformed JSON throws")
@@ -239,7 +394,7 @@ struct ScenarioImportTests {
             vocabStore: freshStore()
         )
 
-        #expect(config.activeModeID == "polish")
+        #expect(config.workflowSchemaVersion == WorkflowMigration.currentSchemaVersion)
         #expect(config.activeVoiceWorkflowID == "wf.dictation")
         #expect(config.activeVoiceWorkflow?.processors == ["stt.default", "llm.polish"])
     }
@@ -381,6 +536,31 @@ struct ScenarioImportTests {
         #expect(summary.unsupportedWidgets == 2)
         #expect(summary.unsupportedWorkflows == 2)
         #expect(summary.adaptedWorkflows == 1)
+    }
+
+    @Test("current desktop summarize listen and explain processors import as supported")
+    func currentDesktopBuiltinReferencesAreSupported() throws {
+        let data = """
+        {"dictation":{"user_workflows":[{
+          "id":"wf.desktop-current-builtins","name":"Current desktop processors",
+          "source":"src.mic-hold",
+          "processors":["stt.default","llm.summarize","llm.listen","llm.explain"],
+          "outputs":["out.insert"]
+        }]}}
+        """.data(using: .utf8)!
+
+        let preview = try ScenarioImporter.preview(data: data)
+        #expect(preview.importedWorkflows == 1)
+        #expect(preview.unsupportedWorkflows == 0)
+        #expect(preview.adaptedWorkflows == 1)
+
+        let (config, summary) = try ScenarioImporter.apply(
+            data: data, to: AppConfig(), vocabStore: freshStore())
+        let catalog = config.workflowCatalog
+        #expect(catalog.widget(id: "llm.summarize") != nil)
+        #expect(catalog.widget(id: "llm.listen") != nil)
+        #expect(catalog.widget(id: "llm.explain") != nil)
+        #expect(summary.unsupportedWorkflows == 0)
     }
 
     @Test("config bundle exports latest desktop user_workflows and user_widgets shape")

@@ -198,9 +198,51 @@ struct KeyboardIPCTests {
 
     @Test("ready duration is bounded")
     func readyDurationIsBounded() {
+        #expect(KeyboardIPC.defaultReadySessionDuration == 15 * 60)
         #expect(KeyboardIPC.clampedReadySessionDuration(1) == 60)
         #expect(KeyboardIPC.clampedReadySessionDuration(10 * 60) == 10 * 60)
         #expect(KeyboardIPC.clampedReadySessionDuration(60 * 60) == 30 * 60)
+    }
+
+    @Test("keyboard utterance automatically finalizes at five minutes")
+    func keyboardUtteranceUsesFiveMinuteDeadline() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let deadline = KeyboardUtteranceDeadline.resolve(
+            startedAt: start,
+            readyExpiresAt: start.addingTimeInterval(15 * 60)
+        )
+
+        #expect(deadline.reason == .maximumDuration)
+        #expect(deadline.date == start.addingTimeInterval(5 * 60))
+    }
+
+    @Test("Ready expiry finalizes an active utterance before its five-minute limit")
+    func readyExpiryWinsUtteranceDeadline() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let expiry = start.addingTimeInterval(45)
+        let deadline = KeyboardUtteranceDeadline.resolve(
+            startedAt: start,
+            readyExpiresAt: expiry
+        )
+
+        #expect(deadline.reason == .readySessionExpired)
+        #expect(deadline.date == expiry)
+    }
+
+    @Test("Ready cleanup defers shared audio-session deactivation during foreground capture")
+    func readyCleanupRespectsForegroundAudioOwnership() {
+        #expect(KeyboardReadyAudioSessionPolicy.shouldDeferExpiry(
+            foregroundCaptureDepth: 1
+        ))
+        #expect(!KeyboardReadyAudioSessionPolicy.shouldDeactivateSession(
+            foregroundCaptureDepth: 1
+        ))
+        #expect(!KeyboardReadyAudioSessionPolicy.shouldDeferExpiry(
+            foregroundCaptureDepth: 0
+        ))
+        #expect(KeyboardReadyAudioSessionPolicy.shouldDeactivateSession(
+            foregroundCaptureDepth: 0
+        ))
     }
 
     @Test("app instance identity rejects restarts during an active session")

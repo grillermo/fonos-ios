@@ -230,19 +230,25 @@ struct VoiceWorkflowPlanFactory {
     private let sttProviderOverride: (any STTProvider)?
     private let llmProviderOverride: (any VoiceWorkflowLLMProvider)?
     private let llmOverrideName: String?
+    /// Optional surface-owned vocabulary snapshot. Dictate and the keyboard
+    /// resolve their mode/workflow mounts below; Notes supplies its notebook
+    /// mounts here so every surface still compiles through this one factory.
+    private let effectiveVocabularyBooks: [VocabBook]?
 
     init(
         config: AppConfig,
         vocabStore: VocabStore,
         sttProviderOverride: (any STTProvider)? = nil,
         llmProviderOverride: (any VoiceWorkflowLLMProvider)? = nil,
-        llmOverrideName: String? = nil
+        llmOverrideName: String? = nil,
+        effectiveVocabularyBooks: [VocabBook]? = nil
     ) {
         self.config = config
         self.vocabStore = vocabStore
         self.sttProviderOverride = sttProviderOverride
         self.llmProviderOverride = llmProviderOverride
         self.llmOverrideName = llmOverrideName
+        self.effectiveVocabularyBooks = effectiveVocabularyBooks
     }
 
     /// Every provider and vocab book is resolved before `compile` returns.
@@ -340,10 +346,11 @@ struct VoiceWorkflowPlanFactory {
         into frozen: inout FrozenRuntimes
     ) {
         frozen.hasLLM = true
+        let translateTarget = workflowTranslateTarget(for: widget)
         if let llmProviderOverride {
             frozen.llm[widget.id] = ResolvedVoiceWorkflowLLM(
                 provider: llmProviderOverride,
-                translateTarget: config.translateTargetLanguage
+                translateTarget: translateTarget
             )
             frozen.hasConfiguredLLM = true
             frozen.llmProviderName = llmOverrideName
@@ -360,7 +367,7 @@ struct VoiceWorkflowPlanFactory {
             // whether this missing capability degrades or fails.
             frozen.llm[widget.id] = ResolvedVoiceWorkflowLLM(
                 provider: UnavailableLLMProvider(),
-                translateTarget: config.translateTargetLanguage
+                translateTarget: translateTarget
             )
             frozen.llmProviderName = nil
             return
@@ -374,10 +381,21 @@ struct VoiceWorkflowPlanFactory {
                 baseURL: profile.effectiveBaseURL,
                 provider: profile.provider
             ),
-            translateTarget: config.translateTargetLanguage
+            translateTarget: translateTarget
         )
         frozen.hasConfiguredLLM = true
         frozen.llmProviderName = profile.name
+    }
+
+    /// `{target_lang}` is a workflow-template concern. Desktop-compatible
+    /// widgets already carry `output_language`; legacy Translate recipes bake
+    /// their target into `user_template` during migration.
+    private func workflowTranslateTarget(for widget: WorkflowWidget) -> String {
+        let outputLanguage = widget.props["output_language"]?.stringValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return outputLanguage.isEmpty || outputLanguage == "auto"
+            ? "English"
+            : outputLanguage
     }
 
     private func runtimeResolver(
@@ -419,7 +437,7 @@ struct VoiceWorkflowPlanFactory {
         legacyScopeID: String?,
         widget: WorkflowWidget
     ) -> VoiceWorkflowVocabulary {
-        var books = vocabStore.effectiveBooks(
+        var books = effectiveVocabularyBooks ?? vocabStore.effectiveBooks(
             modeID: legacyScopeID ?? workflowID
         )
         for id in widget.props["vocab_books"]?.stringArray ?? [] {

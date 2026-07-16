@@ -84,7 +84,10 @@ struct QD04ErrorHandlingTests {
     func llmServiceTimeoutDescriptive() async throws {
         let service = authorizedLLMService(session: sessionWith(TimeoutMockURLProtocol.self), apiKey: "sk-test")
         do {
-            _ = try await service.process(text: "hello", mode: .polish)
+            _ = try await service.process(
+                text: "hello",
+                configuration: workflowLLMConfiguration(for: .polish)
+            )
             Issue.record("Expected timeout error")
         } catch let error as LLMError {
             #expect(!error.localizedDescription.isEmpty)
@@ -112,7 +115,10 @@ struct QD04ErrorHandlingTests {
     func llmServiceInvalidKeyError() async throws {
         let service = authorizedLLMService(session: sessionWith(InvalidKeyMockURLProtocol.self), apiKey: "sk-bad")
         do {
-            _ = try await service.process(text: "hello", mode: .polish)
+            _ = try await service.process(
+                text: "hello",
+                configuration: workflowLLMConfiguration(for: .polish)
+            )
             Issue.record("Expected authentication error")
         } catch let error as LLMError {
             #expect(!error.localizedDescription.isEmpty)
@@ -142,7 +148,10 @@ struct QD04ErrorHandlingTests {
     func llmServiceMalformedResponseNoCrash() async throws {
         let service = authorizedLLMService(session: sessionWith(MalformedResponseMockURLProtocol.self), apiKey: "sk-test")
         do {
-            _ = try await service.process(text: "hello", mode: .polish)
+            _ = try await service.process(
+                text: "hello",
+                configuration: workflowLLMConfiguration(for: .polish)
+            )
             Issue.record("Expected parse error")
         } catch let error as LLMError {
             if case .parseError = error { /* expected */ }

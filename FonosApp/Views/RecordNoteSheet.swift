@@ -92,12 +92,17 @@ struct RecordNoteSheet: View {
             }
         }
         .onAppear {
-            noteViewModel.startRecording()
+            noteViewModel.startRecording(to: notebook.id)
             startTimer()
         }
         .onDisappear {
             stopTimer()
         }
+        // During the permission prompt the view model is still `.idle`; a
+        // swipe-to-dismiss could otherwise allow capture to begin behind the
+        // sheet after permission is granted. Every terminal state already has
+        // an explicit dismissal path.
+        .interactiveDismissDisabled(true)
     }
 
     // MARK: - Stop Button

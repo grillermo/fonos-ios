@@ -4,8 +4,6 @@
 // Verifier: auto
 // Level: unit (reflection / Mirror + record flow verification)
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/NoteINV11NoAudioTests
-//
-// TDD status: FAILING until NoteEntry.swift is created (compile-time checks).
 
 import Testing
 import SwiftData
@@ -115,7 +113,7 @@ struct NoteINV11NoAudioTests {
     func recordFlowDiscardsAudio() async throws {
         let modelContainer = try makeNoAudioContainer()
         let noteService = NoteService(modelContainer: modelContainer)
-        let notebook = noteService.createNotebook(title: "No Audio Test Notebook")
+        let notebook = try noteService.createNotebook(title: "No Audio Test Notebook")
 
         let sttMock = NoAudioMockSTT()
         let viewModel = NoteViewModel(
@@ -127,7 +125,6 @@ struct NoteINV11NoAudioTests {
         let originalAudioData = Data(repeating: 0xFF, count: 128)
         await viewModel.recordAndStore(
             to: notebook.id,
-            mode: "raw",
             audioData: originalAudioData
         )
 

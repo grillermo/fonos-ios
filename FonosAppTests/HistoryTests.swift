@@ -111,7 +111,7 @@ struct DictationPersistenceTests {
         let container = try makeContainer()
         let vm = DictationViewModel(
             sttProvider: FixedSTT(transcript: "um yeah raw text"),
-            llmService: makeSuccessLLM()
+            llmProvider: makeSuccessLLM()
         )
         vm.selectMode(id: "polish")
         vm.modelContext = container.mainContext
@@ -144,37 +144,42 @@ struct DictationPersistenceTests {
 
     // P0-3: latency must be measured around the STT and LLM calls.
 
-    @Test("processAudio measures STT latency")
-    func processAudioMeasuresSTTLatency() async throws {
+    @Test("canonical workflow completion measures STT latency")
+    @MainActor
+    func workflowCompletionMeasuresSTTLatency() async throws {
         let vm = DictationViewModel(sttProvider: FixedSTT(transcript: "hi"))
-        _ = try await vm.processAudio(dummyWAV(), language: nil, mode: .raw)
-        await MainActor.run {
-            #expect(vm.sttLatency > 0)
-        }
+        vm.finishRecording(wavData: dummyWAV())
+        try await waitForResult(vm)
+        #expect(vm.sttLatency > 0)
     }
 
-    @Test("processAudio measures LLM latency when a mode requires the LLM")
-    func processAudioMeasuresLLMLatency() async throws {
+    @Test("canonical workflow completion measures LLM latency")
+    @MainActor
+    func workflowCompletionMeasuresLLMLatency() async throws {
         SuccessLLMURLProtocol.content = "done"
         let vm = DictationViewModel(sttProvider: FixedSTT(transcript: "hi"),
-                                    llmService: makeSuccessLLM())
-        _ = try await vm.processAudio(dummyWAV(), language: nil, mode: .polish)
-        await MainActor.run {
-            #expect(vm.sttLatency > 0)
-            #expect(vm.llmLatency > 0)
-        }
+                                    llmProvider: makeSuccessLLM())
+        vm.selectMode(id: "polish")
+        vm.finishRecording(wavData: dummyWAV())
+        try await waitForResult(vm)
+        #expect(vm.sttLatency > 0)
+        #expect(vm.llmLatency > 0)
     }
 
-    // ProcessResult must carry the raw transcript so History and the result
-    // card can show the original alongside the processed text.
-
-    @Test("ProcessResult keeps the raw transcript when LLM processing succeeds")
-    func processResultCarriesRawTranscript() async throws {
+    @Test("workflow result keeps raw transcript when LLM processing succeeds")
+    @MainActor
+    func workflowResultCarriesRawTranscript() async throws {
         SuccessLLMURLProtocol.content = "polished output"
         let vm = DictationViewModel(sttProvider: FixedSTT(transcript: "raw input"),
-                                    llmService: makeSuccessLLM())
-        let result = try await vm.processAudio(dummyWAV(), language: nil, mode: .polish)
-        #expect(result.rawTranscript == "raw input")
-        #expect(result.text == "polished output")
+                                    llmProvider: makeSuccessLLM())
+        vm.selectMode(id: "polish")
+        vm.finishRecording(wavData: dummyWAV())
+        try await waitForResult(vm)
+        if case .result(let transcript, let processed) = vm.recordingState {
+            #expect(transcript == "raw input")
+            #expect(processed == "polished output")
+        } else {
+            Issue.record("Expected completed workflow result")
+        }
     }
 }

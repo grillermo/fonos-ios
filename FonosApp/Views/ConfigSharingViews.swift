@@ -144,7 +144,9 @@ struct ConfigImportPreviewView: View {
                             Text("Default model assignments")
                         }
                         if summary.dictationApplied { Text("Dictation defaults") }
-                        if summary.vocabBooksImported > 0 { row("Vocab books", summary.vocabBooksImported) }
+                        if summary.vocabApplied {
+                            row("Vocab books (replace)", summary.vocabBooksImported)
+                        }
                         if summary.importedWorkflows > 0 {
                             row("Voice recipes", summary.importedWorkflows)
                         }
@@ -154,7 +156,13 @@ struct ConfigImportPreviewView: View {
                     } header: {
                         Text(summary.name.isEmpty ? "Shared config" : summary.name)
                     } footer: {
-                        Text("Existing items with the same id are updated; nothing else is removed.")
+                        if summary.vocabApplied {
+                            Text(
+                                "Profiles and recipes update matching ids. The vocab snapshot replaces current books and global mounts."
+                            )
+                        } else {
+                            Text("Existing items with the same id are updated; nothing else is removed.")
+                        }
                     }
 
                     if summary.unsupportedWorkflows > 0 || summary.unsupportedWidgets > 0 {
@@ -465,7 +473,7 @@ struct ConfigSetsView: View {
                 onCancel: { pendingImport = nil }
             )
         }
-        .alert("Couldn't read config", isPresented: .init(
+        .alert("Couldn't import config", isPresented: .init(
             get: { importError != nil }, set: { if !$0 { importError = nil } }
         )) {
             Button("OK", role: .cancel) {}
@@ -547,8 +555,16 @@ struct ConfigSetsView: View {
     }
 
     private func applyImport(_ data: Data) {
-        guard let (newConfig, _) = try? ScenarioImporter.apply(
-            data: data, to: config, vocabStore: vocabStore) else { return }
-        config = newConfig   // propagates through the SettingsView binding (saves + syncs Notes VM)
+        do {
+            let (newConfig, _) = try ScenarioImporter.apply(
+                data: data,
+                to: config,
+                vocabStore: vocabStore
+            )
+            // Propagates through the SettingsView binding (saves + syncs Notes VM).
+            config = newConfig
+        } catch {
+            importError = error.localizedDescription
+        }
     }
 }

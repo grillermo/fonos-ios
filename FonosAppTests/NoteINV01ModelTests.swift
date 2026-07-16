@@ -3,8 +3,6 @@
 // Verifier: auto
 // Levels: static (build — models compile), unit (field round-trip via in-memory container)
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/NoteINV01ModelTests
-//
-// TDD status: FAILING until NoteContainer.swift and NoteEntry.swift are created.
 
 import Testing
 import SwiftData
@@ -32,7 +30,6 @@ struct NoteINV01ModelTests {
         let container = try makeNoteContainer()
         let context = container.mainContext
 
-        // TODO: Replace with real NoteContainer initialiser once implemented
         let notebook = NoteContainer(
             id: UUID(),
             title: "My Notebook",
@@ -118,7 +115,6 @@ struct NoteINV01ModelTests {
         let context = container.mainContext
 
         let containerId = UUID()
-        // TODO: Replace with real NoteEntry initialiser once implemented
         let entry = NoteEntry(
             id: UUID(),
             createdAt: Date(),

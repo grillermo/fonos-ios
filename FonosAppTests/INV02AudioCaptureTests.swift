@@ -160,13 +160,6 @@ struct INV02AudioCaptureTests {
 
     // --- Service lifecycle ---
 
-    @Test("AudioCaptureService initialises without crash")
-    func serviceInitNoCrash() throws {
-        let service = AudioCaptureService()
-        _ = service
-        #expect(Bool(true))
-    }
-
     @Test("AudioCaptureService is not recording immediately after init")
     func notRecordingAfterInit() throws {
         let service = AudioCaptureService()

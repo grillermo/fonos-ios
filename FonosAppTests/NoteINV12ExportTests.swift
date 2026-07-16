@@ -3,8 +3,6 @@
 // Verifier: auto
 // Level: unit (pure string/data assertions, no I/O)
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/NoteINV12ExportTests
-//
-// TDD status: FAILING until NoteService.exportMarkdown() and exportJSON() are implemented.
 
 import Testing
 import Foundation

@@ -18,6 +18,29 @@ private func makeSuite(name: String = "com.fonos.test.\(UUID().uuidString)") -> 
 
 struct INV09ConfigTests {
 
+    @Test("model profile IDs remain unique across timestamp/hash collisions")
+    func modelProfileIDsAreCollisionSafe() throws {
+        let uuid = try #require(UUID(
+            uuidString: "00000000-0000-0000-0000-000000000001"
+        ))
+        var reserved: Set<String> = []
+
+        let first = ModelProfileIdentifier.make(
+            provider: "OpenAI",
+            reservedIDs: &reserved,
+            uuid: uuid
+        )
+        let second = ModelProfileIdentifier.make(
+            provider: "OpenAI",
+            reservedIDs: &reserved,
+            uuid: uuid
+        )
+
+        #expect(first == "openai-00000000-0000-0000-0000-000000000001")
+        #expect(second == "\(first)-2")
+        #expect(reserved == Set([first, second]))
+    }
+
     // MARK: - Default values
 
     @Test("AppConfig default initialisation has sensible sttProvider value")
@@ -28,11 +51,10 @@ struct INV09ConfigTests {
         #expect(knownProviders.contains(config.sttProvider))
     }
 
-    @Test("AppConfig default dictationMode is raw")
-    func defaultDictationMode() throws {
-        let config = AppConfig()
-        // Out of the box, raw mode (no LLM) should be the default
-        #expect(config.defaultMode.id == "raw")
+    @Test("AppConfig default voice workflow is dictation")
+    func defaultVoiceWorkflow() throws {
+        let config = WorkflowMigration.migrated(AppConfig())
+        #expect(config.activeVoiceWorkflow?.id == "wf.dictation")
     }
 
     @Test("AppConfig default destinations array is non-empty")
@@ -92,22 +114,35 @@ struct INV09ConfigTests {
         #expect(decoded.modelProfiles[0].modelID == "gpt-4o")
     }
 
-    @Test("AppConfig Codable encode/decode round-trip preserves modes array including custom mode")
-    func codablePreservesModesWithCustom() throws {
+    @Test("schema 3 persists workflow recipes instead of legacy modes")
+    func schemaThreePersistsWorkflowsNotModes() throws {
         var config = AppConfig()
-        config.modes = [
-            .raw,
-            .polish,
-            .custom(systemPrompt: "Be a pirate", userTemplate: "{text}", temperature: 0.9, maxTokens: 300)
-        ]
+        config.modeConfigs.append(ModeConfig(
+            id: "pirate",
+            mode: .custom(
+                systemPrompt: "Be a pirate",
+                userTemplate: "{text}",
+                temperature: 0.9,
+                maxTokens: 300
+            ),
+            name: "Pirate",
+            icon: "flag",
+            description: "",
+            sttModelID: nil,
+            llmModelID: nil,
+            sttPrompt: "",
+            sttTemperature: 0,
+            outputLanguage: "auto",
+            isBuiltIn: false
+        ))
+        WorkflowMigration.migrate(&config)
         let data = try JSONEncoder().encode(config)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["modes"] == nil)
+        #expect(object["modeConfigs"] == nil)
         let decoded = try JSONDecoder().decode(AppConfig.self, from: data)
-        #expect(decoded.modes.count == 3)
-        if case .custom(let prompt, _, _, _) = decoded.modes[2] {
-            #expect(prompt == "Be a pirate")
-        } else {
-            Issue.record("Third mode should be custom")
-        }
+        #expect(decoded.workflowCatalog.workflow(id: "wf.custom-pirate") != nil)
+        #expect(decoded.workflowSchemaVersion == 3)
     }
 
     // MARK: - UserDefaults persistence

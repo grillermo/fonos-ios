@@ -1,11 +1,10 @@
 import Foundation
 
-/// Compatibility bridge from the original iOS ModeConfig model to the shared
-/// desktop workflow wire format. The legacy fields remain authoritative only
-/// until their recipe is materialized; existing workflow/widget definitions
-/// are never overwritten.
+/// One-way compatibility bridge from the original iOS ModeConfig model to the
+/// shared desktop workflow wire format. Schema 3 retires Mode persistence;
+/// existing workflow/widget definitions are never overwritten.
 enum WorkflowMigration {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     static func workflowID(forLegacyModeID modeID: String) -> String {
         switch modeID {
@@ -28,8 +27,9 @@ enum WorkflowMigration {
         }
     }
 
-    /// Keep the compatibility translate setting and the builtin processor's
-    /// baked prompt in sync. Imported non-builtin overlays remain authoritative.
+    /// Materialize a legacy translate target on the workflow processor. The
+    /// target belongs to `output_language` in schema 3; canonical builtin
+    /// prompts are refreshed too, while custom prompt text remains untouched.
     @discardableResult
     static func synchronizeBuiltinTranslateTarget(
         _ target: String,
@@ -37,11 +37,13 @@ enum WorkflowMigration {
     ) -> Bool {
         let canonical = WorkflowCanonicalLLM.translate(targetLanguage: target)
         if let index = config.widgets.firstIndex(where: { $0.id == "llm.translate" }) {
-            guard config.widgets[index].builtin,
-                  case .object(var props) = config.widgets[index].props else { return false }
+            guard case .object(var props) = config.widgets[index].props else { return false }
             let oldProps = props
-            props["system"] = .string(canonical.system)
-            props["user_template"] = .string(canonical.userTemplate)
+            if config.widgets[index].builtin {
+                props["system"] = .string(canonical.system)
+                props["user_template"] = .string(canonical.userTemplate)
+            }
+            props["output_language"] = .string(target)
             guard props != oldProps else { return false }
             config.widgets[index].props = .object(props)
             return true
@@ -52,13 +54,15 @@ enum WorkflowMigration {
               case .object(var props) = widget.props else { return false }
         props["system"] = .string(canonical.system)
         props["user_template"] = .string(canonical.userTemplate)
+        props["output_language"] = .string(target)
         widget.props = .object(props)
         config.widgets.append(widget)
         return true
     }
 
     /// Applies every missing migration artifact and returns whether the config
-    /// changed. It is safe to call on every load and after legacy mode edits.
+    /// changed. It is safe to call on every load; schema 3 never re-reads the
+    /// retired Mode payload after the one-way upgrade.
     @discardableResult
     static func migrate(_ config: inout AppConfig) -> Bool {
         let sourceSchemaVersion = config.workflowSchemaVersion
@@ -67,13 +71,17 @@ enum WorkflowMigration {
             in: &config,
             sourceSchemaVersion: sourceSchemaVersion
         ) { changed = true }
-        if materializeLegacyModes(in: &config) { changed = true }
+        if sourceSchemaVersion < currentSchemaVersion,
+           materializeLegacyModes(in: &config) { changed = true }
         if repairSchemaOneDictation(
             in: &config,
             sourceSchemaVersion: sourceSchemaVersion
         ) { changed = true }
         if normalizeLegacyOutputs(in: &config) { changed = true }
-        if finalizeWorkflowState(in: &config) { changed = true }
+        if finalizeWorkflowState(
+            in: &config,
+            sourceSchemaVersion: sourceSchemaVersion
+        ) { changed = true }
         return changed
     }
 
@@ -232,9 +240,13 @@ enum WorkflowMigration {
         return changed
     }
 
-    private static func finalizeWorkflowState(in config: inout AppConfig) -> Bool {
+    private static func finalizeWorkflowState(
+        in config: inout AppConfig,
+        sourceSchemaVersion: Int
+    ) -> Bool {
         var changed = false
-        if config.activeVoiceWorkflowID.isEmpty {
+        if config.activeVoiceWorkflowID.isEmpty,
+           sourceSchemaVersion < currentSchemaVersion {
             config.activeVoiceWorkflowID = workflowID(forLegacyModeID: config.activeModeID)
             changed = true
         }
@@ -305,7 +317,16 @@ enum WorkflowMigration {
     }
 
     private static func llmWidget(id: String, modeConfig: ModeConfig, mode: Mode) -> WorkflowWidget {
-        let definition = WorkflowCanonicalLLM.definition(for: mode)
+        let definition = WorkflowCanonicalLLM.definition(forLegacyMode: mode)
+        let outputLanguage: String
+        if case .translate(let targetLanguage) = mode {
+            // The schema-3 config no longer persists
+            // `translateTargetLanguage`, so the migrated workflow must own the
+            // value in both its prompt and its desktop-compatible props.
+            outputLanguage = targetLanguage
+        } else {
+            outputLanguage = modeConfig.outputLanguage
+        }
         return WorkflowWidget(
             id: id,
             role: .processor,
@@ -315,7 +336,7 @@ enum WorkflowMigration {
             props: WorkflowCanonicalLLM.props(
                 definition: definition,
                 modelProfile: modeConfig.llmModelID ?? "",
-                outputLanguage: modeConfig.outputLanguage
+                outputLanguage: outputLanguage
             ),
             builtin: modeConfig.isBuiltIn
         )

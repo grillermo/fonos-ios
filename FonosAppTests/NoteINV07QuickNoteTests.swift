@@ -3,8 +3,6 @@
 // Verifier: auto
 // Level: unit (in-memory SwiftData ModelContainer)
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/NoteINV07QuickNoteTests
-//
-// TDD status: FAILING until NoteService.quickNoteNotebook() and deletion guard are implemented.
 
 import Testing
 import SwiftData
@@ -20,6 +18,10 @@ private func makeQuickNoteContainer() throws -> ModelContainer {
     return try ModelContainer(for: schema, configurations: [config])
 }
 
+private enum QuickNoteSaveFailure: Error {
+    case injected
+}
+
 // MARK: - Tests
 
 @MainActor
@@ -27,13 +29,13 @@ struct NoteINV07QuickNoteTests {
 
     // MARK: - Quick Note creation
 
-    @Test("NoteService.quickNoteNotebook returns a non-nil NoteContainer")
+    @Test("NoteService.quickNoteNotebook returns a NoteContainer")
     func quickNoteNotebookNotNil() throws {
         let modelContainer = try makeQuickNoteContainer()
         let service = NoteService(modelContainer: modelContainer)
 
-        let quickNote = service.quickNoteNotebook()
-        #expect(quickNote != nil)
+        let quickNote = try service.quickNoteNotebook()
+        #expect(NoteService.isQuickNote(quickNote))
     }
 
     @Test("NoteService.quickNoteNotebook has title 'Quick Note'")
@@ -41,9 +43,8 @@ struct NoteINV07QuickNoteTests {
         let modelContainer = try makeQuickNoteContainer()
         let service = NoteService(modelContainer: modelContainer)
 
-        let quickNote = service.quickNoteNotebook()
-        // TODO: Confirm exact title string with design — "Quick Note" is the spec default
-        #expect(quickNote?.title == "Quick Note")
+        let quickNote = try service.quickNoteNotebook()
+        #expect(quickNote.title == "Quick Note")
     }
 
     @Test("NoteService.quickNoteNotebook is idempotent — two calls return same notebook")
@@ -51,14 +52,14 @@ struct NoteINV07QuickNoteTests {
         let modelContainer = try makeQuickNoteContainer()
         let service = NoteService(modelContainer: modelContainer)
 
-        let first = service.quickNoteNotebook()
-        let second = service.quickNoteNotebook()
-        #expect(first?.id == second?.id)
+        let first = try service.quickNoteNotebook()
+        let second = try service.quickNoteNotebook()
+        #expect(first.id == second.id)
 
         // Only one Quick Note notebook should exist in storage
         let context = modelContainer.mainContext
         let all = try context.fetch(FetchDescriptor<NoteContainer>())
-        let quickNoteCount = all.filter { $0.title == "Quick Note" }.count
+        let quickNoteCount = all.filter(NoteService.isQuickNote).count
         #expect(quickNoteCount == 1)
     }
 
@@ -67,10 +68,10 @@ struct NoteINV07QuickNoteTests {
         let modelContainer = try makeQuickNoteContainer()
 
         let service1 = NoteService(modelContainer: modelContainer)
-        let firstId = service1.quickNoteNotebook()?.id
+        let firstId = try service1.quickNoteNotebook().id
 
         let service2 = NoteService(modelContainer: modelContainer)
-        let secondId = service2.quickNoteNotebook()?.id
+        let secondId = try service2.quickNoteNotebook().id
 
         #expect(firstId == secondId)
     }
@@ -82,14 +83,9 @@ struct NoteINV07QuickNoteTests {
         let modelContainer = try makeQuickNoteContainer()
         let service = NoteService(modelContainer: modelContainer)
 
-        let quickNote = service.quickNoteNotebook()
-        guard let id = quickNote?.id else {
-            Issue.record("quickNoteNotebook() returned nil — cannot test delete protection")
-            return
-        }
+        let id = try service.quickNoteNotebook().id
 
-        // TODO: Confirm the exact error type thrown — NoteServiceError.cannotDeleteQuickNote is assumed
-        #expect(throws: NoteServiceError.self) {
+        #expect(throws: NoteServiceError.cannotDeleteQuickNote) {
             try service.deleteNotebook(id)
         }
     }
@@ -99,11 +95,7 @@ struct NoteINV07QuickNoteTests {
         let modelContainer = try makeQuickNoteContainer()
         let service = NoteService(modelContainer: modelContainer)
 
-        let quickNote = service.quickNoteNotebook()
-        guard let id = quickNote?.id else {
-            Issue.record("quickNoteNotebook() returned nil")
-            return
-        }
+        let id = try service.quickNoteNotebook().id
 
         try? service.deleteNotebook(id) // ignore error — we're testing side effects
 
@@ -118,12 +110,99 @@ struct NoteINV07QuickNoteTests {
         let modelContainer = try makeQuickNoteContainer()
         let service = NoteService(modelContainer: modelContainer)
 
-        _ = service.quickNoteNotebook() // ensure Quick Note exists
-        let regularNotebook = service.createNotebook(title: "Regular Notebook")
+        _ = try service.quickNoteNotebook() // ensure Quick Note exists
+        let regularNotebook = try service.createNotebook(title: "Regular Notebook")
 
         // This must not throw
         #expect(throws: Never.self) {
             try service.deleteNotebook(regularNotebook.id)
         }
+    }
+
+    @Test("Quick Note identity survives rename and remains protected")
+    func quickNoteIdentityDoesNotDependOnTitle() throws {
+        let modelContainer = try makeQuickNoteContainer()
+        let service = NoteService(modelContainer: modelContainer)
+        let quickNote = try service.quickNoteNotebook()
+
+        try service.renameNotebook(quickNote.id, to: "Inbox")
+
+        let renamed = try #require(service.notebook(id: quickNote.id))
+        #expect(renamed.title == "Inbox")
+        #expect(NoteService.isQuickNote(renamed))
+        #expect(try service.quickNoteNotebook().id == quickNote.id)
+        #expect(throws: NoteServiceError.cannotDeleteQuickNote) {
+            try service.deleteNotebook(quickNote.id)
+        }
+    }
+
+    @Test("A regular notebook named Quick Note is not treated as the system notebook")
+    func duplicateTitleRemainsRegularAndDeletable() throws {
+        let modelContainer = try makeQuickNoteContainer()
+        let service = NoteService(modelContainer: modelContainer)
+        let system = try service.quickNoteNotebook()
+        let duplicate = try service.createNotebook(title: "Quick Note")
+
+        #expect(NoteService.isQuickNote(system))
+        #expect(!NoteService.isQuickNote(duplicate))
+        try service.deleteNotebook(duplicate.id)
+        #expect(service.notebook(id: duplicate.id) == nil)
+        #expect(try service.quickNoteNotebook().id == system.id)
+    }
+
+    @Test("legacy title-only Quick Note is migrated to the persistent marker")
+    func legacyQuickNoteGetsMarker() throws {
+        let modelContainer = try makeQuickNoteContainer()
+        let context = modelContainer.mainContext
+        let legacy = NoteContainer(
+            title: "Quick Note",
+            containerType: "notebook",
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 1)
+        )
+        context.insert(legacy)
+        try context.save()
+
+        let service = NoteService(modelContainer: modelContainer)
+        let resolved = try service.quickNoteNotebook()
+        #expect(resolved.id == legacy.id)
+        #expect(NoteService.isQuickNote(resolved))
+    }
+
+    @Test("Quick Note creation rolls back when persistence fails")
+    func quickNoteCreateFailureRollsBack() throws {
+        let modelContainer = try makeQuickNoteContainer()
+        let service = NoteService(
+            modelContainer: modelContainer,
+            saveContext: { _ in throw QuickNoteSaveFailure.injected }
+        )
+
+        #expect(throws: NoteServiceError.self) {
+            _ = try service.quickNoteNotebook()
+        }
+        #expect(service.allNotebooks().isEmpty)
+    }
+
+    @Test("legacy Quick Note migration rolls back when persistence fails")
+    func quickNoteMigrationFailureRollsBack() throws {
+        let modelContainer = try makeQuickNoteContainer()
+        let context = modelContainer.mainContext
+        let legacy = NoteContainer(
+            title: "Quick Note",
+            containerType: "notebook",
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 1)
+        )
+        context.insert(legacy)
+        try context.save()
+        let service = NoteService(
+            modelContainer: modelContainer,
+            saveContext: { _ in throw QuickNoteSaveFailure.injected }
+        )
+
+        #expect(throws: NoteServiceError.self) {
+            _ = try service.quickNoteNotebook()
+        }
+        #expect(service.notebook(id: legacy.id)?.containerType == "notebook")
     }
 }

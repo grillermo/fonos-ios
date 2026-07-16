@@ -27,10 +27,12 @@ Voice dictation app for iPhone. iOS companion to [fonos](https://github.com/etha
 | `FonosIntents/` | Siri App Intents (`DictateIntent`, `RecordNoteIntent`) |
 | `FonosAppTests/` | Unit tests incl. Ratchet invariant suites |
 
-Key flow: `DictationViewModel` → `AudioCaptureService` → STT (`AppleSTT` /
-`WhisperSTT` / `FonosSTT` via `ModelProfile`) → optional `LLMService`
-(OpenAI-compatible; falls back to raw transcript on failure) → `TextRouter`.
-Notes: `NoteViewModel` → `NotebookPipeline` (pure resolver) → SwiftData.
+Key flow: `DictationViewModel` → `AudioCaptureService` →
+`VoiceWorkflowPlanFactory` → `VoiceWorkflowEngine` → surface output adapters.
+STT (`AppleSTT` / `WhisperSTT` / `FonosSTT` via `ModelProfile`) and optional
+OpenAI-compatible LLM steps are frozen into the plan; LLM failure can fall back
+to the step input. Notes compile `NotebookPipeline` settings into the same
+engine, then adapt the result into SwiftData.
 
 ## Build & test
 

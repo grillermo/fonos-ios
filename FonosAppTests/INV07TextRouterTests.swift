@@ -12,29 +12,6 @@ import UIKit
 
 struct INV07TextRouterTests {
 
-    // MARK: - Protocol conformance
-
-    @Test("ClipboardDestination conforms to TextDestination protocol")
-    func clipboardConformsToProtocol() throws {
-        let dest: any TextDestination = ClipboardDestination()
-        _ = dest
-        #expect(Bool(true))
-    }
-
-    @Test("URLSchemeDestination conforms to TextDestination protocol")
-    func urlSchemeConformsToProtocol() throws {
-        let dest: any TextDestination = URLSchemeDestination(template: "myapp://send?text={text}")
-        _ = dest
-        #expect(Bool(true))
-    }
-
-    @Test("MessagesDestination conforms to TextDestination protocol")
-    func messagesConformsToProtocol() throws {
-        let dest: any TextDestination = MessagesDestination()
-        _ = dest
-        #expect(Bool(true))
-    }
-
     // MARK: - Clipboard destination
 
     @Test("ClipboardDestination.send() sets UIPasteboard.general.string")

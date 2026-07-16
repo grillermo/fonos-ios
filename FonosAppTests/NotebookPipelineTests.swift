@@ -72,4 +72,21 @@ struct NotebookPipelineTests {
         let r = NotebookPipeline.resolve(nb)
         #expect(r.llm?.modelOverride == "gpt-4o-mini")
     }
+
+    @Test("display badge follows canonical prompt, not legacy processingMode")
+    func displayBadgeIgnoresLegacyMode() {
+        let legacyAI = NoteContainer(
+            title: "Legacy AI",
+            processingMode: "summarize",
+            systemPrompt: ""
+        )
+        let canonicalAI = NoteContainer(
+            title: "Canonical AI",
+            processingMode: "raw",
+            systemPrompt: "Summarize the note."
+        )
+
+        #expect(NotebookPipeline.displayLabel(for: legacyAI) == "Raw")
+        #expect(NotebookPipeline.displayLabel(for: canonicalAI) == "AI")
+    }
 }

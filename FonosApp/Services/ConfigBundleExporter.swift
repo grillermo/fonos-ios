@@ -42,6 +42,66 @@ enum ConfigBundleExporter {
         ]
 
         let effectiveCatalog = config.workflowCatalog
+        let (exportedWorkflows, exportedWidgets) = desktopWorkflowOverlays(
+            config: config,
+            catalog: effectiveCatalog
+        )
+
+        let legacyModeID = WorkflowMigration.legacyModeID(
+            forWorkflowID: config.activeVoiceWorkflowID
+        ) ?? "raw"
+        func concreteTranslateTarget(_ value: String?) -> String? {
+            guard let target = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !target.isEmpty,
+                  target.caseInsensitiveCompare("auto") != .orderedSame else { return nil }
+            return target
+        }
+
+        // Schema 3 makes the workflow widget authoritative. Pre-schema-3
+        // configs can still reach export before migration/recovery has baked
+        // `translateTargetLanguage` into an overlay, so consult that retired
+        // field only when no concrete overlay target exists.
+        let configuredTranslateTarget = config.widgets.last(where: { $0.id == "llm.translate" })?
+            .props["output_language"]?.stringValue
+        let catalogTranslateTarget = effectiveCatalog.widget(id: "llm.translate")?
+            .props["output_language"]?.stringValue
+        let legacyTranslateTarget = concreteTranslateTarget(configuredTranslateTarget)
+            ?? (config.workflowSchemaVersion < 3
+                ? concreteTranslateTarget(config.translateTargetLanguage)
+                : nil)
+            ?? concreteTranslateTarget(catalogTranslateTarget)
+            ?? "English"
+
+        let dictation: [String: Any] = [
+            // Latest fonos-core scenario shape. These are overlays rather than
+            // the effective builtin catalog, matching desktop snapshot_current.
+            "user_modes": NSNull(),
+            "user_workflows": jsonObjects(exportedWorkflows),
+            "user_widgets": jsonObjects(exportedWidgets),
+            // Forward-compatible identity hint for iOS↔iOS round trips. The
+            // current desktop SavedScenario ignores unknown fields and uses
+            // the projected wf.dictation topology above.
+            "active_voice_workflow": config.activeVoiceWorkflowID,
+            "dictation_mode": legacyModeID,
+            "translate_target": legacyTranslateTarget
+        ]
+        root["dictation"] = dictation
+
+        // A config bundle is a complete vocabulary snapshot. Keep the section
+        // even when empty so applying it can intentionally clear books and
+        // global mounts left by an older target configuration.
+        root["vocab"] = [
+            "vocab_books": jsonObjects(vocabStore.books),
+            "global_vocab_books": vocabStore.mountedIDs(forKey: VocabStore.globalMountKey)
+        ]
+
+        return (try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])) ?? Data("{}".utf8)
+    }
+
+    private static func desktopWorkflowOverlays(
+        config: AppConfig,
+        catalog effectiveCatalog: WorkflowCatalog
+    ) -> (workflows: [WorkflowDefinition], widgets: [WorkflowWidget]) {
         // Scenario files are a desktop contract, not a dump of iOS adapter
         // internals. Normalize the short-lived `return_to_caller` compatibility
         // output to desktop's registered `out.insert`. The receiving surface
@@ -101,38 +161,7 @@ enum ConfigBundleExporter {
             return workflow
         }
         let exportedWidgets = config.widgets.filter { $0.typeTag != "return_to_caller" }
-
-        var dictation: [String: Any] = [
-            // Latest fonos-core scenario shape. These are overlays rather than
-            // the effective builtin catalog, matching desktop snapshot_current.
-            "user_modes": NSNull(),
-            "user_workflows": jsonObjects(exportedWorkflows),
-            "user_widgets": jsonObjects(exportedWidgets),
-            // Forward-compatible identity hint for iOS↔iOS round trips. The
-            // current desktop SavedScenario ignores unknown fields and uses
-            // the projected wf.dictation topology above.
-            "active_voice_workflow": config.activeVoiceWorkflowID,
-            "dictation_mode": config.activeModeID,
-            "translate_target": config.translateTargetLanguage
-        ]
-        // Keep the active workflow's reversible legacy mode in the compatibility
-        // field when possible; desktop still reads dictation_mode during its
-        // transition window.
-        if let modeID = WorkflowMigration.legacyModeID(forWorkflowID: config.activeVoiceWorkflowID) {
-            dictation["dictation_mode"] = modeID
-        }
-        root["dictation"] = dictation
-
-        let books = vocabStore.books
-        if !books.isEmpty, let encoded = try? JSONEncoder().encode(books),
-           let bookDicts = try? JSONSerialization.jsonObject(with: encoded) as? [[String: Any]] {
-            root["vocab"] = [
-                "vocab_books": bookDicts,
-                "global_vocab_books": vocabStore.mountedIDs(forKey: VocabStore.globalMountKey)
-            ]
-        }
-
-        return (try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])) ?? Data("{}".utf8)
+        return (exportedWorkflows, exportedWidgets)
     }
 
     private static func jsonObjects<T: Encodable>(_ values: [T]) -> [Any] {

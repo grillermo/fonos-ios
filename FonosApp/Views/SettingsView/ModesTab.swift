@@ -3,8 +3,8 @@ import SwiftUI
 // MARK: - Modes Tab
 
 /// Settings tab for managing executable voice recipes.
-/// Legacy `ModeConfig` remains a compatibility input, but this screen edits the
-/// real workflow/widget graph that every recording surface now executes.
+/// This screen edits the workflow/widget graph that every recording surface
+/// executes.
 struct ModesTab: View {
     @Binding var config: AppConfig
 
@@ -258,11 +258,6 @@ struct ModesTab: View {
         let removedReferences = referencedWidgetIDs(in: workflow)
         config.workflows.removeAll { $0.id == workflow.id }
 
-        if let legacyID = WorkflowMigration.legacyModeID(forWorkflowID: workflow.id),
-           config.modeConfigs.contains(where: { $0.id == legacyID && !$0.isBuiltIn }) {
-            config.modeConfigs.removeAll { $0.id == legacyID && !$0.isBuiltIn }
-        }
-
         removeOrphanedWidgets(removedReferences)
         if config.activeVoiceWorkflowID == workflow.id {
             activateFallbackRecipe()
@@ -271,10 +266,6 @@ struct ModesTab: View {
 
     private func activateRecipe(_ workflowID: String) {
         config.activeVoiceWorkflowID = workflowID
-        if let legacyID = WorkflowMigration.legacyModeID(forWorkflowID: workflowID),
-           config.modeConfigs.contains(where: { $0.id == legacyID }) {
-            config.activeModeID = legacyID
-        }
     }
 
     private func activateFallbackRecipe() {

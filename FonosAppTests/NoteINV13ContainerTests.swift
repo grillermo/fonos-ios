@@ -4,8 +4,6 @@
 // Levels: static (FonosApp.swift modelContainer includes all three model types — checked at build),
 //         unit (ModelContainer can be constructed with all three types without migration error)
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/NoteINV13ContainerTests
-//
-// TDD status: FAILING until NoteContainer and NoteEntry are added to the app's ModelContainer.
 
 import Testing
 import SwiftData
@@ -16,42 +14,6 @@ import Foundation
 
 @MainActor
 struct NoteINV13ContainerTests {
-
-    // MARK: - Level 1: Compile-time — all three types are accessible
-
-    @Test("DictationSession type is accessible — existing model unchanged")
-    func dictationSessionAccessible() throws {
-        let _ = DictationSession.self
-        #expect(Bool(true)) // sentinel
-    }
-
-    @Test("NoteContainer type is accessible")
-    func noteContainerAccessible() throws {
-        let _ = NoteContainer.self
-        #expect(Bool(true)) // sentinel
-    }
-
-    @Test("NoteEntry type is accessible")
-    func noteEntryAccessible() throws {
-        let _ = NoteEntry.self
-        #expect(Bool(true)) // sentinel
-    }
-
-    // MARK: - Level 2: Unit — combined schema creates without error
-
-    @Test("ModelContainer with DictationSession + NoteContainer + NoteEntry schema creates without error")
-    func combinedSchemaCreatesWithoutError() throws {
-        let schema = Schema([
-            DictationSession.self,
-            NoteContainer.self,
-            NoteEntry.self
-        ])
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: schema, configurations: [config])
-        // If SwiftData throws a migration error or schema conflict, the line above fails.
-        _ = container
-        #expect(Bool(true))
-    }
 
     @Test("Combined ModelContainer mainContext is non-nil and accepts inserts for all three types")
     func combinedContainerMainContextAcceptsInserts() throws {
@@ -159,27 +121,4 @@ struct NoteINV13ContainerTests {
         #expect(sessions.first?.inputText == "um yeah so basically")
     }
 
-    // MARK: - Level 2: App-level ModelContainer registration
-
-    @Test("App's production ModelContainer configuration includes NoteContainer and NoteEntry")
-    func appContainerIncludesNoteModels() throws {
-        // TODO: Once FonosApp exposes its ModelContainer configuration (e.g. via a static
-        // property AppModelContainer.shared), assert that its schema includes NoteContainer
-        // and NoteEntry. For now, verify that constructing the expected schema succeeds.
-        //
-        // Replace the body below once AppModelContainer.schema or equivalent is accessible:
-        //
-        //   let schema = AppModelContainer.schema
-        //   #expect(schema.entities.contains { $0.name == "NoteContainer" })
-        //   #expect(schema.entities.contains { $0.name == "NoteEntry" })
-
-        let schema = Schema([DictationSession.self, NoteContainer.self, NoteEntry.self])
-        let modelNames = schema.entities.map { $0.name }
-        #expect(modelNames.contains("NoteContainer"),
-                "Schema must include NoteContainer — check FonosApp.swift modelContainer")
-        #expect(modelNames.contains("NoteEntry"),
-                "Schema must include NoteEntry — check FonosApp.swift modelContainer")
-        #expect(modelNames.contains("DictationSession"),
-                "Schema must still include DictationSession — existing model must not be dropped")
-    }
 }

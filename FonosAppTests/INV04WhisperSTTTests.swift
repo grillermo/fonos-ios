@@ -89,15 +89,6 @@ private func dummyWAVData() -> Data {
 @Suite(.serialized)
 struct INV04WhisperSTTTests {
 
-    // --- Protocol conformance ---
-
-    @Test("WhisperSTT conforms to STTProvider protocol")
-    func protocolConformance() throws {
-        let stt: any STTProvider = authorizedWhisperSTT(session: .shared, apiKey: "sk-test")
-        _ = stt
-        #expect(Bool(true))
-    }
-
     // --- Request construction ---
 
     @Test("WhisperSTT sends multipart/form-data Content-Type header")
@@ -138,6 +129,38 @@ struct INV04WhisperSTTTests {
         #expect(capturedRequest?.url?.host == "api.openai.com")
         #expect(capturedRequest?.url?.path == "/v1/audio/transcriptions")
         #expect(capturedRequest?.httpMethod == "POST")
+    }
+
+    @Test("WhisperSTT normalizes root, v1, trailing slash, and complete endpoint URLs")
+    func normalizesTranscriptionBaseURL() async throws {
+        let cases = [
+            ("https://speech.example", "https://speech.example/v1/audio/transcriptions"),
+            ("https://speech.example/", "https://speech.example/v1/audio/transcriptions"),
+            ("https://speech.example/v1", "https://speech.example/v1/audio/transcriptions"),
+            ("https://speech.example/v1/", "https://speech.example/v1/audio/transcriptions"),
+            ("https://speech.example/api/v1", "https://speech.example/api/v1/audio/transcriptions"),
+            (
+                "https://speech.example/v1/audio/transcriptions/",
+                "https://speech.example/v1/audio/transcriptions"
+            ),
+        ]
+
+        for (baseURL, expectedURL) in cases {
+            var capturedURL: URL?
+            MockURLProtocol.requestHandler = { request in
+                capturedURL = request.url
+                return okResponse(for: request.url!, body: #"{"text":"hello"}"#)
+            }
+            let stt = authorizedWhisperSTT(
+                session: makeSession(),
+                apiKey: "sk-test",
+                baseURL: baseURL
+            )
+
+            _ = try await stt.transcribe(audioData: dummyWAVData(), language: "en")
+
+            #expect(capturedURL?.absoluteString == expectedURL, "Base URL: \(baseURL)")
+        }
     }
 
     // --- Response parsing ---

@@ -7,6 +7,8 @@ enum NoteServiceError: LocalizedError, Equatable {
     case cannotDeleteQuickNote
     case notebookNotFound
     case entryNotFound
+    case persistenceReadFailed(String)
+    case persistenceFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +18,10 @@ enum NoteServiceError: LocalizedError, Equatable {
             "Notebook not found."
         case .entryNotFound:
             "Entry not found."
+        case .persistenceReadFailed(let message):
+            "The notes could not be loaded: \(message)"
+        case .persistenceFailed(let message):
+            "The note change could not be saved: \(message)"
         }
     }
 }
@@ -31,11 +37,21 @@ enum NoteExportFormat: String, CaseIterable, Sendable {
 final class NoteService {
 
     private let modelContainer: ModelContainer
+    private let saveContext: (ModelContext) throws -> Void
 
     private static let quickNoteTitle = "Quick Note"
+    static let quickNoteContainerType = "quick_note"
 
-    init(modelContainer: ModelContainer) {
+    static func isQuickNote(_ notebook: NoteContainer) -> Bool {
+        notebook.containerType == quickNoteContainerType
+    }
+
+    init(
+        modelContainer: ModelContainer,
+        saveContext: @escaping (ModelContext) throws -> Void = { try $0.save() }
+    ) {
         self.modelContainer = modelContainer
+        self.saveContext = saveContext
         Self.runBackfill(modelContainer: modelContainer)
         Self.runShowRawInlineDefault(modelContainer: modelContainer)
         syncCatalog()
@@ -52,13 +68,21 @@ final class NoteService {
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: flagKey) { return }
         let context = modelContainer.mainContext
-        if let notebooks = try? context.fetch(FetchDescriptor<NoteContainer>()) {
-            var changed = false
-            for nb in notebooks where nb.showRawInline == false {
-                nb.showRawInline = true
-                changed = true
+        guard let notebooks = try? context.fetch(FetchDescriptor<NoteContainer>()) else {
+            return
+        }
+        var changed = false
+        for nb in notebooks where nb.showRawInline == false {
+            nb.showRawInline = true
+            changed = true
+        }
+        if changed {
+            do {
+                try context.save()
+            } catch {
+                context.rollback()
+                return
             }
-            if changed { try? context.save() }
         }
         defaults.set(true, forKey: flagKey)
     }
@@ -68,7 +92,8 @@ final class NoteService {
     /// Write the current notebook list to the shared App Group catalog so the
     /// FonosIntents code (AppShortcuts / DynamicOptionsProvider) sees an
     /// up-to-date list without booting the SwiftData stack. Also nudges
-    /// Siri / Shortcuts.app to refresh suggested phrases.
+    /// Siri / Shortcuts.app to refresh suggested phrases. This is a derived
+    /// cache: a catalog write failure must not undo an already-committed note.
     private func syncCatalog() {
         let entries = allNotebooks().map {
             SharedNotebookCatalog.Entry(id: $0.id.uuidString, title: $0.title)
@@ -91,10 +116,7 @@ final class NoteService {
         if defaults.bool(forKey: flagKey) { return }
 
         let context = modelContainer.mainContext
-        guard let notebooks = try? context.fetch(FetchDescriptor<NoteContainer>()) else {
-            defaults.set(true, forKey: flagKey)
-            return
-        }
+        guard let notebooks = try? context.fetch(FetchDescriptor<NoteContainer>()) else { return }
 
         var changed = false
         for nb in notebooks where nb.systemPrompt.isEmpty {
@@ -105,7 +127,14 @@ final class NoteService {
                 changed = true
             }
         }
-        if changed { try? context.save() }
+        if changed {
+            do {
+                try context.save()
+            } catch {
+                context.rollback()
+                return
+            }
+        }
         defaults.set(true, forKey: flagKey)
     }
 
@@ -137,25 +166,56 @@ final class NoteService {
     // MARK: - Quick Note
 
     /// Returns the Quick Note default notebook, creating it if it doesn't exist.
-    func quickNoteNotebook() -> NoteContainer? {
+    /// Legacy title/duplicate-marker repairs are persisted atomically before a
+    /// notebook is returned to the caller.
+    func quickNoteNotebook() throws -> NoteContainer {
         let context = modelContainer.mainContext
-        let title = Self.quickNoteTitle
-        let descriptor = FetchDescriptor<NoteContainer>(
-            predicate: #Predicate { $0.title == title }
+        let marker = Self.quickNoteContainerType
+        let markedDescriptor = FetchDescriptor<NoteContainer>(
+            predicate: #Predicate { $0.containerType == marker },
+            sortBy: [SortDescriptor(\.createdAt)]
         )
-        if let existing = try? context.fetch(descriptor).first {
-            return existing
+        let marked = try fetch(markedDescriptor, in: context)
+        if let canonical = marked.first {
+            // Synced/legacy stores may contain duplicate system markers. Keep a
+            // deterministic canonical notebook and make the extras regular so
+            // only one container receives untargeted Siri notes.
+            for duplicate in marked.dropFirst() {
+                duplicate.containerType = "notebook"
+            }
+            if marked.count > 1 {
+                try persist(context)
+                syncCatalog()
+            }
+            return canonical
+        }
+
+        // One-time compatibility for builds that identified Quick Note only by
+        // its editable title. The oldest matching row becomes canonical; any
+        // other same-title notebooks remain ordinary and deletable.
+        let legacyTitle = Self.quickNoteTitle
+        let legacyDescriptor = FetchDescriptor<NoteContainer>(
+            predicate: #Predicate { $0.title == legacyTitle },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        if let legacy = try fetch(legacyDescriptor, in: context).first {
+            legacy.containerType = marker
+            legacy.updatedAt = Date()
+            try persist(context)
+            syncCatalog()
+            return legacy
         }
         let notebook = NoteContainer(
             id: UUID(),
-            title: title,
-            containerType: "notebook",
+            title: Self.quickNoteTitle,
+            containerType: marker,
             processingMode: "raw",
             createdAt: Date(),
             updatedAt: Date()
         )
         context.insert(notebook)
-        try? context.save()
+        try persist(context)
+        syncCatalog()
         return notebook
     }
 
@@ -169,8 +229,9 @@ final class NoteService {
         processingMode: String = "raw",
         sttModelOverride: String? = nil,
         llmModelOverride: String? = nil,
-        customPrompt: String? = nil
-    ) -> NoteContainer {
+        customPrompt: String? = nil,
+        systemPrompt: String = ""
+    ) throws -> NoteContainer {
         let notebook = NoteContainer(
             id: UUID(),
             title: title,
@@ -180,40 +241,40 @@ final class NoteService {
             llmModelOverride: llmModelOverride,
             customPrompt: customPrompt,
             createdAt: Date(),
-            updatedAt: Date()
+            updatedAt: Date(),
+            systemPrompt: systemPrompt
         )
         let context = modelContainer.mainContext
         context.insert(notebook)
-        try? context.save()
+        try persist(context)
         syncCatalog()
         return notebook
     }
 
     /// Renames a notebook.
-    func renameNotebook(_ id: UUID, to newTitle: String) {
+    func renameNotebook(_ id: UUID, to newTitle: String) throws {
         let context = modelContainer.mainContext
-        let descriptor = FetchDescriptor<NoteContainer>(
-            predicate: #Predicate { $0.id == id }
-        )
-        guard let notebook = try? context.fetch(descriptor).first else { return }
+        let notebook = try requireNotebook(id, in: context)
         notebook.title = newTitle
         notebook.updatedAt = Date()
-        try? context.save()
+        try persist(context)
         syncCatalog()
     }
 
     /// Deletes a notebook. Throws if it's the Quick Note notebook.
     func deleteNotebook(_ id: UUID) throws {
         let context = modelContainer.mainContext
-        let descriptor = FetchDescriptor<NoteContainer>(
-            predicate: #Predicate { $0.id == id }
-        )
-        guard let notebook = try? context.fetch(descriptor).first else { return }
-        if notebook.title == Self.quickNoteTitle {
+        let notebook = try requireNotebook(id, in: context)
+        if Self.isQuickNote(notebook) {
             throw NoteServiceError.cannotDeleteQuickNote
         }
+        let entriesDescriptor = FetchDescriptor<NoteEntry>(
+            predicate: #Predicate { $0.containerId == id }
+        )
+        let entries = try fetch(entriesDescriptor, in: context)
+        entries.forEach { context.delete($0) }
         context.delete(notebook)
-        try? context.save()
+        try persist(context)
         syncCatalog()
     }
 
@@ -237,7 +298,7 @@ final class NoteService {
         mode: String = "raw",
         durationMs: Double? = nil,
         language: String? = nil
-    ) -> NoteEntry {
+    ) throws -> NoteEntry {
         let entry = NoteEntry(
             id: UUID(),
             createdAt: Date(),
@@ -251,30 +312,35 @@ final class NoteService {
         )
         let context = modelContainer.mainContext
         context.insert(entry)
-        try? context.save()
+        try persist(context)
         return entry
     }
 
     /// Updates the rawText of an entry.
-    func updateEntry(_ id: UUID, text: String) {
+    func updateEntry(_ id: UUID, text: String) throws {
         let context = modelContainer.mainContext
-        let descriptor = FetchDescriptor<NoteEntry>(
-            predicate: #Predicate { $0.id == id }
-        )
-        guard let entry = try? context.fetch(descriptor).first else { return }
+        let entry = try requireEntry(id, in: context)
         entry.rawText = text
-        try? context.save()
+        try persist(context)
     }
 
     /// Deletes an entry.
-    func deleteEntry(_ id: UUID) {
+    func deleteEntry(_ id: UUID) throws {
+        try deleteEntries([id])
+    }
+
+    /// Deletes a swipe-selection in one save so a failure cannot leave a
+    /// partially deleted list.
+    func deleteEntries(_ ids: [UUID]) throws {
+        guard !ids.isEmpty else { return }
         let context = modelContainer.mainContext
-        let descriptor = FetchDescriptor<NoteEntry>(
-            predicate: #Predicate { $0.id == id }
-        )
-        guard let entry = try? context.fetch(descriptor).first else { return }
-        context.delete(entry)
-        try? context.save()
+        var seen = Set<UUID>()
+        let entries = try ids.compactMap { id -> NoteEntry? in
+            guard seen.insert(id).inserted else { return nil }
+            return try requireEntry(id, in: context)
+        }
+        entries.forEach { context.delete($0) }
+        try persist(context)
     }
 
     /// Returns entries for a notebook, sorted by createdAt descending (newest first).
@@ -302,6 +368,12 @@ final class NoteService {
         )
         return try? context.fetch(descriptor).first
     }
+
+}
+
+// MARK: - Export and persistence helpers
+
+extension NoteService {
 
     // MARK: - Export
 
@@ -408,37 +480,13 @@ final class NoteService {
 
     // MARK: - Per-notebook Configuration
 
-    /// v1 update — kept for the existing tests that still touch
-    /// `processingMode` / `customPrompt`. Runtime no longer reads these fields;
-    /// the v0.2.0 backfill consolidates them into `systemPrompt`.
-    func updateNotebookConfig(
-        _ id: UUID,
-        processingMode: String? = nil,
-        sttModelOverride: String? = nil,
-        llmModelOverride: String? = nil,
-        customPrompt: String? = nil
-    ) {
-        let context = modelContainer.mainContext
-        let descriptor = FetchDescriptor<NoteContainer>(
-            predicate: #Predicate { $0.id == id }
-        )
-        guard let notebook = try? context.fetch(descriptor).first else { return }
-        if let processingMode { notebook.processingMode = processingMode }
-        notebook.sttModelOverride = sttModelOverride
-        notebook.llmModelOverride = llmModelOverride
-        notebook.customPrompt = customPrompt
-        notebook.updatedAt = Date()
-        try? context.save()
-    }
-
-    // MARK: - Per-notebook Configuration (v2)
-
     /// v2 config update — operates on the new fields.
     ///
     /// Each parameter is a double-optional so callers can distinguish
     /// "leave unchanged" (`nil`) from "clear to nil" (`.some(nil)`).
     func updateNotebookConfigV2(
         _ id: UUID,
+        title: String? = nil,
         systemPrompt: String? = nil,
         sttLanguage: String?? = nil,
         outputLanguage: String?? = nil,
@@ -446,12 +494,10 @@ final class NoteService {
         llmModelOverride: String?? = nil,
         showRawInline: Bool? = nil,
         siriPhrase: String?? = nil
-    ) {
+    ) throws {
         let context = modelContainer.mainContext
-        let descriptor = FetchDescriptor<NoteContainer>(
-            predicate: #Predicate { $0.id == id }
-        )
-        guard let nb = try? context.fetch(descriptor).first else { return }
+        let nb = try requireNotebook(id, in: context)
+        if let title { nb.title = title }
         if let systemPrompt { nb.systemPrompt = systemPrompt }
         if let sttLanguage { nb.sttLanguage = sttLanguage }
         if let outputLanguage { nb.outputLanguage = outputLanguage }
@@ -460,6 +506,52 @@ final class NoteService {
         if let showRawInline { nb.showRawInline = showRawInline }
         if let siriPhrase { nb.siriPhrase = siriPhrase }
         nb.updatedAt = Date()
-        try? context.save()
+        try persist(context)
+        if title != nil { syncCatalog() }
+    }
+
+    // MARK: - Mutation support
+
+    /// All user-triggered mutations pass through the injected saver. Rolling
+    /// the live context back is essential: SwiftData otherwise keeps failed
+    /// inserts, edits, and deletes visible to queries in the current process.
+    private func persist(_ context: ModelContext) throws {
+        do {
+            try saveContext(context)
+        } catch {
+            context.rollback()
+            throw NoteServiceError.persistenceFailed(error.localizedDescription)
+        }
+    }
+
+    private func fetch<T: PersistentModel>(
+        _ descriptor: FetchDescriptor<T>,
+        in context: ModelContext
+    ) throws -> [T] {
+        do {
+            return try context.fetch(descriptor)
+        } catch {
+            throw NoteServiceError.persistenceReadFailed(error.localizedDescription)
+        }
+    }
+
+    private func requireNotebook(_ id: UUID, in context: ModelContext) throws -> NoteContainer {
+        let descriptor = FetchDescriptor<NoteContainer>(
+            predicate: #Predicate { $0.id == id }
+        )
+        guard let notebook = try fetch(descriptor, in: context).first else {
+            throw NoteServiceError.notebookNotFound
+        }
+        return notebook
+    }
+
+    private func requireEntry(_ id: UUID, in context: ModelContext) throws -> NoteEntry {
+        let descriptor = FetchDescriptor<NoteEntry>(
+            predicate: #Predicate { $0.id == id }
+        )
+        guard let entry = try fetch(descriptor, in: context).first else {
+            throw NoteServiceError.entryNotFound
+        }
+        return entry
     }
 }

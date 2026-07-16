@@ -1,18 +1,28 @@
-// NoteINV06: Record flow pipeline — AudioCaptureService → STTService → optional LLMService
+// NoteINV06: Record flow pipeline — AudioCaptureService → shared VoiceWorkflowEngine
 // → NoteService.addEntry() — produces a NoteEntry with correct text and containerId.
 //
 // Verifier: auto
-// Level: unit (mocked STT, LLM, and NoteService via protocol injection)
+// Level: unit (mocked STT/LLM providers with an in-memory NoteService)
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/NoteINV06RecordFlowTests
-//
-// TDD status: FAILING until NoteViewModel (or equivalent orchestrator) is created.
 
 import Testing
 import SwiftData
 import Foundation
+import AVFoundation
 @testable import FonosApp
 
 // MARK: - Mock STT provider
+
+private func legacyRecordPermission(
+    _ permission: AVAudioApplication.recordPermission
+) -> AVAudioSession.RecordPermission {
+    guard let result = AVAudioSession.RecordPermission(
+        rawValue: UInt(permission.rawValue)
+    ) else {
+        preconditionFailure("Unexpected AVAudioApplication record-permission value")
+    }
+    return result
+}
 
 /// Immediately returns a canned transcript without touching the microphone.
 private final class MockSTTProvider: STTProvider, @unchecked Sendable {
@@ -33,21 +43,63 @@ private final class MockSTTProvider: STTProvider, @unchecked Sendable {
 // MARK: - Mock LLM provider
 
 /// Immediately returns a canned processed string without hitting a network.
-private final class MockLLMProvider: NoteLLMProvider, @unchecked Sendable {
+private final class MockLLMProvider: VoiceWorkflowLLMProvider, @unchecked Sendable {
     var processedText: String
     var callCount: Int = 0
     var shouldThrow: Bool
+    var lastConfiguration: LLMRequestConfiguration?
 
     init(processedText: String = "polished mock text", shouldThrow: Bool = false) {
         self.processedText = processedText
         self.shouldThrow = shouldThrow
     }
 
-    func process(text: String, prompt: String?) async throws -> String {
+    func process(text: String, configuration: LLMRequestConfiguration) async throws -> String {
         callCount += 1
+        lastConfiguration = configuration
         if shouldThrow { throw LLMError.requestFailed }
         return processedText
     }
+}
+
+private final class NoteCaptureDouble: AudioCapturing, @unchecked Sendable {
+    var currentAudioLevel: Float = 0
+    var isRecording = false
+    var isStarting = false
+    private var maximumHandler: (@Sendable (Data?) -> Void)?
+
+    func micPermissionStatus() -> AVAudioSession.RecordPermission {
+        legacyRecordPermission(.granted)
+    }
+    func requestMicPermission() async -> Bool { true }
+
+    func startCapture(
+        onInterruption: @escaping @Sendable () -> Void,
+        onMaximumDurationReached: @escaping @Sendable (Data?) -> Void,
+        completion: @escaping @Sendable (Error?) -> Void
+    ) -> AudioCaptureStartToken {
+        isRecording = true
+        maximumHandler = onMaximumDurationReached
+        completion(nil)
+        return AudioCaptureStartToken()
+    }
+
+    @MainActor
+    func stopCapture() -> Data? {
+        isRecording = false
+        return Data([0])
+    }
+
+    func reachMaximumDuration(with data: Data) {
+        isRecording = false
+        maximumHandler?(data)
+    }
+}
+
+private enum NoteSaveFailure: LocalizedError {
+    case diskUnavailable
+
+    var errorDescription: String? { "Test storage unavailable" }
 }
 
 // MARK: - In-memory container helper
@@ -70,10 +122,9 @@ struct NoteINV06RecordFlowTests {
     func recordFlowRawMode() async throws {
         let modelContainer = try makeRecordFlowContainer()
         let noteService = NoteService(modelContainer: modelContainer)
-        let notebook = noteService.createNotebook(title: "Test Notebook")
+        let notebook = try noteService.createNotebook(title: "Test Notebook")
 
         let sttMock = MockSTTProvider(transcript: "hello world from mic")
-        // TODO: Replace NoteViewModel initialiser args once its signature is finalised
         let viewModel = NoteViewModel(
             noteService: noteService,
             sttProvider: sttMock,
@@ -83,7 +134,6 @@ struct NoteINV06RecordFlowTests {
         // Simulate the full record → transcribe → store pipeline
         await viewModel.recordAndStore(
             to: notebook.id,
-            mode: "raw",
             audioData: Data(repeating: 0, count: 64)
         )
 
@@ -103,8 +153,8 @@ struct NoteINV06RecordFlowTests {
     func recordFlowLightPolishMode() async throws {
         let modelContainer = try makeRecordFlowContainer()
         let noteService = NoteService(modelContainer: modelContainer)
-        let notebook = noteService.createNotebook(title: "Polish Notebook")
-        noteService.updateNotebookConfigV2(notebook.id, systemPrompt: "Polish.")
+        let notebook = try noteService.createNotebook(title: "Polish Notebook")
+        try noteService.updateNotebookConfigV2(notebook.id, systemPrompt: "Polish.")
 
         let sttMock = MockSTTProvider(transcript: "um yeah so i think we need to ship")
         let llmMock = MockLLMProvider(processedText: "We need to ship.")
@@ -132,8 +182,8 @@ struct NoteINV06RecordFlowTests {
     func llmCalledOnce() async throws {
         let modelContainer = try makeRecordFlowContainer()
         let noteService = NoteService(modelContainer: modelContainer)
-        let notebook = noteService.createNotebook(title: "Call Count Test")
-        noteService.updateNotebookConfigV2(notebook.id, systemPrompt: "Summarize.")
+        let notebook = try noteService.createNotebook(title: "Call Count Test")
+        try noteService.updateNotebookConfigV2(notebook.id, systemPrompt: "Summarize.")
 
         let sttMock = MockSTTProvider(transcript: "test input")
         let llmMock = MockLLMProvider(processedText: "test output")
@@ -151,13 +201,36 @@ struct NoteINV06RecordFlowTests {
         #expect(llmMock.callCount == 1)
     }
 
+    @Test("Five-minute capture limit automatically completes the notebook workflow")
+    func captureLimitAutomaticallyStoresNote() async throws {
+        let modelContainer = try makeRecordFlowContainer()
+        let noteService = NoteService(modelContainer: modelContainer)
+        let notebook = try noteService.createNotebook(title: "Bounded capture")
+        let capture = NoteCaptureDouble()
+        let viewModel = NoteViewModel(
+            noteService: noteService,
+            sttProvider: MockSTTProvider(transcript: "bounded transcript"),
+            llmProvider: nil,
+            audioCapture: capture
+        )
+
+        viewModel.startRecording(to: notebook.id)
+        capture.reachMaximumDuration(with: Data([1, 2, 3]))
+        for _ in 0..<20 where noteService.entriesForNotebook(notebook.id).isEmpty {
+            await Task.yield()
+        }
+
+        #expect(viewModel.recordingState == .done)
+        #expect(noteService.entriesForNotebook(notebook.id).first?.rawText == "bounded transcript")
+    }
+
     // MARK: - STT failure: no entry created
 
     @Test("Record flow does not create NoteEntry when STT throws")
     func recordFlowSTTFailure() async throws {
         let modelContainer = try makeRecordFlowContainer()
         let noteService = NoteService(modelContainer: modelContainer)
-        let notebook = noteService.createNotebook(title: "STT Failure Notebook")
+        let notebook = try noteService.createNotebook(title: "STT Failure Notebook")
 
         let sttMock = MockSTTProvider(shouldThrow: true)
         let viewModel = NoteViewModel(
@@ -168,7 +241,6 @@ struct NoteINV06RecordFlowTests {
 
         await viewModel.recordAndStore(
             to: notebook.id,
-            mode: "raw",
             audioData: Data(repeating: 0, count: 64)
         )
 
@@ -177,14 +249,43 @@ struct NoteINV06RecordFlowTests {
         #expect(entries.isEmpty)
     }
 
+    @Test("Record flow reports a SwiftData save failure instead of showing Saved")
+    func recordFlowSaveFailureIsVisible() async throws {
+        let modelContainer = try makeRecordFlowContainer()
+        let setupService = NoteService(modelContainer: modelContainer)
+        let notebook = try setupService.createNotebook(title: "Save Failure")
+        let noteService = NoteService(
+            modelContainer: modelContainer,
+            saveContext: { _ in throw NoteSaveFailure.diskUnavailable }
+        )
+        let viewModel = NoteViewModel(
+            noteService: noteService,
+            sttProvider: MockSTTProvider(transcript: "must not become a ghost note"),
+            llmProvider: nil
+        )
+
+        await viewModel.recordAndStore(
+            to: notebook.id,
+            audioData: Data(repeating: 0, count: 64)
+        )
+
+        #expect(noteService.entriesForNotebook(notebook.id).isEmpty)
+        guard case .error(let message) = viewModel.recordingState else {
+            Issue.record("Expected a visible storage error")
+            return
+        }
+        #expect(message.contains("could not be saved"))
+        #expect(message.contains("Test storage unavailable"))
+    }
+
     // MARK: - LLM failure: falls back to raw transcript
 
     @Test("Record flow falls back to raw transcript when LLM throws")
     func recordFlowLLMFallback() async throws {
         let modelContainer = try makeRecordFlowContainer()
         let noteService = NoteService(modelContainer: modelContainer)
-        let notebook = noteService.createNotebook(title: "LLM Fallback Notebook")
-        noteService.updateNotebookConfigV2(notebook.id, systemPrompt: "Polish.")
+        let notebook = try noteService.createNotebook(title: "LLM Fallback Notebook")
+        try noteService.updateNotebookConfigV2(notebook.id, systemPrompt: "Polish.")
 
         let sttMock = MockSTTProvider(transcript: "raw fallback text")
         let llmMock = MockLLMProvider(shouldThrow: true)
@@ -207,6 +308,45 @@ struct NoteINV06RecordFlowTests {
 
     // MARK: - v2 pipeline coverage
 
+    @Test("Notebook settings compile into the shared workflow schema")
+    func notebookCompilesToWorkflow() async throws {
+        let modelContainer = try makeRecordFlowContainer()
+        let service = NoteService(modelContainer: modelContainer)
+        let notebook = try service.createNotebook(title: "Flow notebook")
+        try service.updateNotebookConfigV2(
+            notebook.id,
+            systemPrompt: "Summarize clearly.",
+            sttLanguage: .some("zh-CN"),
+            outputLanguage: .some("en-US"),
+            sttModelOverride: .some("stt-profile"),
+            llmModelOverride: .some("llm-profile")
+        )
+
+        let recipe = NotebookPipeline.workflowRecipe(for: notebook)
+        #expect(recipe.definition.processors.count == 2)
+        #expect(recipe.definition.outputs.count == 1)
+        #expect(recipe.catalog.widget(id: recipe.definition.source)?.typeTag == "microphone")
+        let stt = recipe.catalog.widget(id: recipe.definition.processors[0])
+        #expect(stt?.props["model_profile"]?.stringValue == "stt-profile")
+        #expect(stt?.props["language"]?.stringValue == "zh-CN")
+        let llm = recipe.catalog.widget(id: recipe.definition.processors[1])
+        #expect(llm?.props["model_profile"]?.stringValue == "llm-profile")
+        #expect(llm?.props["system"]?.stringValue?.contains("Always respond in en-US.") == true)
+        #expect(llm?.props["failure_policy"]?.stringValue == "use_input")
+    }
+
+    @Test("Raw notebook compiles without an LLM processor")
+    func rawNotebookCompilesWithoutLLM() async throws {
+        let modelContainer = try makeRecordFlowContainer()
+        let service = NoteService(modelContainer: modelContainer)
+        let notebook = try service.createNotebook(title: "Raw notebook")
+
+        let recipe = NotebookPipeline.workflowRecipe(for: notebook)
+        #expect(recipe.hasLLM == false)
+        #expect(recipe.definition.processors.count == 1)
+        #expect(recipe.catalog.widget(id: recipe.definition.processors[0])?.typeTag == "stt")
+    }
+
     /// Captures the language hint passed to STT so tests can assert it propagates.
     private final class CapturingSTT: STTProvider, @unchecked Sendable {
         var lastLanguage: String?
@@ -221,8 +361,8 @@ struct NoteINV06RecordFlowTests {
     func sttLanguageForwarded() async throws {
         let mc = try makeRecordFlowContainer()
         let service = NoteService(modelContainer: mc)
-        let nb = service.createNotebook(title: "ZH")
-        service.updateNotebookConfigV2(nb.id, sttLanguage: .some("zh-CN"))
+        let nb = try service.createNotebook(title: "ZH")
+        try service.updateNotebookConfigV2(nb.id, sttLanguage: .some("zh-CN"))
 
         let stt = CapturingSTT()
         let vm = NoteViewModel(noteService: service, sttProvider: stt, llmProvider: nil)
@@ -235,7 +375,7 @@ struct NoteINV06RecordFlowTests {
     func emptyPromptSkipsLLM() async throws {
         let mc = try makeRecordFlowContainer()
         let service = NoteService(modelContainer: mc)
-        let nb = service.createNotebook(title: "Raw")
+        let nb = try service.createNotebook(title: "Raw")
         // systemPrompt defaults to ""
 
         let llm = MockLLMProvider(processedText: "should not be called")
@@ -249,8 +389,8 @@ struct NoteINV06RecordFlowTests {
     func nonEmptyPromptInvokesLLM() async throws {
         let mc = try makeRecordFlowContainer()
         let service = NoteService(modelContainer: mc)
-        let nb = service.createNotebook(title: "Polish")
-        service.updateNotebookConfigV2(nb.id, systemPrompt: "Polish.")
+        let nb = try service.createNotebook(title: "Polish")
+        try service.updateNotebookConfigV2(nb.id, systemPrompt: "Polish.")
 
         let llm = MockLLMProvider(processedText: "polished")
         let vm = NoteViewModel(noteService: service, sttProvider: CapturingSTT(), llmProvider: llm)
@@ -265,8 +405,8 @@ struct NoteINV06RecordFlowTests {
     func containerIdPropagated() async throws {
         let modelContainer = try makeRecordFlowContainer()
         let noteService = NoteService(modelContainer: modelContainer)
-        let notebookA = noteService.createNotebook(title: "Notebook A")
-        let notebookB = noteService.createNotebook(title: "Notebook B")
+        let notebookA = try noteService.createNotebook(title: "Notebook A")
+        let notebookB = try noteService.createNotebook(title: "Notebook B")
 
         let sttMock = MockSTTProvider(transcript: "belongs to A")
         let viewModel = NoteViewModel(
@@ -277,7 +417,6 @@ struct NoteINV06RecordFlowTests {
 
         await viewModel.recordAndStore(
             to: notebookA.id,
-            mode: "raw",
             audioData: Data(repeating: 0, count: 64)
         )
 

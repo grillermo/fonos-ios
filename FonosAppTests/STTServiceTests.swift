@@ -143,6 +143,30 @@ struct STTResolverTests {
         ).effectiveSTTAPI == "whisper")
     }
 
+    @Test("model profile canonicalizes concrete desktop-appended service routes")
+    func modelProfileCanonicalizesConcreteRoutes() {
+        let cases = [
+            ("https://speech.example/v1/audio/transcriptions/", "https://speech.example"),
+            ("https://speech.example/gateway/audio/transcriptions", "https://speech.example/gateway"),
+            ("https://chat.example/api/v1/chat/completions/", "https://chat.example/api"),
+            ("https://chat.example/gateway/chat/completions", "https://chat.example/gateway")
+        ]
+
+        for (endpoint, expectedBase) in cases {
+            let profile = ModelProfile(
+                id: endpoint,
+                name: "Endpoint",
+                provider: "custom",
+                modelID: "model",
+                baseURL: endpoint,
+                capabilities: ["stt", "llm"]
+            )
+            #expect(profile.baseURL == expectedBase)
+            #expect(profile.portableBaseURL == expectedBase)
+            #expect(profile.effectiveBaseURL == expectedBase)
+        }
+    }
+
     @Test("profile references are whitespace-canonical at resolution")
     func whitespaceProfileReferenceResolves() {
         let profile = ModelProfile(

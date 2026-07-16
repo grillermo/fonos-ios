@@ -52,7 +52,7 @@ private actor VoiceWorkflowSTTDouble: STTProvider {
     }
 }
 
-private actor VoiceWorkflowLLMDouble: LegacyModeLLMProvider {
+private actor VoiceWorkflowLLMDouble: VoiceWorkflowLLMProvider {
     enum Behavior: Sendable {
         case succeed(String)
         case fail
@@ -64,7 +64,10 @@ private actor VoiceWorkflowLLMDouble: LegacyModeLLMProvider {
         self.behavior = behavior
     }
 
-    func process(text: String, mode: Mode, glossary: String?) async throws -> String {
+    func process(
+        text: String,
+        configuration: LLMRequestConfiguration
+    ) async throws -> String {
         switch behavior {
         case .succeed(let output):
             return output
@@ -99,12 +102,16 @@ struct VoiceWorkflowDictationIntegrationTests {
     func dictationLatencyDoesNotLeakAcrossRuns() async throws {
         let stt = VoiceWorkflowSTTDouble(.succeed("input"))
         let llm = VoiceWorkflowLLMDouble(.succeed("output"))
-        let vm = DictationViewModel(sttProvider: stt, llmService: llm)
+        let vm = DictationViewModel(sttProvider: stt, llmProvider: llm)
 
-        _ = try await vm.processAudio(Data(count: 44), language: nil, mode: .polish)
+        vm.selectMode(id: "polish")
+        vm.finishRecording(wavData: Data(count: 44))
+        await waitForDictationResult(vm)
         #expect(vm.llmLatency > 0)
 
-        _ = try await vm.processAudio(Data(count: 44), language: nil, mode: .raw)
+        vm.selectMode(id: "raw")
+        vm.finishRecording(wavData: Data(count: 44))
+        await waitForDictationResult(vm)
         #expect(vm.llmLatency == 0)
     }
 
@@ -113,7 +120,7 @@ struct VoiceWorkflowDictationIntegrationTests {
     func dictationPresentationLLMSuccess() async {
         let stt = VoiceWorkflowSTTDouble(.succeed("input"))
         let llm = VoiceWorkflowLLMDouble(.succeed("polished"))
-        let vm = DictationViewModel(sttProvider: stt, llmService: llm)
+        let vm = DictationViewModel(sttProvider: stt, llmProvider: llm)
         vm.selectMode(id: "polish")
 
         vm.finishRecording(wavData: Data(count: 44))
@@ -134,7 +141,7 @@ struct VoiceWorkflowDictationIntegrationTests {
     func importedDictationTopologyExecutes() async {
         let stt = VoiceWorkflowSTTDouble(.succeed("input"))
         let llm = VoiceWorkflowLLMDouble(.succeed("polished"))
-        let vm = DictationViewModel(sttProvider: stt, llmService: llm)
+        let vm = DictationViewModel(sttProvider: stt, llmProvider: llm)
         var config = WorkflowMigration.migrated(AppConfig())
         config.activeModeID = "polish"
         config.activeVoiceWorkflowID = "wf.dictation"
@@ -167,7 +174,7 @@ struct VoiceWorkflowDictationIntegrationTests {
     func dictationPresentationLLMFallback() async {
         let stt = VoiceWorkflowSTTDouble(.succeed("corrected input"))
         let llm = VoiceWorkflowLLMDouble(.fail)
-        let vm = DictationViewModel(sttProvider: stt, llmService: llm)
+        let vm = DictationViewModel(sttProvider: stt, llmProvider: llm)
         vm.selectMode(id: "polish")
 
         vm.finishRecording(wavData: Data(count: 44))
@@ -243,10 +250,17 @@ struct VoiceWorkflowDictationIntegrationTests {
         config.modeConfigs[polishIndex].sttModelID = modeSTT.id
         config.modeConfigs[polishIndex].llmModelID = modeLLM.id
 
-        #expect(config.effectiveSTTProfileID(forModeID: "polish") == modeSTT.id)
-        #expect(config.effectiveLLMProfileID(forModeID: "polish") == modeLLM.id)
-        #expect(config.effectiveSTTProfileID(forModeID: "raw") == globalSTT.id)
-        #expect(config.effectiveLLMProfileID(forModeID: "raw") == globalLLM.id)
+        WorkflowMigration.migrate(&config)
+        config.activeVoiceWorkflowID = "wf.voice.polish"
+        let migratedCatalog = config.workflowCatalog
+        let migratedWorkflow = migratedCatalog.workflow(id: "wf.voice.polish")
+        let migratedProcessors = migratedWorkflow?.processors.compactMap {
+            migratedCatalog.widget(id: $0)
+        } ?? []
+        #expect(migratedProcessors.first(where: { $0.typeTag == "stt" })?
+            .props["model_profile"]?.stringValue == modeSTT.id)
+        #expect(migratedProcessors.first(where: { $0.typeTag == "llm" })?
+            .props["model_profile"]?.stringValue == modeLLM.id)
 
         let vm = DictationViewModel(
             sttProvider: VoiceWorkflowSTTDouble(.succeed("input"))
@@ -300,18 +314,23 @@ struct VoiceWorkflowDictationIntegrationTests {
         let stt = VoiceWorkflowSTTDouble(.succeed("corrected input"))
         let vm = DictationViewModel(sttProvider: stt)
 
-        let result = try await vm.processAudio(
-            Data(count: 44),
-            language: nil,
-            mode: .polish
-        )
+        vm.selectMode(id: "polish")
+        vm.finishRecording(wavData: Data(count: 44))
+        await waitForDictationResult(vm)
 
-        #expect(result.text == "corrected input")
-        #expect(result.isRawFallback)
-        #expect(!result.didProcessWithLLM)
-        #expect(result.degradations == [
-            .llmFailedUsingInput(widgetID: "llm.polish")
-        ])
+        if case .result(let transcript, let processed) = vm.recordingState {
+            #expect(transcript == "corrected input")
+            #expect(processed == nil)
+        } else {
+            Issue.record("Expected use-input fallback result")
+        }
+        #expect(vm.workflowPresentation.phase == .degraded)
+        let llmNode = vm.workflowPresentation.nodes.first { $0.widgetID == "llm.polish" }
+        if case .fallback? = llmNode?.state {
+            // The engine applied the widget's use_input failure policy.
+        } else {
+            Issue.record("Expected llm.polish to report a fallback")
+        }
     }
 
     @Test("Dictation Flow uses the custom ModeConfig UUID as vocab and prompt scope")
@@ -335,7 +354,6 @@ struct VoiceWorkflowDictationIntegrationTests {
             sttPrompt: "Names from this project",
             sttTemperature: 0,
             outputLanguage: "auto",
-            autoPaste: false,
             isBuiltIn: false
         )
 
@@ -353,15 +371,15 @@ struct VoiceWorkflowDictationIntegrationTests {
 
         let stt = VoiceWorkflowSTTDouble(.succeed("hello"))
         let vm = DictationViewModel(sttProvider: stt)
-        vm.config.modeConfigs.append(modeConfig)
+        var legacyConfig = AppConfig()
+        legacyConfig.modeConfigs.append(modeConfig)
+        WorkflowMigration.migrate(&legacyConfig)
+        vm.config = legacyConfig
         vm.vocabStore = vocabStore
 
-        _ = try await vm.processAudio(
-            Data(count: 44),
-            language: nil,
-            mode: customMode,
-            scopeID: customID
-        )
+        vm.selectMode(id: customID)
+        vm.finishRecording(wavData: Data(count: 44))
+        await waitForDictationResult(vm)
 
         let call = await stt.calls.first
         #expect(call?.vocabulary == ["FonosFlow"])
@@ -434,16 +452,17 @@ struct VoiceWorkflowDictationIntegrationTests {
             sttPrompt: "Project names",
             sttTemperature: 0,
             outputLanguage: "auto",
-            autoPaste: false,
             isBuiltIn: false
         )
         let stt = VoiceWorkflowSTTDouble(.succeed("hello"))
         let vm = DictationViewModel(sttProvider: stt)
-        vm.config.modeConfigs.append(modeConfig)
+        var legacyConfig = AppConfig()
+        legacyConfig.modeConfigs.append(modeConfig)
+        WorkflowMigration.migrate(&legacyConfig)
+        vm.config = legacyConfig
 
         vm.selectMode(id: customID)
-        #expect(vm.config.activeModeID == customID)
-        #expect(vm.currentMode == customMode)
+        #expect(vm.config.activeVoiceWorkflowID == "wf.custom-\(customID)")
 
         vm.finishRecording(wavData: Data(count: 44))
         await waitForDictationResult(vm)
@@ -464,7 +483,7 @@ struct VoiceWorkflowDictationIntegrationTests {
 
         vm.selectMode(id: "polish")
 
-        #expect(vm.config.activeModeID == "polish")
+        #expect(vm.config.activeVoiceWorkflowID == "wf.voice.polish")
         #expect(vm.recordingState == .idle)
         #expect(vm.workflowPresentation == .idle)
         #expect(vm.sttLatency == 0)

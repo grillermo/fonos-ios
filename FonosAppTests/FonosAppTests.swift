@@ -23,6 +23,23 @@ func authorizedLLMService(
     )
 }
 
+/// Test-side bridge from legacy fixture values into the workflow request
+/// contract. Product code never accepts `Mode`; migrated recipes carry these
+/// same values in their LLM widget properties.
+func workflowLLMConfiguration(
+    for mode: Mode,
+    glossary: String? = nil
+) -> LLMRequestConfiguration {
+    let definition = WorkflowCanonicalLLM.definition(forLegacyMode: mode)
+    return LLMRequestConfiguration(
+        systemPrompt: definition.system,
+        userTemplate: definition.userTemplate,
+        temperature: definition.temperature,
+        maxTokens: Int(definition.maxTokens),
+        glossary: glossary
+    )
+}
+
 func authorizedWhisperSTT(
     session: URLSession = .shared,
     apiKey: String,
@@ -81,9 +98,9 @@ struct FonosAppTests {
     }
 
     @Test func appConfigDefaultValues() {
-        let config = AppConfig()
+        let config = WorkflowMigration.migrated(AppConfig())
         #expect(config.sttProvider == "apple")
-        #expect(config.defaultMode.id == "raw")
+        #expect(config.activeVoiceWorkflow?.id == "wf.dictation")
         #expect(config.recordMode == .tap)
     }
 
@@ -102,7 +119,7 @@ struct FonosAppTests {
         #expect(llmModes.allSatisfy { $0.requiresLLM })
     }
 
-    @Test func removingModelClearsDefaultsAndModeOverrides() {
+    @Test func removingModelClearsDefaultsAndWorkflowReferences() {
         let profile = ModelProfile(
             id: "shared-model",
             name: "Shared Model",
@@ -110,23 +127,28 @@ struct FonosAppTests {
             modelID: "model",
             capabilities: ["stt", "llm"]
         )
-        var config = AppConfig()
+        var config = WorkflowMigration.migrated(AppConfig())
         config.modelProfiles = [profile]
         config.sttProfile = profile.id
         config.llmProfile = profile.id
-        config.modeConfigs[1].sttModelID = profile.id
-        config.modeConfigs[1].llmModelID = profile.id
+        var sttWidget = config.workflowCatalog.widget(id: "stt.default")!
+        if case .object(var props) = sttWidget.props {
+            props["model_profile"] = .string(profile.id)
+            sttWidget.props = .object(props)
+        }
+        config.widgets.append(sttWidget)
 
         config.removeModelProfile(id: profile.id)
 
         #expect(config.modelProfiles.isEmpty)
         #expect(config.sttProfile.isEmpty)
         #expect(config.llmProfile.isEmpty)
-        #expect(config.modeConfigs.allSatisfy { $0.sttModelID != profile.id })
-        #expect(config.modeConfigs.allSatisfy { $0.llmModelID != profile.id })
+        #expect(config.widgets.allSatisfy {
+            $0.props["model_profile"]?.stringValue != profile.id
+        })
     }
 
-    @Test func danglingModeOverridesFallBackToAppDefaults() {
+    @Test func workflowWithoutOverrideUsesAppDefaults() throws {
         let stt = ModelProfile(
             id: "default-stt",
             name: "Default STT",
@@ -141,15 +163,20 @@ struct FonosAppTests {
             modelID: "gpt",
             capabilities: ["llm"]
         )
-        var config = AppConfig()
+        var config = WorkflowMigration.migrated(AppConfig())
         config.modelProfiles = [stt, llm]
         config.sttProfile = stt.id
         config.llmProfile = llm.id
-        config.modeConfigs[1].sttModelID = "deleted-stt"
-        config.modeConfigs[1].llmModelID = "deleted-llm"
-
-        #expect(config.effectiveSTTProfileID(forModeID: "polish") == stt.id)
-        #expect(config.effectiveLLMProfileID(forModeID: "polish") == llm.id)
+        let workflow = try #require(config.workflowCatalog.workflow(id: "wf.voice.polish"))
+        let explicitProfileIDs = workflow.processors.map {
+            config.workflowCatalog.widget(id: $0)?.props["model_profile"]?.stringValue
+        }
+        #expect(explicitProfileIDs.allSatisfy { ($0 ?? "").isEmpty })
+        #expect(try VoiceWorkflowOperationalValidator.validateMicrophone(
+            definition: workflow,
+            catalog: config.workflowCatalog,
+            config: config
+        ).sourceKind == .microphone)
     }
 }
 
@@ -293,10 +320,16 @@ struct RemoteAIConsentTests {
             consentAuthorizer: { _, _ in false }
         )
         await #expect(throws: LLMError.self) {
-            _ = try await service.process(text: "private transcript", mode: .polish)
+            _ = try await service.process(
+                text: "private transcript",
+                configuration: workflowLLMConfiguration(for: .polish)
+            )
         }
         do {
-            _ = try await service.process(text: "private transcript", mode: .polish)
+            _ = try await service.process(
+                text: "private transcript",
+                configuration: workflowLLMConfiguration(for: .polish)
+            )
             Issue.record("Expected remote-AI consent to be required")
         } catch let error as LLMError {
             guard case .consentRequired = error else {

@@ -19,6 +19,8 @@
 		FE0018AA0018AA0018AA0002 /* VocabBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0018AA0018AA0018AA0001 /* VocabBook.swift */; };
 		FE0019AA0019AA0019AA0002 /* VocabStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0019AA0019AA0019AA0001 /* VocabStore.swift */; };
 		FE0022AA0022AA0022AA0002 /* ScenarioImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0022AA0022AA0022AA0001 /* ScenarioImporter.swift */; };
+		CLN015000000000000000002 /* ScenarioImporter+Workflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN015000000000000000001 /* ScenarioImporter+Workflow.swift */; };
+		CLN016000000000000000002 /* ScenarioImporter+Decoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN016000000000000000001 /* ScenarioImporter+Decoding.swift */; };
 		FE0032AA0032AA0032AA02B /* ConfigSetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0032AA0032AA0032AA01A /* ConfigSetStore.swift */; };
 		FE0031AA0031AA0031AA02B /* ConfigBundleExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0031AA0031AA0031AA01A /* ConfigBundleExporter.swift */; };
 		FE0030AA0030AA0030AA02B /* ConfigBundleCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */; };
@@ -32,11 +34,16 @@
 		FE0025AA0025AA0025AA0002 /* SetupDoctorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */; };
 		FE0034AA0034AA0034AA02B /* ConfigSharingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0034AA0034AA0034AA01A /* ConfigSharingViews.swift */; };
 		663C34A9CC884E40AD59B709 /* AudioCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */; };
+		CLN003000000000000000002 /* AudioCaptureLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN003000000000000000001 /* AudioCaptureLifecycle.swift */; };
+		CLN004000000000000000002 /* AudioCaptureBuffering.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN004000000000000000001 /* AudioCaptureBuffering.swift */; };
 		AC1000000000000000000002 /* AudioCaptureWAVCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1000000000000000000001 /* AudioCaptureWAVCodec.swift */; };
 		663C34A9CC884E40AD59B70A /* STTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A7 /* STTService.swift */; };
+		CLN012000000000000000002 /* ChatSTT.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN012000000000000000001 /* ChatSTT.swift */; };
+		CLN001000000000000000002 /* WhisperSTT.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN001000000000000000001 /* WhisperSTT.swift */; };
 		663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */; };
 		F10000000000000000000011 /* VoiceWorkflowSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* VoiceWorkflowSupport.swift */; };
 		A20000000000000000000011 /* WorkflowDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* WorkflowDefinition.swift */; };
+		CLN002000000000000000002 /* WorkflowCanonicalLLM.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN002000000000000000001 /* WorkflowCanonicalLLM.swift */; };
 		A20000000000000000000012 /* WorkflowMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* WorkflowMigration.swift */; };
 		A20000000000000000000014 /* VoiceWorkflowEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* VoiceWorkflowEngine.swift */; };
 		A20000000000000000000016 /* VoiceWorkflowContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* VoiceWorkflowContracts.swift */; };
@@ -54,11 +61,7 @@
 		77D41ED5933B42BF9BE9C701 /* FonosAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C711 /* FonosAppTests.swift */; };
 		77D41ED5933B42BF9BE9C702 /* AudioCaptureServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C712 /* AudioCaptureServiceTests.swift */; };
 		77D41ED5933B42BF9BE9C703 /* STTServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C713 /* STTServiceTests.swift */; };
-		77D41ED5933B42BF9BE9C704 /* LLMServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C714 /* LLMServiceTests.swift */; };
-		77D41ED5933B42BF9BE9C705 /* ModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C715 /* ModeTests.swift */; };
-		77D41ED5933B42BF9BE9C707 /* ConfigTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C717 /* ConfigTests.swift */; };
 		77D41ED5933B42BF9BE9C708 /* HistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C718 /* HistoryTests.swift */; };
-		77D41ED5933B42BF9BE9C709 /* OfflineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77D41ED5933B42BF9BE9C719 /* OfflineTests.swift */; };
 		F10000000000000000000013 /* VoiceWorkflowIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000003 /* VoiceWorkflowIntegrationTests.swift */; };
 		A20000000000000000000013 /* WorkflowMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* WorkflowMigrationTests.swift */; };
 		A20000000000000000000015 /* VoiceWorkflowEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* VoiceWorkflowEngineTests.swift */; };
@@ -71,6 +74,10 @@
 		AA01B001AA014D00AA014D07 /* INV10HistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01B001AA014D00AA014D17 /* INV10HistoryTests.swift */; };
 		BB02001BB002001BB002001B /* INV02AudioCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB02001BB002001BB002001A /* INV02AudioCaptureTests.swift */; };
 		BG01000000000000000001 /* BackgroundRecordingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BG01000000000000000011 /* BackgroundRecordingService.swift */; };
+		CLN005000000000000000002 /* BackgroundRecordingRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN005000000000000000001 /* BackgroundRecordingRegistration.swift */; };
+		CLN006000000000000000002 /* BackgroundRecordingReadySession.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN006000000000000000001 /* BackgroundRecordingReadySession.swift */; };
+		CLN007000000000000000002 /* BackgroundRecordingUtterance.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN007000000000000000001 /* BackgroundRecordingUtterance.swift */; };
+		CLN008000000000000000002 /* BackgroundRecordingProcessing.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN008000000000000000001 /* BackgroundRecordingProcessing.swift */; };
 		CC07001CC007001CC007001B /* INV07TextRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC07001CC007001CC007001A /* INV07TextRouterTests.swift */; };
 		CC08001CC008001CC008001B /* INV08URLSchemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC08001CC008001CC008001A /* INV08URLSchemeTests.swift */; };
 		KB12001AA012001AA012001B /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = KB12001AA012001AA012001A /* KeyboardViewController.swift */; };
@@ -118,6 +125,8 @@
 		WP03VON006AA006AA006001B /* NoteINV06RecordFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON006AA006AA006001A /* NoteINV06RecordFlowTests.swift */; };
 		WP03VON007AA007AA007001B /* NoteINV11NoAudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON007AA007AA007001A /* NoteINV11NoAudioTests.swift */; };
 		WP04000000000000000001 /* DictationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP04000000000000000011 /* DictationViewModel.swift */; };
+		CLN009000000000000000002 /* DictationWorkflowPreparation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN009000000000000000001 /* DictationWorkflowPreparation.swift */; };
+		CLN010000000000000000002 /* DictationRecordingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN010000000000000000001 /* DictationRecordingFlow.swift */; };
 		WP04000000000000000002 /* INV05LLMTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP04000000000000000012 /* INV05LLMTests.swift */; };
 		WP04000000000000000003 /* QD03PromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP04000000000000000013 /* QD03PromptTests.swift */; };
 		WP04000000000000000004 /* QD04ErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP04000000000000000014 /* QD04ErrorTests.swift */; };
@@ -137,9 +146,11 @@
 		WP09002AA009002AA009002B /* FonosLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP09002AA009002AA009002A /* FonosLiveActivity.swift */; };
 		WP09003AA009003AA009003B /* DictateIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP09003AA009003AA009003A /* DictateIntent.swift */; };
 		WP10001AA010001AA010001B /* QD06BundleSizeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP10001AA010001AA010001A /* QD06BundleSizeTests.swift */; };
-		WP10002AA010002AA010002B /* QD07SwiftLintTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP10002AA010002AA010002A /* QD07SwiftLintTests.swift */; };
 		WP11001AA011001AA011001B /* ModeConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP11001AA011001AA011001A /* ModeConfig.swift */; };
 		WP11002AA011002AA011002B /* ModelsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP11002AA011002AA011002A /* ModelsTab.swift */; };
+		CLN011000000000000000002 /* ModelProfileEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN011000000000000000001 /* ModelProfileEditor.swift */; };
+		CLN013000000000000000002 /* ModelProfileRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN013000000000000000001 /* ModelProfileRow.swift */; };
+		CLN014000000000000000002 /* ModelProbeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN014000000000000000001 /* ModelProbeSheet.swift */; };
 		FE0020AA0020AA0020AA0002 /* VocabTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0020AA0020AA0020AA0001 /* VocabTab.swift */; };
 		WP11003AA011003AA011003B /* ModesTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP11003AA011003AA011003A /* ModesTab.swift */; };
 		WP11004AA011004AA011004B /* WorkflowRecipeStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP11004AA011004AA011004A /* WorkflowRecipeStrip.swift */; };
@@ -200,6 +211,8 @@
 		FE0018AA0018AA0018AA0001 /* VocabBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabBook.swift; sourceTree = "<group>"; };
 		FE0019AA0019AA0019AA0001 /* VocabStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabStore.swift; sourceTree = "<group>"; };
 		FE0022AA0022AA0022AA0001 /* ScenarioImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioImporter.swift; sourceTree = "<group>"; };
+		CLN015000000000000000001 /* ScenarioImporter+Workflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ScenarioImporter+Workflow.swift"; sourceTree = "<group>"; };
+		CLN016000000000000000001 /* ScenarioImporter+Decoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ScenarioImporter+Decoding.swift"; sourceTree = "<group>"; };
 		FE0032AA0032AA0032AA01A /* ConfigSetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigSetStore.swift; sourceTree = "<group>"; };
 		FE0031AA0031AA0031AA01A /* ConfigBundleExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigBundleExporter.swift; sourceTree = "<group>"; };
 		FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigBundleCodec.swift; sourceTree = "<group>"; };
@@ -213,11 +226,16 @@
 		FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupDoctorView.swift; sourceTree = "<group>"; };
 		FE0034AA0034AA0034AA01A /* ConfigSharingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigSharingViews.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureService.swift; sourceTree = "<group>"; };
+		CLN003000000000000000001 /* AudioCaptureLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureLifecycle.swift; sourceTree = "<group>"; };
+		CLN004000000000000000001 /* AudioCaptureBuffering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureBuffering.swift; sourceTree = "<group>"; };
 		AC1000000000000000000001 /* AudioCaptureWAVCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureWAVCodec.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A7 /* STTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STTService.swift; sourceTree = "<group>"; };
+		CLN012000000000000000001 /* ChatSTT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSTT.swift; sourceTree = "<group>"; };
+		CLN001000000000000000001 /* WhisperSTT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperSTT.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
 		F10000000000000000000001 /* VoiceWorkflowSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowSupport.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* WorkflowDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowDefinition.swift; sourceTree = "<group>"; };
+		CLN002000000000000000001 /* WorkflowCanonicalLLM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowCanonicalLLM.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* WorkflowMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowMigration.swift; sourceTree = "<group>"; };
 		A20000000000000000000004 /* VoiceWorkflowEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowEngine.swift; sourceTree = "<group>"; };
 		A20000000000000000000006 /* VoiceWorkflowContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowContracts.swift; sourceTree = "<group>"; };
@@ -240,11 +258,7 @@
 		77D41ED5933B42BF9BE9C711 /* FonosAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosAppTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C712 /* AudioCaptureServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureServiceTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C713 /* STTServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STTServiceTests.swift; sourceTree = "<group>"; };
-		77D41ED5933B42BF9BE9C714 /* LLMServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMServiceTests.swift; sourceTree = "<group>"; };
-		77D41ED5933B42BF9BE9C715 /* ModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeTests.swift; sourceTree = "<group>"; };
-		77D41ED5933B42BF9BE9C717 /* ConfigTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigTests.swift; sourceTree = "<group>"; };
 		77D41ED5933B42BF9BE9C718 /* HistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryTests.swift; sourceTree = "<group>"; };
-		77D41ED5933B42BF9BE9C719 /* OfflineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineTests.swift; sourceTree = "<group>"; };
 		F10000000000000000000003 /* VoiceWorkflowIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowIntegrationTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* WorkflowMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowMigrationTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000005 /* VoiceWorkflowEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowEngineTests.swift; sourceTree = "<group>"; };
@@ -259,6 +273,10 @@
 		BAC7AF7161324CE4AF50AD41 /* FonosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FonosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB02001BB002001BB002001A /* INV02AudioCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = INV02AudioCaptureTests.swift; sourceTree = "<group>"; };
 		BG01000000000000000011 /* BackgroundRecordingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRecordingService.swift; sourceTree = "<group>"; };
+		CLN005000000000000000001 /* BackgroundRecordingRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRecordingRegistration.swift; sourceTree = "<group>"; };
+		CLN006000000000000000001 /* BackgroundRecordingReadySession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRecordingReadySession.swift; sourceTree = "<group>"; };
+		CLN007000000000000000001 /* BackgroundRecordingUtterance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRecordingUtterance.swift; sourceTree = "<group>"; };
+		CLN008000000000000000001 /* BackgroundRecordingProcessing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRecordingProcessing.swift; sourceTree = "<group>"; };
 		CC07001CC007001CC007001A /* INV07TextRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = INV07TextRouterTests.swift; sourceTree = "<group>"; };
 		CC08001CC008001CC008001A /* INV08URLSchemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = INV08URLSchemeTests.swift; sourceTree = "<group>"; };
 		KB12001AA012001AA012001A /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
@@ -309,6 +327,8 @@
 		WP03VON006AA006AA006001A /* NoteINV06RecordFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV06RecordFlowTests.swift; sourceTree = "<group>"; };
 		WP03VON007AA007AA007001A /* NoteINV11NoAudioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV11NoAudioTests.swift; sourceTree = "<group>"; };
 		WP04000000000000000011 /* DictationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationViewModel.swift; sourceTree = "<group>"; };
+		CLN009000000000000000001 /* DictationWorkflowPreparation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationWorkflowPreparation.swift; sourceTree = "<group>"; };
+		CLN010000000000000000001 /* DictationRecordingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationRecordingFlow.swift; sourceTree = "<group>"; };
 		WP04000000000000000012 /* INV05LLMTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = INV05LLMTests.swift; sourceTree = "<group>"; };
 		WP04000000000000000013 /* QD03PromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QD03PromptTests.swift; sourceTree = "<group>"; };
 		WP04000000000000000014 /* QD04ErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QD04ErrorTests.swift; sourceTree = "<group>"; };
@@ -328,9 +348,11 @@
 		WP09002AA009002AA009002A /* FonosLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosLiveActivity.swift; sourceTree = "<group>"; };
 		WP09003AA009003AA009003A /* DictateIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictateIntent.swift; sourceTree = "<group>"; };
 		WP10001AA010001AA010001A /* QD06BundleSizeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QD06BundleSizeTests.swift; sourceTree = "<group>"; };
-		WP10002AA010002AA010002A /* QD07SwiftLintTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QD07SwiftLintTests.swift; sourceTree = "<group>"; };
 		WP11001AA011001AA011001A /* ModeConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeConfig.swift; sourceTree = "<group>"; };
 		WP11002AA011002AA011002A /* ModelsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsTab.swift; sourceTree = "<group>"; };
+		CLN011000000000000000001 /* ModelProfileEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProfileEditor.swift; sourceTree = "<group>"; };
+		CLN013000000000000000001 /* ModelProfileRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProfileRow.swift; sourceTree = "<group>"; };
+		CLN014000000000000000001 /* ModelProbeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProbeSheet.swift; sourceTree = "<group>"; };
 		FE0020AA0020AA0020AA0001 /* VocabTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabTab.swift; sourceTree = "<group>"; };
 		WP11003AA011003AA011003A /* ModesTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModesTab.swift; sourceTree = "<group>"; };
 		WP11004AA011004AA011004A /* WorkflowRecipeStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowRecipeStrip.swift; sourceTree = "<group>"; };
@@ -408,6 +430,7 @@
 				50BA9D99CDBC44ABA7E645A4 /* DictationSession.swift */,
 				50BA9D99CDBC44ABA7E645A5 /* AppConfig.swift */,
 				A20000000000000000000001 /* WorkflowDefinition.swift */,
+				CLN002000000000000000001 /* WorkflowCanonicalLLM.swift */,
 				FE0018AA0018AA0018AA0001 /* VocabBook.swift */,
 				AA01B001AA014D00AA014D11 /* Mode.swift */,
 				AA01B001AA014D00AA014D12 /* ModelProfile.swift */,
@@ -427,11 +450,7 @@
 				77D41ED5933B42BF9BE9C711 /* FonosAppTests.swift */,
 				77D41ED5933B42BF9BE9C712 /* AudioCaptureServiceTests.swift */,
 				77D41ED5933B42BF9BE9C713 /* STTServiceTests.swift */,
-				77D41ED5933B42BF9BE9C714 /* LLMServiceTests.swift */,
-				77D41ED5933B42BF9BE9C715 /* ModeTests.swift */,
-				77D41ED5933B42BF9BE9C717 /* ConfigTests.swift */,
 				77D41ED5933B42BF9BE9C718 /* HistoryTests.swift */,
-				77D41ED5933B42BF9BE9C719 /* OfflineTests.swift */,
 				F10000000000000000000003 /* VoiceWorkflowIntegrationTests.swift */,
 				A20000000000000000000003 /* WorkflowMigrationTests.swift */,
 				A20000000000000000000005 /* VoiceWorkflowEngineTests.swift */,
@@ -450,7 +469,6 @@
 				WP06003AA006003AA006003A /* INV01BuildTests.swift */,
 				WP06004AA006004AA006004A /* INV11OfflineTests.swift */,
 				WP10001AA010001AA010001A /* QD06BundleSizeTests.swift */,
-				WP10002AA010002AA010002A /* QD07SwiftLintTests.swift */,
 				WP01VON004AA004AA004001A /* NoteINV01ModelTests.swift */,
 				NT0200000000000000000001 /* NoteINV02ServiceTests.swift */,
 				NT0700000000000000000001 /* NoteINV07QuickNoteTests.swift */,
@@ -530,8 +548,12 @@
 			isa = PBXGroup;
 			children = (
 				50BA9D99CDBC44ABA7E645A6 /* AudioCaptureService.swift */,
+				CLN003000000000000000001 /* AudioCaptureLifecycle.swift */,
+				CLN004000000000000000001 /* AudioCaptureBuffering.swift */,
 				AC1000000000000000000001 /* AudioCaptureWAVCodec.swift */,
 				50BA9D99CDBC44ABA7E645A7 /* STTService.swift */,
+				CLN012000000000000000001 /* ChatSTT.swift */,
+				CLN001000000000000000001 /* WhisperSTT.swift */,
 				WP03001AA003001AA003001A /* FonosSTT.swift */,
 				50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */,
 				F10000000000000000000001 /* VoiceWorkflowSupport.swift */,
@@ -542,11 +564,19 @@
 				A20000000000000000000004 /* VoiceWorkflowEngine.swift */,
 				AA01B001AA014D00AA014D14 /* KeychainStore.swift */,
 				WP04000000000000000011 /* DictationViewModel.swift */,
+				CLN009000000000000000001 /* DictationWorkflowPreparation.swift */,
+				CLN010000000000000000001 /* DictationRecordingFlow.swift */,
 				MP01001AA001001AA001001A /* ModelProbeService.swift */,
 				BG01000000000000000011 /* BackgroundRecordingService.swift */,
+				CLN005000000000000000001 /* BackgroundRecordingRegistration.swift */,
+				CLN006000000000000000001 /* BackgroundRecordingReadySession.swift */,
+				CLN007000000000000000001 /* BackgroundRecordingUtterance.swift */,
+				CLN008000000000000000001 /* BackgroundRecordingProcessing.swift */,
 				WP01VON003AA003AA003001A /* NoteService.swift */,
 				FE0019AA0019AA0019AA0001 /* VocabStore.swift */,
 				FE0022AA0022AA0022AA0001 /* ScenarioImporter.swift */,
+				CLN015000000000000000001 /* ScenarioImporter+Workflow.swift */,
+				CLN016000000000000000001 /* ScenarioImporter+Decoding.swift */,
 				FE0032AA0032AA0032AA01A /* ConfigSetStore.swift */,
 				FE0031AA0031AA0031AA01A /* ConfigBundleExporter.swift */,
 				FE0030AA0030AA0030AA01A /* ConfigBundleCodec.swift */,
@@ -609,6 +639,9 @@
 			children = (
 				WP08003AA008003AA008003A /* DestinationsSection.swift */,
 				WP11002AA011002AA011002A /* ModelsTab.swift */,
+				CLN011000000000000000001 /* ModelProfileEditor.swift */,
+				CLN013000000000000000001 /* ModelProfileRow.swift */,
+				CLN014000000000000000001 /* ModelProbeSheet.swift */,
 				FE0020AA0020AA0020AA0001 /* VocabTab.swift */,
 				WP11003AA011003AA011003A /* ModesTab.swift */,
 				WP11004AA011004AA011004A /* WorkflowRecipeStrip.swift */,
@@ -812,11 +845,7 @@
 				77D41ED5933B42BF9BE9C701 /* FonosAppTests.swift in Sources */,
 				77D41ED5933B42BF9BE9C702 /* AudioCaptureServiceTests.swift in Sources */,
 				77D41ED5933B42BF9BE9C703 /* STTServiceTests.swift in Sources */,
-				77D41ED5933B42BF9BE9C704 /* LLMServiceTests.swift in Sources */,
-				77D41ED5933B42BF9BE9C705 /* ModeTests.swift in Sources */,
-				77D41ED5933B42BF9BE9C707 /* ConfigTests.swift in Sources */,
 				77D41ED5933B42BF9BE9C708 /* HistoryTests.swift in Sources */,
-				77D41ED5933B42BF9BE9C709 /* OfflineTests.swift in Sources */,
 				F10000000000000000000013 /* VoiceWorkflowIntegrationTests.swift in Sources */,
 				A20000000000000000000013 /* WorkflowMigrationTests.swift in Sources */,
 				A20000000000000000000015 /* VoiceWorkflowEngineTests.swift in Sources */,
@@ -835,7 +864,6 @@
 				WP06003AA006003AA006003B /* INV01BuildTests.swift in Sources */,
 				WP06004AA006004AA006004B /* INV11OfflineTests.swift in Sources */,
 				WP10001AA010001AA010001B /* QD06BundleSizeTests.swift in Sources */,
-				WP10002AA010002AA010002B /* QD07SwiftLintTests.swift in Sources */,
 				WP01VON004AA004AA004001B /* NoteINV01ModelTests.swift in Sources */,
 				NT0200000000000000000002 /* NoteINV02ServiceTests.swift in Sources */,
 				NT0700000000000000000002 /* NoteINV07QuickNoteTests.swift in Sources */,
@@ -879,6 +907,8 @@
 				FE0018AA0018AA0018AA0002 /* VocabBook.swift in Sources */,
 				FE0019AA0019AA0019AA0002 /* VocabStore.swift in Sources */,
 				FE0022AA0022AA0022AA0002 /* ScenarioImporter.swift in Sources */,
+				CLN015000000000000000002 /* ScenarioImporter+Workflow.swift in Sources */,
+				CLN016000000000000000002 /* ScenarioImporter+Decoding.swift in Sources */,
 				FE0032AA0032AA0032AA02B /* ConfigSetStore.swift in Sources */,
 				FE0031AA0031AA0031AA02B /* ConfigBundleExporter.swift in Sources */,
 				FE0030AA0030AA0030AA02B /* ConfigBundleCodec.swift in Sources */,
@@ -888,11 +918,16 @@
 				FE0025AA0025AA0025AA0002 /* SetupDoctorView.swift in Sources */,
 				FE0034AA0034AA0034AA02B /* ConfigSharingViews.swift in Sources */,
 				663C34A9CC884E40AD59B709 /* AudioCaptureService.swift in Sources */,
+				CLN003000000000000000002 /* AudioCaptureLifecycle.swift in Sources */,
+				CLN004000000000000000002 /* AudioCaptureBuffering.swift in Sources */,
 				AC1000000000000000000002 /* AudioCaptureWAVCodec.swift in Sources */,
 				663C34A9CC884E40AD59B70A /* STTService.swift in Sources */,
+				CLN012000000000000000002 /* ChatSTT.swift in Sources */,
+				CLN001000000000000000002 /* WhisperSTT.swift in Sources */,
 				663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */,
 				F10000000000000000000011 /* VoiceWorkflowSupport.swift in Sources */,
 				A20000000000000000000011 /* WorkflowDefinition.swift in Sources */,
+				CLN002000000000000000002 /* WorkflowCanonicalLLM.swift in Sources */,
 				A20000000000000000000012 /* WorkflowMigration.swift in Sources */,
 				A20000000000000000000016 /* VoiceWorkflowContracts.swift in Sources */,
 				A20000000000000000000017 /* VoiceWorkflowPlanFactory.swift in Sources */,
@@ -909,7 +944,13 @@
 				AA01B001AA014D00AA014D03 /* Destination.swift in Sources */,
 				AA01B001AA014D00AA014D04 /* KeychainStore.swift in Sources */,
 				WP04000000000000000001 /* DictationViewModel.swift in Sources */,
+				CLN009000000000000000002 /* DictationWorkflowPreparation.swift in Sources */,
+				CLN010000000000000000002 /* DictationRecordingFlow.swift in Sources */,
 				BG01000000000000000001 /* BackgroundRecordingService.swift in Sources */,
+				CLN005000000000000000002 /* BackgroundRecordingRegistration.swift in Sources */,
+				CLN006000000000000000002 /* BackgroundRecordingReadySession.swift in Sources */,
+				CLN007000000000000000002 /* BackgroundRecordingUtterance.swift in Sources */,
+				CLN008000000000000000002 /* BackgroundRecordingProcessing.swift in Sources */,
 				WP03001AA003001AA003001B /* FonosSTT.swift in Sources */,
 				WP06001AA006001AA006001B /* WaveformView.swift in Sources */,
 				WP06002AA006002AA006002B /* RecordButton.swift in Sources */,
@@ -917,6 +958,9 @@
 				WP08003AA008003AA008003B /* DestinationsSection.swift in Sources */,
 				WP11001AA011001AA011001B /* ModeConfig.swift in Sources */,
 				WP11002AA011002AA011002B /* ModelsTab.swift in Sources */,
+				CLN011000000000000000002 /* ModelProfileEditor.swift in Sources */,
+				CLN013000000000000000002 /* ModelProfileRow.swift in Sources */,
+				CLN014000000000000000002 /* ModelProbeSheet.swift in Sources */,
 				FE0020AA0020AA0020AA0002 /* VocabTab.swift in Sources */,
 				WP11003AA011003AA011003B /* ModesTab.swift in Sources */,
 				WP11004AA011004AA011004B /* WorkflowRecipeStrip.swift in Sources */,

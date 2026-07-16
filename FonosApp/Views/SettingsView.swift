@@ -199,8 +199,7 @@ struct SettingsView: View {
 
     private var dictationSection: some View {
         Section {
-            // Default Mode
-            Picker("Default Mode", selection: activeWorkflowBinding) {
+            Picker("Default Recipe", selection: activeWorkflowBinding) {
                 ForEach(voiceWorkflows, id: \.id) { workflow in
                     Text(workflow.name)
                         .tag(workflow.id)
@@ -239,36 +238,14 @@ struct SettingsView: View {
             .listRowBackground(cardBg)
             .listRowSeparatorTint(separator)
 
-            // Translate Target Language (visible when mode is translate)
-            Picker("Translate To", selection: translateTargetBinding) {
-                Text("English").tag("English")
-                Text("中文 (Chinese)").tag("Chinese")
-                Text("日本語 (Japanese)").tag("Japanese")
-                Text("한국어 (Korean)").tag("Korean")
-                Text("Español (Spanish)").tag("Spanish")
-                Text("Français (French)").tag("French")
-                Text("Deutsch (German)").tag("German")
-                Text("Português (Portuguese)").tag("Portuguese")
-                Text("Italiano (Italian)").tag("Italian")
-                Text("Русский (Russian)").tag("Russian")
-                Text("العربية (Arabic)").tag("Arabic")
-                Text("हिन्दी (Hindi)").tag("Hindi")
-                Text("ภาษาไทย (Thai)").tag("Thai")
-                Text("Tiếng Việt (Vietnamese)").tag("Vietnamese")
-                Text("Bahasa Indonesia (Indonesian)").tag("Indonesian")
-                Text("Türkçe (Turkish)").tag("Turkish")
-            }
-            .foregroundColor(textPrimary)
-            .listRowBackground(cardBg)
-            .listRowSeparatorTint(separator)
         } header: {
             sectionHeader("Dictation")
         } footer: {
             Text(
                 """
-                Default Mode is used when dictation starts. \
-                STT Language helps the speech recognizer. \
-                Translate To sets the target language for Translate mode.
+                Default Recipe is used when dictation starts. \
+                STT Language updates the default transcription step. \
+                Edit a recipe to change its AI prompt or output language.
                 """
             )
                 .foregroundColor(textDim)
@@ -294,9 +271,6 @@ struct SettingsView: View {
                         config: config
                       )) != nil else { return }
                 config.activeVoiceWorkflowID = workflowID
-                if let legacyID = WorkflowMigration.legacyModeID(forWorkflowID: workflowID) {
-                    config.activeModeID = legacyID
-                }
             }
         )
     }
@@ -319,16 +293,6 @@ struct SettingsView: View {
         )
     }
 
-    private var translateTargetBinding: Binding<String> {
-        Binding(
-            get: { config.translateTargetLanguage },
-            set: { target in
-                config.translateTargetLanguage = target
-                synchronizeBuiltinTranslateTarget(target)
-            }
-        )
-    }
-
     private func synchronizeDefaultSTTLanguage(_ language: String) {
         if let index = config.widgets.firstIndex(where: { $0.id == "stt.default" }) {
             // A non-builtin overlay may have been imported from desktop and is
@@ -346,10 +310,6 @@ struct SettingsView: View {
         props["language"] = .string(language)
         widget.props = .object(props)
         config.widgets.append(widget)
-    }
-
-    private func synchronizeBuiltinTranslateTarget(_ target: String) {
-        WorkflowMigration.synchronizeBuiltinTranslateTarget(target, in: &config)
     }
 
     // MARK: - Recording Section

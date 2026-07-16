@@ -52,52 +52,15 @@ enum VoiceRecipeID {
 }
 
 enum VoiceRecipeDefaults {
-    static let microphoneSource = WorkflowWidget(
-        id: "src.mic-hold",
-        role: .source,
-        typeTag: "microphone",
-        name: "Microphone · Hold",
-        icon: "🎙",
-        props: .object(["capture": .string("hold")]),
-        builtin: true
-    )
+    static var microphoneSource: WorkflowWidget { requiredBuiltin("src.mic-hold") }
+    static var sttWidget: WorkflowWidget { requiredBuiltin("stt.default") }
+    static var insertWidget: WorkflowWidget { requiredBuiltin("out.insert") }
+    static var clipboardWidget: WorkflowWidget { requiredBuiltin("out.clipboard") }
 
-    static let sttWidget = WorkflowWidget(
-        id: "stt.default",
-        role: .processor,
-        typeTag: "stt",
-        name: "Default transcription",
-        icon: "✍️",
-        props: .object([
-            "model_profile": .string(""),
-            "language": .string("auto"),
-            "stt_prompt": .string(""),
-            "temperature": .number(0),
-            "vocab_books": .array([])
-        ]),
-        builtin: true
-    )
-
-    static let insertWidget = WorkflowWidget(
-        id: "out.insert",
-        role: .output,
-        typeTag: "insert",
-        name: "Insert at cursor",
-        icon: "⌨️",
-        props: .object([
-            "strategy": .string("paste"),
-            "press_enter": .bool(false)
-        ]),
-        builtin: true
-    )
-
-    static let clipboardWidget = WorkflowWidget(
-        id: "out.clipboard",
-        role: .output,
-        typeTag: "clipboard",
-        name: "Clipboard",
-        icon: "📋",
-        props: .object([:]),
-        builtin: true
-    )
+    private static func requiredBuiltin(_ id: String) -> WorkflowWidget {
+        guard let widget = WorkflowCatalog.builtIn.widget(id: id) else {
+            preconditionFailure("Missing canonical workflow builtin '\(id)'")
+        }
+        return widget
+    }
 }

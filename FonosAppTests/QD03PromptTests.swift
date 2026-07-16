@@ -83,7 +83,10 @@ struct QD03PromptConstructionTests {
     @Test("LLMService request includes messages array with system and user roles")
     func messagesArrayHasSystemAndUser() async throws {
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "hello", mode: .polish)
+        _ = try? await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
         let messages = capturedMessages()
         let roles = messages.map { $0["role"] ?? "" }
         #expect(roles.contains("system"))
@@ -93,7 +96,10 @@ struct QD03PromptConstructionTests {
     @Test("LLMService request has system message before user message")
     func systemBeforeUser() async throws {
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "hello", mode: .polish)
+        _ = try? await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
         let messages = capturedMessages()
         let systemIdx = messages.firstIndex(where: { $0["role"] == "system" }) ?? 999
         let userIdx = messages.firstIndex(where: { $0["role"] == "user" }) ?? 998
@@ -102,31 +108,36 @@ struct QD03PromptConstructionTests {
 
     // MARK: - Polish mode
 
-    @Test("Polish mode system prompt contains 'filler' or 'polish' keyword")
-    func polishModeSystemPromptKeyword() async throws {
+    @Test("Polish workflow user template describes speech cleanup")
+    func polishWorkflowCleanupInstruction() async throws {
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "um yeah so basically", mode: .polish)
-        let sys = systemMessage()
-        #expect(sys.localizedCaseInsensitiveContains("filler") ||
-                sys.localizedCaseInsensitiveContains("polish") ||
-                sys.localizedCaseInsensitiveContains("remove"))
+        _ = try? await service.process(
+            text: "um yeah so basically",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
+        let user = userMessage()
+        #expect(user.localizedCaseInsensitiveContains("speech artifacts"))
+        #expect(user.localizedCaseInsensitiveContains("remove"))
     }
 
-    @Test("Polish mode system prompt mentions preserving tone")
-    func polishModePreservesTone() async throws {
+    @Test("Polish workflow user template preserves tone")
+    func polishWorkflowPreservesTone() async throws {
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "hello", mode: .polish)
-        let sys = systemMessage()
-        #expect(sys.localizedCaseInsensitiveContains("tone") ||
-                sys.localizedCaseInsensitiveContains("voice") ||
-                sys.localizedCaseInsensitiveContains("style"))
+        _ = try? await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
+        #expect(userMessage().localizedCaseInsensitiveContains("tone"))
     }
 
     @Test("Polish mode user message contains the input text verbatim")
     func polishModeUserMessageContainsInput() async throws {
         let input = "um yeah so basically what I was trying to say"
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: input, mode: .polish)
+        _ = try? await service.process(
+            text: input,
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
         #expect(userMessage().contains(input))
     }
 
@@ -135,7 +146,10 @@ struct QD03PromptConstructionTests {
     @Test("Formal mode system prompt contains 'professional' or 'business' keyword")
     func formalModeSystemPromptKeyword() async throws {
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "hey what's up", mode: .formal)
+        _ = try? await service.process(
+            text: "hey what's up",
+            configuration: workflowLLMConfiguration(for: .formal)
+        )
         let sys = systemMessage()
         #expect(sys.localizedCaseInsensitiveContains("professional") ||
                 sys.localizedCaseInsensitiveContains("business") ||
@@ -147,14 +161,24 @@ struct QD03PromptConstructionTests {
     @Test("Translate mode system prompt explicitly names target language")
     func translateModeNamesTargetLanguage() async throws {
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "hello", mode: .translate(targetLanguage: "Mandarin"))
-        #expect(systemMessage().contains("Mandarin"))
+        _ = try? await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(
+                for: .translate(targetLanguage: "Mandarin")
+            )
+        )
+        #expect(userMessage().contains("Mandarin"))
     }
 
     @Test("Translate mode user message contains the source text")
     func translateModeUserMessageContainsSourceText() async throws {
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "good morning", mode: .translate(targetLanguage: "Spanish"))
+        _ = try? await service.process(
+            text: "good morning",
+            configuration: workflowLLMConfiguration(
+                for: .translate(targetLanguage: "Spanish")
+            )
+        )
         #expect(userMessage().contains("good morning"))
     }
 
@@ -168,7 +192,10 @@ struct QD03PromptConstructionTests {
                                temperature: 0.9,
                                maxTokens: 50)
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "the sunset", mode: mode)
+        _ = try? await service.process(
+            text: "the sunset",
+            configuration: workflowLLMConfiguration(for: mode)
+        )
         #expect(systemMessage() == customPrompt)
     }
 
@@ -179,7 +206,10 @@ struct QD03PromptConstructionTests {
                                temperature: 0.5,
                                maxTokens: 200)
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test")
-        _ = try? await service.process(text: "hello world", mode: mode)
+        _ = try? await service.process(
+            text: "hello world",
+            configuration: workflowLLMConfiguration(for: mode)
+        )
         let user = userMessage()
         #expect(user == "Please translate: hello world")
         #expect(!user.contains("{text}"))
@@ -190,7 +220,10 @@ struct QD03PromptConstructionTests {
     @Test("Temperature field is present in request for GPT models")
     func temperaturePresentForGPT() async throws {
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test", modelID: "gpt-4o")
-        _ = try? await service.process(text: "hello", mode: .polish)
+        _ = try? await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
         let body = PromptCaptureMockURLProtocol.capturedBody
         #expect(body?["temperature"] != nil)
     }
@@ -198,7 +231,10 @@ struct QD03PromptConstructionTests {
     @Test("Temperature field is absent in request for o-series reasoning models")
     func temperatureAbsentForOSeries() async throws {
         let service = authorizedLLMService(session: makePromptSession(), apiKey: "sk-test", modelID: "o3-mini")
-        _ = try? await service.process(text: "hello", mode: .polish)
+        _ = try? await service.process(
+            text: "hello",
+            configuration: workflowLLMConfiguration(for: .polish)
+        )
         let body = PromptCaptureMockURLProtocol.capturedBody
         #expect(body?["temperature"] == nil)
     }

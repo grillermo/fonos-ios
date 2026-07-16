@@ -1,10 +1,8 @@
 // NoteINV09: RecordNoteIntent AppIntent compiles and is discoverable.
 //
 // Verifier: auto
-// Levels: static (project builds with AppIntents framework), unit (title/description/openAppWhenRun)
+// Level: unit (metadata, registration, options, and deep-link contracts)
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/NoteINV09IntentTests
-//
-// TDD status: FAILING until FonosIntents/RecordNoteIntent.swift is created.
 
 import Testing
 import AppIntents
@@ -14,32 +12,11 @@ import AppIntents
 
 struct NoteINV09IntentTests {
 
-    // MARK: - Level 1: Static — AppIntents framework available
-
-    @Test("AppIntents framework is importable")
-    func appIntentsFrameworkAvailable() throws {
-        // If AppIntents is not linked, this file fails to compile.
-        // The import above is the compile-time assertion.
-        #expect(Bool(true)) // sentinel
-    }
-
-    // MARK: - Level 1: Static — RecordNoteIntent type exists
-
-    @Test("RecordNoteIntent type is accessible from FonosApp module")
-    func recordNoteIntentTypeAccessible() throws {
-        // If RecordNoteIntent doesn't exist, this file fails to compile.
-        let _ = RecordNoteIntent.self
-        #expect(Bool(true)) // sentinel — real assertion is compile-time
-    }
-
     // MARK: - Level 2: Unit — title is non-empty
 
     @Test("RecordNoteIntent.title is non-empty")
     func titleNonEmpty() throws {
-        // AppIntents uses static metadata. We instantiate to access the default title.
-        // TODO: The exact API for accessing title metadata may differ — adjust if needed.
         let intent = RecordNoteIntent()
-        // IntentDescription.title is a LocalizedStringResource; converting to String for assertion
         let titleString = String(localized: intent.title)
         #expect(!titleString.isEmpty, "RecordNoteIntent.title must not be empty")
     }
@@ -48,15 +25,9 @@ struct NoteINV09IntentTests {
 
     @Test("RecordNoteIntent has a non-empty description string")
     func descriptionNonEmpty() throws {
-        // TODO: AppIntents description is declared as a static property on the type.
-        // Adjust accessor once the implementation is known.
         let intent = RecordNoteIntent()
-        if let desc = intent.intentDescription {
-            #expect(!desc.isEmpty, "RecordNoteIntent description must not be empty")
-        }
-        // If intentDescription is nil, verify via the static metadata instead:
-        // let metadata = RecordNoteIntent.intentDescription
-        // #expect(metadata != nil)
+        let description = try #require(intent.intentDescription)
+        #expect(!description.isEmpty, "RecordNoteIntent description must not be empty")
     }
 
     // MARK: - Level 2: Unit — openAppWhenRun is true
@@ -69,17 +40,6 @@ struct NoteINV09IntentTests {
         #expect(intent.openAppWhenRun == true)
     }
 
-    // MARK: - Level 2: Unit — intent conforms to AppIntent
-
-    @Test("RecordNoteIntent conforms to AppIntent protocol")
-    func conformsToAppIntent() throws {
-        // Checked at compile time by the generic constraint below.
-        // If RecordNoteIntent doesn't conform, this file won't compile.
-        func requiresAppIntent<T: AppIntent>(_: T.Type) {}
-        requiresAppIntent(RecordNoteIntent.self)
-        #expect(Bool(true)) // sentinel
-    }
-
     // MARK: - v2: AppShortcuts registration & Notebook options provider
 
     @Test("FonosShortcuts.appShortcuts registers at least two intents (Dictate + RecordNote)")
@@ -90,7 +50,7 @@ struct NoteINV09IntentTests {
         #expect(count >= 2)
     }
 
-    @Test("NotebookOptionsProvider returns titles read from SharedNotebookCatalog")
+    @Test("NotebookOptionsProvider stores UUID values and displays catalog titles")
     func optionsProviderReadsCatalog() async throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("opts-test-\(UUID().uuidString).json")
@@ -100,7 +60,11 @@ struct NoteINV09IntentTests {
         ], to: url)
 
         let provider = NotebookOptionsProvider(catalogURL: url)
-        let titles = try await provider.results()
+        let results = try await provider.results()
+        #expect(results.items.sorted() == ["id1", "id2"])
+        let titles = results.sections
+            .flatMap(\.items)
+            .map { String(localized: $0.description.title) }
         #expect(titles.sorted() == ["Personal", "Work"])
     }
 
@@ -109,7 +73,85 @@ struct NoteINV09IntentTests {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("missing-\(UUID().uuidString).json")
         let provider = NotebookOptionsProvider(catalogURL: url)
-        let titles = try await provider.results()
-        #expect(titles.isEmpty)
+        let results = try await provider.results()
+        #expect(results.items.isEmpty)
+    }
+
+    @Test("RecordNoteIntent preserves the selected notebook UUID")
+    func recordNoteIntentBuildsTargetedURL() throws {
+        let id = UUID()
+        let intent = RecordNoteIntent()
+        intent.notebookId = id.uuidString
+
+        let url = try intent.deepLinkURL(catalog: [
+            SharedNotebookCatalog.Entry(id: id.uuidString, title: "Work")
+        ])
+        let components = try #require(URLComponents(
+            url: url,
+            resolvingAgainstBaseURL: false
+        ))
+        #expect(url.host == "note")
+        #expect(components.queryItems?.first(where: { $0.name == "notebook" })?.value
+                == id.uuidString)
+    }
+
+    @Test("duplicate notebook titles remain distinct and legacy title selection fails safely")
+    func duplicateNotebookTitlesAreDisambiguated() async throws {
+        let firstID = UUID()
+        let secondID = UUID()
+        let entries = [
+            SharedNotebookCatalog.Entry(id: firstID.uuidString, title: "Work"),
+            SharedNotebookCatalog.Entry(id: secondID.uuidString, title: "Work")
+        ]
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("duplicate-opts-\(UUID().uuidString).json")
+        try SharedNotebookCatalog.write(entries, to: url)
+
+        let results = try await NotebookOptionsProvider(catalogURL: url).results()
+        #expect(Set(results.items) == Set([firstID.uuidString, secondID.uuidString]))
+        let items = results.sections.flatMap(\.items)
+        #expect(items.allSatisfy { $0.description.subtitle != nil })
+
+        let selectedByID = RecordNoteIntent()
+        selectedByID.notebookId = secondID.uuidString
+        let selectedURL = try selectedByID.deepLinkURL(catalog: entries)
+        let selectedComponents = try #require(URLComponents(
+            url: selectedURL,
+            resolvingAgainstBaseURL: false
+        ))
+        #expect(selectedComponents.queryItems?.first(where: { $0.name == "notebook" })?.value
+                == secondID.uuidString)
+
+        let legacyTitle = RecordNoteIntent()
+        legacyTitle.notebookId = "Work"
+        #expect(throws: RecordNoteIntentLaunchError.ambiguousNotebookTitle("Work")) {
+            try legacyTitle.deepLinkURL(catalog: entries)
+        }
+    }
+
+    @Test("RecordNoteIntent rejects a stale notebook selection")
+    func recordNoteIntentRejectsUnknownNotebook() {
+        let intent = RecordNoteIntent()
+        intent.notebookId = "Deleted notebook"
+
+        #expect(throws: RecordNoteIntentLaunchError.notebookUnavailable("Deleted notebook")) {
+            try intent.deepLinkURL(catalog: [])
+        }
+    }
+
+    @Test("DictateIntent includes mode and one-shot destination in its deep link")
+    func dictateIntentBuildsCompleteURL() throws {
+        let intent = DictateIntent()
+        intent.mode = "formal"
+        intent.destination = "email"
+
+        let url = try intent.deepLinkURL()
+        let components = try #require(URLComponents(
+            url: url,
+            resolvingAgainstBaseURL: false
+        ))
+        #expect(url.host == "record")
+        #expect(components.queryItems?.first(where: { $0.name == "mode" })?.value == "formal")
+        #expect(components.queryItems?.first(where: { $0.name == "destination" })?.value == "email")
     }
 }

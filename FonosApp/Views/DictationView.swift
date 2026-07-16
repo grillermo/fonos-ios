@@ -195,9 +195,10 @@ struct DictationView: View {
     }
 
     private func isWorkflowRunnable(_ workflow: WorkflowDefinition) -> Bool {
-        (try? VoiceWorkflowEngine().validate(
+        (try? VoiceWorkflowOperationalValidator.validateMicrophone(
             definition: workflow,
-            catalog: viewModel.config.workflowCatalog
+            catalog: viewModel.config.workflowCatalog,
+            config: viewModel.config
         )) != nil
     }
 
@@ -326,7 +327,7 @@ struct DictationView: View {
 
     private var activeModeDisplayName: String {
         viewModel.activeWorkflowDefinition.map(workflowDisplayName)
-            ?? viewModel.currentMode.displayName
+            ?? String(localized: "Voice flow")
     }
 
     /// Non-nil only in hold mode — switches RecordButton to press-and-hold.

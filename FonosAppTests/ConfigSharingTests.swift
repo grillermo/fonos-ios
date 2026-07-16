@@ -24,12 +24,63 @@ private func freshDefaults() -> UserDefaults {
     return d
 }
 
-/// Thread-safe capture for the @Sendable key writer used by ScenarioImporter.
-private final class KeyCapture: @unchecked Sendable {
+private enum CredentialFixtureError: LocalizedError, Sendable {
+    case read(String)
+    case write(String)
+    case delete(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .read(let id): "read failed for \(id)"
+        case .write(let id): "write failed for \(id)"
+        case .delete(let id): "delete failed for \(id)"
+        }
+    }
+}
+
+private final class TestKeyVault: @unchecked Sendable {
     private let lock = NSLock()
-    private var dict: [String: String] = [:]
-    func write(_ id: String, _ key: String) { lock.withLock { dict[id] = key } }
-    subscript(_ id: String) -> String? { lock.withLock { dict[id] } }
+    private var values: [String: String]
+    private let failingReads: Set<String>
+    private let failingWrites: Set<String>
+    private let failingDeletes: Set<String>
+
+    init(
+        values: [String: String] = [:],
+        failingReads: Set<String> = [],
+        failingWrites: Set<String> = [],
+        failingDeletes: Set<String> = []
+    ) {
+        self.values = values
+        self.failingReads = failingReads
+        self.failingWrites = failingWrites
+        self.failingDeletes = failingDeletes
+    }
+
+    func read(_ id: String) throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        if failingReads.contains(id) { throw CredentialFixtureError.read(id) }
+        return values[id]
+    }
+
+    func write(_ id: String, _ value: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if failingWrites.contains(id) { throw CredentialFixtureError.write(id) }
+        values[id] = value
+    }
+
+    func delete(_ id: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if failingDeletes.contains(id) { throw CredentialFixtureError.delete(id) }
+        values.removeValue(forKey: id)
+    }
+
+    subscript(_ id: String) -> String? {
+        lock.withLock { values[id] }
+    }
 }
 
 // MARK: - Codec
@@ -112,6 +163,74 @@ struct ConfigBundleExporterTests {
         #expect(assignments?["stt_profile"] as? String == "stt1")
     }
 
+    @Test("bundle exports STT service bases instead of concrete transcription routes")
+    func bundleCanonicalizesSTTEndpoints() {
+        var versioned = ModelProfile(
+            id: "versioned", name: "Versioned", provider: "custom", modelID: "whisper",
+            capabilities: ["stt"]
+        )
+        var unversioned = ModelProfile(
+            id: "unversioned", name: "Unversioned", provider: "custom", modelID: "whisper",
+            capabilities: ["stt"]
+        )
+        // Simulate profiles decoded from an older AppConfig, whose synthesized
+        // decoder can retain the concrete endpoint in the stored property.
+        versioned.baseURL = "https://speech.example/gateway/v1/audio/transcriptions/"
+        unversioned.baseURL = "https://speech.example/tenant/audio/transcriptions"
+        var config = AppConfig()
+        config.modelProfiles = [versioned, unversioned]
+
+        let data = ConfigBundleExporter.bundleJSON(
+            config: config,
+            vocabStore: VocabStore(defaults: freshDefaults()),
+            name: "Portable endpoints",
+            includeKeys: false,
+            keyLookup: { _ in nil }
+        )
+        let profiles = (obj(data)["models"] as? [String: Any])?["profiles"]
+            as? [[String: Any]] ?? []
+
+        #expect(profiles.first { $0["id"] as? String == "versioned" }?["base_url"] as? String
+            == "https://speech.example/gateway")
+        #expect(profiles.first { $0["id"] as? String == "unversioned" }?["base_url"] as? String
+            == "https://speech.example/tenant")
+    }
+
+    @Test("translate export uses flow state and only falls back to legacy before schema 3")
+    func translateTargetSchemaFallback() {
+        func exportedTarget(_ config: AppConfig) -> String? {
+            let data = ConfigBundleExporter.bundleJSON(
+                config: config,
+                vocabStore: VocabStore(defaults: freshDefaults()),
+                name: "Translate",
+                includeKeys: false,
+                keyLookup: { _ in nil }
+            )
+            return (obj(data)["dictation"] as? [String: Any])?["translate_target"] as? String
+        }
+
+        var legacy = AppConfig()
+        legacy.workflowSchemaVersion = 2
+        legacy.translateTargetLanguage = "French"
+        #expect(exportedTarget(legacy) == "French")
+
+        var flowOwned = legacy
+        flowOwned.widgets = [WorkflowWidget(
+            id: "llm.translate",
+            role: .processor,
+            typeTag: "llm",
+            name: "Custom translate",
+            props: .object(["output_language": .string("Spanish")]),
+            builtin: false
+        )]
+        #expect(exportedTarget(flowOwned) == "Spanish")
+
+        var retired = AppConfig()
+        retired.workflowSchemaVersion = WorkflowMigration.currentSchemaVersion
+        retired.translateTargetLanguage = "German"
+        #expect(exportedTarget(retired) == "English")
+    }
+
     @Test("bundle is keyless by default")
     func keylessByDefault() {
         let data = ConfigBundleExporter.bundleJSON(
@@ -155,20 +274,53 @@ struct ConfigBundleExporterTests {
         #expect((vocab?["global_vocab_books"] as? [String]) == ["tech"])
     }
 
+    @Test("an empty exported vocab snapshot clears an older target store")
+    func emptyVocabRoundTripClearsTarget() throws {
+        let source = VocabStore(defaults: freshDefaults())
+        let data = ConfigBundleExporter.bundleJSON(
+            config: AppConfig(),
+            vocabStore: source,
+            name: "Empty vocab",
+            includeKeys: false,
+            keyLookup: { _ in nil }
+        )
+        let exportedVocab = try #require(obj(data)["vocab"] as? [String: Any])
+        #expect((exportedVocab["vocab_books"] as? [Any])?.isEmpty == true)
+        #expect((exportedVocab["global_vocab_books"] as? [Any])?.isEmpty == true)
+
+        let target = VocabStore(defaults: freshDefaults())
+        target.upsert(VocabBook(id: "old", name: "Old"))
+        target.setMounted(["old"], forKey: VocabStore.globalMountKey)
+
+        let (_, summary) = try ScenarioImporter.apply(
+            data: data,
+            to: AppConfig(),
+            vocabStore: target,
+            keyReader: { _ in nil },
+            keyWriter: { _, _ in },
+            keyDeleter: { _ in }
+        )
+
+        #expect(target.books.isEmpty)
+        #expect(target.mountedIDs(forKey: VocabStore.globalMountKey).isEmpty)
+        #expect(summary.vocabApplied)
+        #expect(summary.vocabBooksImported == 0)
+    }
+
     @Test("exported bundle re-imports cleanly (round trip)")
     func roundTrip() throws {
         let data = ConfigBundleExporter.bundleJSON(
             config: configWithProfiles(), vocabStore: VocabStore(defaults: freshDefaults()),
             name: "RT", includeKeys: true, keyLookup: { _ in "sk-x" })
-        let captured = KeyCapture()
+        let vault = TestKeyVault()
         let (config, summary) = try ScenarioImporter.apply(
             data: data, to: AppConfig(), vocabStore: VocabStore(defaults: freshDefaults()),
-            keyWriter: { id, key in captured.write(id, key) })
+            keyReader: vault.read, keyWriter: vault.write, keyDeleter: vault.delete)
         #expect(config.modelProfiles.count == 2)
         #expect(config.sttProfile == "stt1")
         #expect(summary.importedProfiles == 2)
-        #expect(captured["stt1"] == "sk-x")
-        #expect(captured["llm1"] == "sk-x")
+        #expect(vault["stt1"] == "sk-x")
+        #expect(vault["llm1"] == "sk-x")
     }
 }
 
@@ -203,6 +355,22 @@ struct ConfigDeepLinkTests {
 
 struct ConfigImportKeyTests {
 
+    private func apply(
+        _ bundle: Data,
+        to config: AppConfig = AppConfig(),
+        store: VocabStore? = nil,
+        vault: TestKeyVault
+    ) throws -> (AppConfig, ScenarioImportSummary) {
+        try ScenarioImporter.apply(
+            data: bundle,
+            to: config,
+            vocabStore: store ?? VocabStore(defaults: freshDefaults()),
+            keyReader: vault.read,
+            keyWriter: vault.write,
+            keyDeleter: vault.delete
+        )
+    }
+
     @Test("preview counts profiles that arrive without a key")
     func previewNeedsKeys() throws {
         let bundle = json([
@@ -232,11 +400,222 @@ struct ConfigImportKeyTests {
             "name": "K",
             "models": ["profiles": [["id": "a", "name": "A", "provider": "openai", "model": "gpt", "api_key": "sk-a"]]]
         ])
-        let captured = KeyCapture()
-        _ = try ScenarioImporter.apply(data: bundle, to: AppConfig(),
-                                       vocabStore: VocabStore(defaults: freshDefaults()),
-                                       keyWriter: { id, key in captured.write(id, key) })
-        #expect(captured["a"] == "sk-a")
+        let vault = TestKeyVault()
+        _ = try apply(bundle, vault: vault)
+        #expect(vault["a"] == "sk-a")
+    }
+
+    @Test("a key-stripped profile changing origin deletes its stale local key")
+    func changedOriginDeletesStaleKey() throws {
+        var config = AppConfig()
+        config.modelProfiles = [ModelProfile(
+            id: "a",
+            name: "Old",
+            provider: "openai",
+            modelID: "whisper-1",
+            baseURL: "https://old.example/v1",
+            capabilities: ["stt"]
+        )]
+        let bundle = json(["models": ["profiles": [[
+            "id": "a", "name": "New", "provider": "openai",
+            "model": "whisper-1", "base_url": "https://new.example/v1",
+            "capabilities": ["stt"],
+        ]]]])
+        let vault = TestKeyVault(values: ["a": "old-secret"])
+
+        _ = try apply(bundle, to: config, vault: vault)
+
+        #expect(vault["a"] == nil)
+    }
+
+    @Test("a key-stripped profile changing provider deletes its stale local key")
+    func changedProviderDeletesStaleKey() throws {
+        var config = AppConfig()
+        config.modelProfiles = [ModelProfile(
+            id: "a", name: "Old", provider: "openai", modelID: "m",
+            baseURL: "https://models.example/v1", capabilities: ["llm"]
+        )]
+        let bundle = json(["models": ["profiles": [[
+            "id": "a", "name": "New", "provider": "custom", "model": "m",
+            "base_url": "https://models.example/api", "capabilities": ["llm"],
+        ]]]])
+        let vault = TestKeyVault(values: ["a": "old-secret"])
+
+        _ = try apply(bundle, to: config, vault: vault)
+
+        #expect(vault["a"] == nil)
+    }
+
+    @Test("a key-stripped profile changing gateway path deletes its stale local key")
+    func changedGatewayPathDeletesLocalKey() throws {
+        var config = AppConfig()
+        config.modelProfiles = [ModelProfile(
+            id: "a", name: "Old", provider: "openai", modelID: "old",
+            baseURL: "https://models.example/v1", capabilities: ["llm"]
+        )]
+        let bundle = json(["models": ["profiles": [[
+            "id": "a", "name": "New", "provider": "OPENAI", "model": "new",
+            "base_url": "https://models.example/another/path", "capabilities": ["llm"],
+        ]]]])
+        let vault = TestKeyVault(values: ["a": "local-secret"])
+
+        _ = try apply(bundle, to: config, vault: vault)
+
+        #expect(vault["a"] == nil)
+    }
+
+    @Test("trailing slash and concrete endpoint normalize to the same credential scope")
+    func equivalentServiceBasePreservesLocalKey() throws {
+        var config = AppConfig()
+        config.modelProfiles = [ModelProfile(
+            id: "a", name: "Old", provider: "openai", modelID: "whisper-1",
+            baseURL: "https://models.example/tenant/", capabilities: ["stt"]
+        )]
+        let bundle = json(["models": ["profiles": [[
+            "id": "a", "name": "New", "provider": "OPENAI", "model": "whisper-1",
+            "base_url": "https://models.example/tenant/v1/audio/transcriptions/",
+            "capabilities": ["stt"],
+        ]]]])
+        let vault = TestKeyVault(values: ["a": "local-secret"])
+
+        _ = try apply(bundle, to: config, vault: vault)
+
+        #expect(vault["a"] == "local-secret")
+    }
+
+    @Test("malformed vocab is rejected before any Keychain or vocab mutation")
+    func malformedVocabIsRejectedAtomically() throws {
+        let bundle = json([
+            "models": ["profiles": [[
+                "id": "a", "provider": "openai", "model": "gpt",
+                "api_key": "new-secret",
+            ]]],
+            "vocab": ["vocab_books": "not-an-array"],
+        ])
+        let invalidGlobalMounts = json([
+            "vocab": [
+                "vocab_books": [],
+                "global_vocab_books": ["valid", 42],
+            ],
+        ])
+        let vault = TestKeyVault(values: ["a": "old-secret"])
+        let store = VocabStore(defaults: freshDefaults())
+        store.upsert(VocabBook(id: "phone", name: "Phone"))
+        store.setMounted(["phone"], forKey: VocabStore.globalMountKey)
+
+        #expect(throws: ScenarioImporter.ImportError.self) {
+            _ = try apply(bundle, store: store, vault: vault)
+        }
+        #expect(throws: ScenarioImporter.ImportError.self) {
+            _ = try ScenarioImporter.preview(data: invalidGlobalMounts)
+        }
+        #expect(vault["a"] == "old-secret")
+        #expect(store.books.map(\.id) == ["phone"])
+        #expect(store.mountedIDs(forKey: VocabStore.globalMountKey) == ["phone"])
+    }
+
+    @Test("credential write failure rolls back earlier keys and leaves vocabulary untouched")
+    func writeFailureIsAtomic() throws {
+        let bundle = json([
+            "models": ["profiles": [
+                ["id": "a", "provider": "openai", "model": "a", "api_key": "new-a"],
+                ["id": "b", "provider": "openai", "model": "b", "api_key": "new-b"],
+            ]],
+            "vocab": ["vocab_books": [["id": "book", "name": "Book"]]],
+        ])
+        let vault = TestKeyVault(
+            values: ["a": "old-a", "b": "old-b"],
+            failingWrites: ["b"]
+        )
+        let store = VocabStore(defaults: freshDefaults())
+
+        #expect(throws: ModelCredentialTransaction.Failure.self) {
+            _ = try apply(bundle, store: store, vault: vault)
+        }
+        #expect(vault["a"] == "old-a")
+        #expect(vault["b"] == "old-b")
+        #expect(store.book(id: "book") == nil)
+    }
+
+    @Test("credential delete failure is reported and leaves vocabulary untouched")
+    func deleteFailureIsReported() throws {
+        var config = AppConfig()
+        config.modelProfiles = [ModelProfile(
+            id: "a", name: "Old", provider: "openai", modelID: "m",
+            baseURL: "https://old.example", capabilities: ["llm"]
+        )]
+        let bundle = json([
+            "models": ["profiles": [[
+                "id": "a", "provider": "openai", "model": "m",
+                "base_url": "https://new.example",
+            ]]],
+            "vocab": ["vocab_books": [["id": "book", "name": "Book"]]],
+        ])
+        let vault = TestKeyVault(
+            values: ["a": "old-secret"],
+            failingDeletes: ["a"]
+        )
+        let store = VocabStore(defaults: freshDefaults())
+
+        #expect(throws: ModelCredentialTransaction.Failure.self) {
+            _ = try apply(bundle, to: config, store: store, vault: vault)
+        }
+        #expect(vault["a"] == "old-secret")
+        #expect(store.book(id: "book") == nil)
+    }
+
+    @Test("clearing an edited model creates an explicit Keychain deletion")
+    func clearedModelKeyDeletesCredential() throws {
+        let profile = ModelProfile(
+            id: "a", name: "A", provider: "openai", modelID: "gpt",
+            baseURL: "https://models.example/v1", capabilities: ["llm"]
+        )
+        let updates = ModelProfileForm.credentialUpdates(
+            profile: profile,
+            apiKey: "  \n ",
+            initialProfile: profile,
+            apiKeyWasEdited: true
+        )
+        #expect(updates == [ModelCredentialUpdate(profileID: "a", value: nil)])
+
+        let vault = TestKeyVault(values: ["a": "secret"])
+        try ModelCredentialTransaction.apply(
+            updates,
+            reader: vault.read,
+            writer: vault.write,
+            deleter: vault.delete
+        )
+        #expect(vault["a"] == nil)
+    }
+
+    @Test("editing a model endpoint cannot silently carry its old credential")
+    func endpointChangeDeletesUnconfirmedCredential() {
+        let oldProfile = ModelProfile(
+            id: "a", name: "Old", provider: "openai", modelID: "gpt",
+            baseURL: "https://old.example/v1", capabilities: ["llm"]
+        )
+        let changedProfile = ModelProfile(
+            id: "a", name: "New", provider: "openai", modelID: "gpt",
+            baseURL: "https://new.example/v1", capabilities: ["llm"]
+        )
+
+        let unconfirmed = ModelProfileForm.credentialUpdates(
+            profile: changedProfile,
+            apiKey: "old-secret",
+            initialProfile: oldProfile,
+            apiKeyWasEdited: false
+        )
+        #expect(unconfirmed == [ModelCredentialUpdate(profileID: "a", value: nil)])
+
+        let explicitlyEntered = ModelProfileForm.credentialUpdates(
+            profile: changedProfile,
+            apiKey: "new-secret",
+            initialProfile: oldProfile,
+            apiKeyWasEdited: true
+        )
+        #expect(explicitlyEntered == [
+            ModelCredentialUpdate(profileID: "a", value: "new-secret")
+        ])
     }
 }
 

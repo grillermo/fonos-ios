@@ -1,7 +1,7 @@
 import Foundation
 
-/// A configured mode with optional per-mode model overrides and processing settings.
-/// Wraps a `Mode` enum value with additional metadata and pipeline configuration.
+/// Legacy schema 0-2 wrapper decoded by `WorkflowMigration`.
+/// Production execution and editing use workflow/widget definitions instead.
 struct ModeConfig: Codable, Equatable, Hashable, Identifiable, Sendable {
     var id: String              // "raw", "polish", "formal", "translate", or custom UUID
     var mode: Mode              // The mode type
@@ -13,7 +13,6 @@ struct ModeConfig: Codable, Equatable, Hashable, Identifiable, Sendable {
     var sttPrompt: String       // Whisper prompt hint
     var sttTemperature: Double  // STT temperature (0.0–1.0)
     var outputLanguage: String  // "auto" or specific language code
-    var autoPaste: Bool         // Auto-insert result into active text field
     var isBuiltIn: Bool         // true = cannot delete
 
     // MARK: - Built-in configs
@@ -30,7 +29,6 @@ struct ModeConfig: Codable, Equatable, Hashable, Identifiable, Sendable {
             sttPrompt: "",
             sttTemperature: 0.0,
             outputLanguage: "auto",
-            autoPaste: false,
             isBuiltIn: true
         ),
         ModeConfig(
@@ -44,7 +42,6 @@ struct ModeConfig: Codable, Equatable, Hashable, Identifiable, Sendable {
             sttPrompt: "",
             sttTemperature: 0.0,
             outputLanguage: "auto",
-            autoPaste: false,
             isBuiltIn: true
         ),
         ModeConfig(
@@ -58,7 +55,6 @@ struct ModeConfig: Codable, Equatable, Hashable, Identifiable, Sendable {
             sttPrompt: "",
             sttTemperature: 0.0,
             outputLanguage: "auto",
-            autoPaste: false,
             isBuiltIn: true
         ),
         ModeConfig(
@@ -72,7 +68,6 @@ struct ModeConfig: Codable, Equatable, Hashable, Identifiable, Sendable {
             sttPrompt: "",
             sttTemperature: 0.0,
             outputLanguage: "auto",
-            autoPaste: false,
             isBuiltIn: true
         )
     ]

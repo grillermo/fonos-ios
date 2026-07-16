@@ -121,9 +121,6 @@ final class LLMService: Sendable {
     private let provider: String
     private let consentAuthorizer: RemoteAIConsentStore.Authorizer
 
-    /// Default temperature used by the legacy mode API.
-    private let defaultTemperature: Double = 0.3
-
     init(session: URLSession = .shared,
          apiKey: String,
          modelID: String = "gpt-4o",
@@ -136,24 +133,6 @@ final class LLMService: Sendable {
         self.baseURL = baseURL
         self.provider = provider
         self.consentAuthorizer = consentAuthorizer
-    }
-
-    /// Process text through the given mode using an LLM.
-    /// - Parameters:
-    ///   - text: The raw transcript to process.
-    ///   - mode: The processing mode that defines the prompt.
-    ///   - glossary: Optional vocab glossary block appended to the system prompt.
-    /// - Returns: The processed text from the LLM.
-    /// - Throws: `LLMError` on failure (caller can fall back to raw transcript).
-    func process(text: String, mode: Mode, glossary: String? = nil) async throws -> String {
-        let configuration = LLMRequestConfiguration(
-            systemPrompt: mode.systemPrompt,
-            userTemplate: mode.userTemplate,
-            temperature: temperatureForMode(mode),
-            maxTokens: maxTokensForMode(mode),
-            glossary: glossary
-        )
-        return try await process(text: text, configuration: configuration)
     }
 
     /// Process text using parameters compiled from a workflow `llm` widget.
@@ -375,20 +354,6 @@ final class LLMService: Sendable {
         return try parser(data)
     }
 
-    private func maxTokensForMode(_ mode: Mode) -> Int {
-        if case .custom(_, _, _, let maxTokens) = mode {
-            return maxTokens
-        }
-        return 1024
-    }
-
-    private func temperatureForMode(_ mode: Mode) -> Double {
-        if case .custom(_, _, let temp, _) = mode {
-            return temp
-        }
-        return defaultTemperature
-    }
-
     private func parseOpenAIResponse(data: Data) throws -> String {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
@@ -424,47 +389,5 @@ final class LLMService: Sendable {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw LLMError.emptyResponse }
         return trimmed
-    }
-}
-
-// MARK: - Note Pipeline
-
-extension LLMService {
-    /// Note-pipeline entry point. Bypasses the `Mode` enum (which is for Dictation)
-    /// and uses the per-notebook NotebookLLMConfig directly.
-    ///
-    /// Output-language injection: when `config.outputLanguage` is non-nil, prepends
-    /// `Always respond in {lang}.` followed by a blank line to the system prompt.
-    /// Prefix placement gives the strongest steering for chat models.
-    func processNote(text: String, config: NotebookLLMConfig) async throws -> String {
-        let composedSystem = Self.composeSystemPrompt(
-            user: config.systemPrompt,
-            outputLanguage: config.outputLanguage
-        )
-        let modelToUse = config.modelOverride ?? modelID
-        let service = modelToUse == modelID
-            ? self
-            : LLMService(
-                session: session,
-                apiKey: apiKey,
-                modelID: modelToUse,
-                baseURL: baseURL,
-                provider: provider,
-                consentAuthorizer: consentAuthorizer
-            )
-        return try await service.process(
-            text: text,
-            configuration: LLMRequestConfiguration(
-                systemPrompt: composedSystem,
-                userTemplate: "{text}",
-                temperature: 0.3,
-                maxTokens: 1024
-            )
-        )
-    }
-
-    static func composeSystemPrompt(user: String, outputLanguage: String?) -> String {
-        guard let lang = outputLanguage, !lang.isEmpty else { return user }
-        return "Always respond in \(lang).\n\n\(user)"
     }
 }

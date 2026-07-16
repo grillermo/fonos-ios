@@ -23,16 +23,18 @@ struct AppConfig: Codable, Equatable {
 
     // MARK: - Modes
 
-    /// Active mode identifier (matches ModeConfig.id or Mode.id).
+    /// Decode-only compatibility payload for pre-workflow releases. Runtime
+    /// selection is `activeVoiceWorkflowID`.
     var activeModeID: String = "raw"
 
-    /// Target language for Translate mode.
+    /// Decode-only compatibility payload. Migration bakes this value into the
+    /// Translate workflow widget.
     var translateTargetLanguage: String = "English"
 
-    /// Legacy modes array — kept for Codable backward compat and existing tests.
+    /// Decode-only compatibility payload for schema 0-2.
     var modes: [Mode] = Mode.builtInModes
 
-    /// Mode configurations with per-mode model overrides and settings.
+    /// Decode-only compatibility payload for schema 0-2.
     var modeConfigs: [ModeConfig] = ModeConfig.builtInConfigs
 
     // MARK: - Workflows
@@ -44,12 +46,10 @@ struct AppConfig: Codable, Equatable {
     /// Desktop-compatible widget overlays. Builtins live in WorkflowCatalog.
     var widgets: [WorkflowWidget] = []
 
-    /// Desktop-compatible workflow overlays. Legacy mode fields remain stored
-    /// during the compatibility window and are not cleared by migration.
+    /// Desktop-compatible workflow overlays.
     var workflows: [WorkflowDefinition] = []
 
-    /// Selected voice recipe. Kept separate from `activeModeID` so imported
-    /// non-mode workflows can coexist without breaking keyboard compatibility.
+    /// Selected voice recipe for the main app.
     var activeVoiceWorkflowID: String = ""
 
     // MARK: - Models
@@ -69,21 +69,6 @@ struct AppConfig: Codable, Equatable {
 
     var historyRetentionDays: Int = 30
 
-    // MARK: - Convenience
-
-    /// The active mode derived from `modeConfigs`, falling back to the first mode in `modes`.
-    var defaultMode: Mode {
-        if let config = modeConfigs.first(where: { $0.id == activeModeID }) {
-            return config.mode
-        }
-        return modes.first ?? .raw
-    }
-
-    /// The active ModeConfig, or nil if not found.
-    var activeModeConfig: ModeConfig? {
-        modeConfigs.first(where: { $0.id == activeModeID })
-    }
-
     /// Builtins with this config's desktop-compatible overlays applied.
     var workflowCatalog: WorkflowCatalog {
         .effective(userWidgets: widgets, userWorkflows: workflows)
@@ -93,50 +78,11 @@ struct AppConfig: Codable, Equatable {
         workflowCatalog.workflow(id: activeVoiceWorkflowID)
     }
 
-    /// Resolves a mode-level STT profile override against the app default.
-    /// Empty imported overrides are treated as unset.
-    func effectiveSTTProfileID(forModeID modeID: String? = nil) -> String {
-        let resolvedModeID = modeID ?? activeModeID
-        if let override = modeConfigs
-            .first(where: { $0.id == resolvedModeID })?
-            .sttModelID?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !override.isEmpty,
-           modelProfiles.contains(where: { $0.id == override && $0.hasSTT }) {
-            return override
-        }
-        return ModelProfileReference.normalized(sttProfile)
-    }
-
-    /// Resolves a mode-level LLM profile override against the app default.
-    /// Empty imported overrides are treated as unset.
-    func effectiveLLMProfileID(forModeID modeID: String? = nil) -> String {
-        let resolvedModeID = modeID ?? activeModeID
-        if let override = modeConfigs
-            .first(where: { $0.id == resolvedModeID })?
-            .llmModelID?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !override.isEmpty,
-           modelProfiles.contains(where: { $0.id == override && $0.hasLLM }) {
-            return override
-        }
-        return ModelProfileReference.normalized(llmProfile)
-    }
-
-    /// Removes a model and every default/override reference to it so modes
-    /// cleanly fall back to the remaining app defaults.
+    /// Removes a model and every workflow/default reference to it.
     mutating func removeModelProfile(id: String) {
         modelProfiles.removeAll(where: { $0.id == id })
         if sttProfile == id { sttProfile = "" }
         if llmProfile == id { llmProfile = "" }
-        for index in modeConfigs.indices {
-            if modeConfigs[index].sttModelID == id {
-                modeConfigs[index].sttModelID = nil
-            }
-            if modeConfigs[index].llmModelID == id {
-                modeConfigs[index].llmModelID = nil
-            }
-        }
         for index in widgets.indices {
             guard case .object(var props) = widgets[index].props,
                   props["model_profile"]?.stringValue == id else { continue }
@@ -182,5 +128,34 @@ extension AppConfig {
         autoSendDestination = try container.decodeIfPresent(String.self, forKey: .autoSendDestination) ?? autoSendDestination
         destinations = try container.decodeIfPresent([AnyTextDestination].self, forKey: .destinations) ?? destinations
         historyRetentionDays = try container.decodeIfPresent(Int.self, forKey: .historyRetentionDays) ?? historyRetentionDays
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sttProvider, forKey: .sttProvider)
+        try container.encode(sttProfile, forKey: .sttProfile)
+        try container.encode(sttLanguage, forKey: .sttLanguage)
+        try container.encode(llmProvider, forKey: .llmProvider)
+        try container.encode(llmProfile, forKey: .llmProfile)
+        try container.encode(llmBaseURL, forKey: .llmBaseURL)
+        try container.encode(workflowSchemaVersion, forKey: .workflowSchemaVersion)
+        try container.encode(widgets, forKey: .widgets)
+        try container.encode(workflows, forKey: .workflows)
+        try container.encode(activeVoiceWorkflowID, forKey: .activeVoiceWorkflowID)
+        try container.encode(modelProfiles, forKey: .modelProfiles)
+        try container.encode(recordMode, forKey: .recordMode)
+        try container.encode(autoSendDestination, forKey: .autoSendDestination)
+        try container.encode(destinations, forKey: .destinations)
+        try container.encode(historyRetentionDays, forKey: .historyRetentionDays)
+
+        // A pre-migration value can still be serialized by migration tests and
+        // recovery tooling. Once schema 3 is reached, legacy Mode payloads are
+        // intentionally retired from persisted AppConfig JSON.
+        if workflowSchemaVersion < 3 {
+            try container.encode(activeModeID, forKey: .activeModeID)
+            try container.encode(translateTargetLanguage, forKey: .translateTargetLanguage)
+            try container.encode(modes, forKey: .modes)
+            try container.encode(modeConfigs, forKey: .modeConfigs)
+        }
     }
 }

@@ -2,10 +2,31 @@ import AppIntents
 import Foundation
 import UIKit
 
+enum RecordNoteIntentLaunchError: LocalizedError, Equatable {
+    case invalidDeepLink
+    case notebookUnavailable(String)
+    case ambiguousNotebookTitle(String)
+    case couldNotOpenApp
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidDeepLink:
+            "Fonos could not create the requested note link."
+        case .notebookUnavailable(let value):
+            "The notebook ‘\(value)’ is no longer available. Choose another notebook in Shortcuts."
+        case .ambiguousNotebookTitle(let value):
+            "More than one notebook is named ‘\(value)’. Choose the notebook again in Shortcuts."
+        case .couldNotOpenApp:
+            "Fonos could not open the note recorder."
+        }
+    }
+}
+
 // MARK: - NotebookOptionsProvider
 
-/// Reads the SharedNotebookCatalog so Siri / Shortcuts.app can list real
-/// notebook titles instead of asking the user for raw UUIDs.
+/// Reads the SharedNotebookCatalog so Shortcuts stores each notebook's stable
+/// UUID while presenting its human-readable title. Duplicate titles therefore
+/// remain distinct and can never route a note to an arbitrary notebook.
 struct NotebookOptionsProvider: DynamicOptionsProvider {
     /// Override target for tests. Production uses SharedNotebookCatalog.defaultURL.
     let catalogURL: URL?
@@ -14,8 +35,29 @@ struct NotebookOptionsProvider: DynamicOptionsProvider {
         self.catalogURL = catalogURL
     }
 
-    func results() async throws -> [String] {
-        SharedNotebookCatalog.read(from: catalogURL).map(\.title)
+    func results() async throws -> IntentItemCollection<String> {
+        let entries = SharedNotebookCatalog.read(from: catalogURL)
+        let titleCounts = Dictionary(grouping: entries) {
+            $0.title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        }.mapValues(\.count)
+        let items = entries.map { entry in
+            let normalizedTitle = entry.title.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: .current
+            )
+            let subtitle: LocalizedStringResource? = titleCounts[normalizedTitle, default: 0] > 1
+                ? "Notebook ID \(entry.id.prefix(8))"
+                : nil
+            return IntentItem(
+                entry.id,
+                title: "\(entry.title)",
+                subtitle: subtitle,
+                image: .init(systemName: "note.text")
+            )
+        }
+        return IntentItemCollection(
+            sections: [IntentItemSection(items: items)]
+        )
     }
 }
 
@@ -41,17 +83,12 @@ struct RecordNoteIntent: AppIntent {
 
     // MARK: - Parameters
 
-    /// User-facing title of the target notebook. Resolved to a UUID at perform time
-    /// via `SharedNotebookCatalog`.
-    ///
-    /// Kept as a free-text `String?` parameter rather than wired to a
-    /// `DynamicOptionsProvider` because that API requires iOS 26. v1 ships with
-    /// the AppShortcuts phrase + URL-based deep link; the curated picker will
-    /// follow when we drop iOS <26 support or upgrade to AppEntity.
+    /// Stable UUID of the target notebook. The options provider displays its
+    /// current title (and a short id when titles collide).
     @Parameter(
         title: "Notebook",
         description: "Which notebook to record into.",
-        default: nil
+        optionsProvider: NotebookOptionsProvider()
     )
     var notebookId: String?
 
@@ -63,24 +100,48 @@ struct RecordNoteIntent: AppIntent {
 
     // MARK: - Perform
 
+    func deepLinkURL(
+        catalog entries: [SharedNotebookCatalog.Entry] = SharedNotebookCatalog.read()
+    ) throws -> URL {
+        guard var components = URLComponents(string: "fonos://note") else {
+            throw RecordNoteIntentLaunchError.invalidDeepLink
+        }
+
+        if let value = notebookId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !value.isEmpty {
+            let resolvedID: String
+            if let uuid = UUID(uuidString: value) {
+                resolvedID = uuid.uuidString
+            } else {
+                // Backward compatibility for Shortcuts saved by earlier builds,
+                // which persisted a title. Never guess when that title is now
+                // ambiguous.
+                let matches = entries.filter {
+                    $0.title.localizedCaseInsensitiveCompare(value) == .orderedSame
+                }
+                guard matches.count <= 1 else {
+                    throw RecordNoteIntentLaunchError.ambiguousNotebookTitle(value)
+                }
+                guard let entry = matches.first else {
+                    throw RecordNoteIntentLaunchError.notebookUnavailable(value)
+                }
+                resolvedID = entry.id
+            }
+            components.queryItems = [URLQueryItem(name: "notebook", value: resolvedID)]
+        }
+
+        guard let url = components.url else {
+            throw RecordNoteIntentLaunchError.invalidDeepLink
+        }
+        return url
+    }
+
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
-        var components = URLComponents(string: "fonos://note")!
-
-        if let notebookId, !notebookId.isEmpty {
-            // notebookId may be a title (from DynamicOptionsProvider) or a literal UUID.
-            // Resolve title → uuid via the catalog so the URL scheme stays UUID-based.
-            let entries = SharedNotebookCatalog.read()
-            if let entry = entries.first(where: { $0.title == notebookId }) {
-                components.queryItems = [URLQueryItem(name: "notebook", value: entry.id)]
-            } else {
-                components.queryItems = [URLQueryItem(name: "notebook", value: notebookId)]
-            }
+        let url = try deepLinkURL()
+        guard await UIApplication.shared.open(url) else {
+            throw RecordNoteIntentLaunchError.couldNotOpenApp
         }
-
-        if let url = components.url {
-            await UIApplication.shared.open(url)
-        }
-        return .result(value: "Fonos note recording started")
+        return .result(value: "Fonos opened and requested note recording")
     }
 }

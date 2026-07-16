@@ -1,7 +1,9 @@
 import Foundation
 
-/// Processing mode for dictated text.
-/// Each case represents a distinct transformation pipeline.
+/// Legacy pre-workflow processing payload.
+///
+/// Kept only to decode schema 0-2 AppConfig values and compile them into
+/// `WorkflowDefinition`/`WorkflowWidget` during the one-way migration.
 enum Mode: Codable, Equatable, Hashable, Sendable {
     case raw
     case polish

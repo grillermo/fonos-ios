@@ -124,8 +124,8 @@ struct WorkflowMigrationTests {
         #expect(hold.workflows.allSatisfy { $0.source == "src.mic-hold" })
     }
 
-    @Test("a legacy mode added after initial migration receives a recipe")
-    func reconcilesNewLegacyMode() {
+    @Test("schema 3 does not re-read legacy modes after retirement")
+    func doesNotReconcileLegacyModeAfterRetirement() {
         var config = AppConfig()
         WorkflowMigration.migrate(&config)
         config.modeConfigs.append(ModeConfig(
@@ -139,14 +139,22 @@ struct WorkflowMigrationTests {
             sttPrompt: "",
             sttTemperature: 0,
             outputLanguage: "auto",
-            autoPaste: false,
             isBuiltIn: false
         ))
 
-        #expect(WorkflowMigration.migrate(&config))
-        #expect(config.workflows.contains { $0.id == "wf.custom-later" })
-        #expect(config.widgets.contains { $0.id == "llm.later" })
         #expect(!WorkflowMigration.migrate(&config))
+        #expect(!config.workflows.contains { $0.id == "wf.custom-later" })
+        #expect(!config.widgets.contains { $0.id == "llm.later" })
+    }
+
+    @Test("schema 3 does not re-read legacy activeModeID")
+    func doesNotReconcileLegacySelectionAfterRetirement() {
+        var config = WorkflowMigration.migrated(AppConfig())
+        config.activeVoiceWorkflowID = ""
+        config.activeModeID = "formal"
+
+        #expect(!WorkflowMigration.migrate(&config))
+        #expect(config.activeVoiceWorkflowID.isEmpty)
     }
 
     @Test("per-mode settings produce isolated STT and canonical LLM widgets")
@@ -179,6 +187,33 @@ struct WorkflowMigrationTests {
         ) == true)
     }
 
+    @Test("legacy Translate target survives schema-3 retirement")
+    func preservesLegacyTranslateTarget() throws {
+        var config = AppConfig()
+        config.translateTargetLanguage = "Japanese"
+
+        WorkflowMigration.migrate(&config)
+
+        let migrated = try #require(
+            config.workflowCatalog.widget(id: "llm.translate")
+        )
+        #expect(migrated.props["output_language"]?.stringValue == "Japanese")
+        #expect(migrated.props["user_template"]?.stringValue?.contains("Japanese") == true)
+
+        let data = try JSONEncoder().encode(config)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        #expect(object["translateTargetLanguage"] == nil)
+
+        let roundTrip = try JSONDecoder().decode(AppConfig.self, from: data)
+        let persisted = try #require(
+            roundTrip.workflowCatalog.widget(id: "llm.translate")
+        )
+        #expect(persisted.props["output_language"]?.stringValue == "Japanese")
+        #expect(persisted.props["user_template"]?.stringValue?.contains("Japanese") == true)
+    }
+
     @Test("custom mode mapping is reversible and preserves its prompt tuning")
     func migratesCustomMode() {
         let customID = "A7C4-voice"
@@ -193,7 +228,6 @@ struct WorkflowMigrationTests {
             sttPrompt: "",
             sttTemperature: 0,
             outputLanguage: "Spanish",
-            autoPaste: true,
             isBuiltIn: false
         )
         var config = AppConfig()
@@ -257,6 +291,19 @@ struct WorkflowMigrationTests {
         WorkflowMigration.migrate(&migrated)
         #expect(migrated.workflowCatalog.widget(id: "stt.default")?
             .props["language"]?.stringValue == "ja")
+
+        let retiredJSON = try JSONEncoder().encode(migrated)
+        let retiredObject = try #require(
+            JSONSerialization.jsonObject(with: retiredJSON) as? [String: Any]
+        )
+        #expect(retiredObject["activeModeID"] == nil)
+        #expect(retiredObject["modes"] == nil)
+        #expect(retiredObject["modeConfigs"] == nil)
+
+        let roundTrip = try JSONDecoder().decode(AppConfig.self, from: retiredJSON)
+        #expect(roundTrip.workflowSchemaVersion == WorkflowMigration.currentSchemaVersion)
+        #expect(roundTrip.activeVoiceWorkflowID == "wf.voice.formal")
+        #expect(roundTrip.workflowCatalog.workflow(id: "wf.voice.formal") != nil)
     }
 
     @Test("removing a model clears workflow model_profile without touching other props")

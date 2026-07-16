@@ -12,14 +12,14 @@
 - Toolchain: Xcode `26.2`, iOS SDK `26.2`, Swift `6.2.3`
 - Export compliance: `ITSAppUsesNonExemptEncryption = NO`; the app uses Apple-provided HTTPS and Keychain APIs and no custom cryptography
 
-## Candidate validation — July 13, 2026
+## Candidate validation — July 15, 2026
 
 - Clean generic iOS Simulator build: passed
-- Release static analysis: passed
-- Unit/invariant suite: `532 / 532` passed, no failures or skips
+- Release static analysis: passed with no warnings or analyzer findings
+- Unit/invariant suite: `552 / 552` passed, no failures or skips
 - UI suite: `7 / 7` passed, including launch, tab navigation, Flow surfaces, recording entry, and screenshots
-- Strict SwiftLint findings reduced from the main-branch baseline of `38` to `6`; the remaining findings are file/type-length warnings in four established service/settings files, with no force unwrap/try, complexity, long-function, or large-tuple findings
-- Unsigned Release device archive: passed at `/tmp/FonosApp-final.xcarchive`
+- Strict SwiftLint: passed with `0` violations; `git diff --check` also passed
+- Unsigned Release device archive: passed at `/tmp/FonosApp-final-20260715c.xcarchive` with no build warnings
 - Archive inspection: App, Keyboard, and Widget are all `1.0 (3)`, arm64, iPhone-only
 - Privacy manifests: present in App and Keyboard bundles and pass `plutil -lint`
 - String catalogs: valid JSON; English and Simplified Chinese compile
@@ -29,6 +29,8 @@
 Representative commands:
 
 ```bash
+./scripts/verify-static.sh
+
 xcodebuild build -project FonosApp.xcodeproj -scheme FonosApp \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
 
@@ -46,7 +48,8 @@ xcodebuild test -project FonosApp.xcodeproj -scheme FonosAppUITests \
 
 xcodebuild archive -project FonosApp.xcodeproj -scheme FonosApp \
   -configuration Release -destination 'generic/platform=iOS' \
-  -archivePath /tmp/FonosApp-final.xcarchive CODE_SIGNING_ALLOWED=NO
+  -archivePath /tmp/FonosApp-final-20260715c.xcarchive \
+  CODE_SIGNING_ALLOWED=NO
 ```
 
 ## Historical artifacts — do not reuse for build 3

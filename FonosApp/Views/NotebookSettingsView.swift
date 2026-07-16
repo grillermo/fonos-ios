@@ -24,6 +24,7 @@ struct NotebookSettingsView: View {
     @State private var siriPhrase: String
 
     @State private var showDeleteConfirmation = false
+    @State private var persistenceError: String?
     @Environment(\.dismiss) private var dismiss
 
     // Vocab books mounted on this notebook (P1-1)
@@ -66,7 +67,7 @@ struct NotebookSettingsView: View {
         return cfg.modelProfiles
     }
 
-    private var isQuickNote: Bool { notebook.title == "Quick Note" }
+    private var isQuickNote: Bool { NoteService.isQuickNote(notebook) }
 
     /// A transient NoteContainer reflecting unsaved Picker state, so the chip
     /// updates as the user edits (without writing to the DB).
@@ -112,8 +113,12 @@ struct NotebookSettingsView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
-                    saveChanges()
-                    dismiss()
+                    do {
+                        try saveChanges()
+                        dismiss()
+                    } catch {
+                        persistenceError = error.localizedDescription
+                    }
                 }
                 .foregroundColor(amber)
             }
@@ -124,12 +129,27 @@ struct NotebookSettingsView: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                try? noteService.deleteNotebook(notebook.id)
-                dismiss()
+                do {
+                    try noteService.deleteNotebook(notebook.id)
+                    dismiss()
+                } catch {
+                    persistenceError = error.localizedDescription
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will permanently delete the notebook and all its notes.")
+        }
+        .alert(
+            "Notebook Change Failed",
+            isPresented: Binding(
+                get: { persistenceError != nil },
+                set: { if !$0 { persistenceError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { persistenceError = nil }
+        } message: {
+            Text(persistenceError ?? "")
         }
     }
 
@@ -200,9 +220,11 @@ struct NotebookSettingsView: View {
                     Toggle(book.name, isOn: Binding(
                         get: { mountedBookIDs.contains(book.id) },
                         set: { mounted in
-                            if mounted { mountedBookIDs.insert(book.id) } else { mountedBookIDs.remove(book.id) }
-                            vocabStore.setMounted(mounted, bookID: book.id,
-                                                  forKey: VocabStore.notebookMountKey(notebook.id))
+                            if mounted {
+                                mountedBookIDs.insert(book.id)
+                            } else {
+                                mountedBookIDs.remove(book.id)
+                            }
                         }
                     ))
                     .foregroundColor(textPrimary)
@@ -362,12 +384,10 @@ struct NotebookSettingsView: View {
 
     // MARK: - Save
 
-    private func saveChanges() {
-        if name != notebook.title {
-            noteService.renameNotebook(notebook.id, to: name)
-        }
-        noteService.updateNotebookConfigV2(
+    private func saveChanges() throws {
+        try noteService.updateNotebookConfigV2(
             notebook.id,
+            title: name != notebook.title ? name : nil,
             systemPrompt: systemPrompt,
             sttLanguage: .some(sttLanguage.isEmpty ? nil : sttLanguage),
             outputLanguage: .some(outputLanguage.isEmpty ? nil : outputLanguage),
@@ -375,6 +395,14 @@ struct NotebookSettingsView: View {
             llmModelOverride: .some(llmModelOverride.isEmpty ? nil : llmModelOverride),
             showRawInline: showRawInline,
             siriPhrase: .some(siriPhrase.isEmpty ? nil : siriPhrase)
+        )
+        // Keep vocabulary mounts staged with the rest of the form. A failed
+        // SwiftData save or navigating back without Save must not commit only
+        // this UserDefaults-backed portion of the notebook configuration.
+        let orderedIDs = vocabBooks.map(\.id).filter(mountedBookIDs.contains)
+        vocabStore.setMounted(
+            orderedIDs,
+            forKey: VocabStore.notebookMountKey(notebook.id)
         )
     }
 }
@@ -384,9 +412,12 @@ struct NotebookSettingsView: View {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
     if let container = try? ModelContainer(for: schema, configurations: [config]) {
         let service = NoteService(modelContainer: container)
-        let notebook = service.createNotebook(title: "My Notebook")
-        NavigationStack {
-            NotebookSettingsView(notebook: notebook, noteService: service)
+        if let notebook = try? service.createNotebook(title: "My Notebook") {
+            NavigationStack {
+                NotebookSettingsView(notebook: notebook, noteService: service)
+            }
+        } else {
+            ContentUnavailableView("Preview unavailable", systemImage: "exclamationmark.triangle")
         }
     } else {
         ContentUnavailableView("Preview unavailable", systemImage: "exclamationmark.triangle")

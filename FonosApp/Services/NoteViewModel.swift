@@ -4,27 +4,6 @@ import os.log
 
 private let noteVMLog = Logger(subsystem: "com.fonos.ios", category: "NoteViewModel")
 
-// MARK: - NoteLLMProvider Protocol
-
-/// Protocol for LLM providers used by NoteViewModel.
-/// Separate from LLMService to allow test injection with simpler interface.
-protocol NoteLLMProvider: AnyObject {
-    func process(text: String, prompt: String?) async throws -> String
-}
-
-extension NoteLLMProvider {
-    /// Default adapter for callers that have a NotebookLLMConfig but only
-    /// the legacy `process(text:prompt:)` method to call. Composes the
-    /// system prompt the same way LLMService.composeSystemPrompt does so
-    /// the test mocks see exactly what production sees.
-    func process(text: String, config: NotebookLLMConfig) async throws -> String {
-        let prompt = LLMService.composeSystemPrompt(
-            user: config.systemPrompt, outputLanguage: config.outputLanguage
-        )
-        return try await process(text: text, prompt: prompt)
-    }
-}
-
 // MARK: - NoteViewModel
 
 /// Orchestrates the recording → transcription → storage pipeline for voice notes.
@@ -45,16 +24,22 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     @Published var recordingState: RecordingState = .idle
     @Published var audioLevel: Float = 0
 
+    /// True while permission is pending or capture owns a frozen notebook.
+    /// This closes the brief `.idle` window during the system permission sheet
+    /// so a second deep link cannot retarget an in-flight recording.
+    var isCapturePendingOrActive: Bool { activeContainerID != nil }
+
     // MARK: - Services
 
     private let noteService: NoteService
-    private let audioCapture: AudioCaptureService
+    private let audioCapture: any AudioCapturing
     private var levelPollTimer: Timer?
+    private var activeContainerID: UUID?
 
     // MARK: - Injected providers (for tests)
 
     private var _testSTT: (any STTProvider)?
-    private var _testLLM: (any NoteLLMProvider)?
+    private var _testLLM: (any VoiceWorkflowLLMProvider)?
 
     // MARK: - Config (for production provider resolution)
 
@@ -66,93 +51,101 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
 
     // MARK: - Init (production)
 
-    init(noteService: NoteService, audioCapture: AudioCaptureService = AudioCaptureService()) {
+    init(noteService: NoteService, audioCapture: any AudioCapturing = AudioCaptureService()) {
         self.noteService = noteService
         self.audioCapture = audioCapture
     }
 
-    /// Test/injection initialiser — accepts any STTProvider and any NoteLLMProvider.
+    /// Test/injection initialiser. Overrides are frozen into the same workflow
+    /// plan used in production rather than selecting a separate test pipeline.
     init(noteService: NoteService,
          sttProvider: (any STTProvider)?,
-         llmProvider: (any NoteLLMProvider)?,
-         audioCapture: AudioCaptureService = AudioCaptureService()) {
+         llmProvider: (any VoiceWorkflowLLMProvider)?,
+         audioCapture: any AudioCapturing = AudioCaptureService()) {
         self.noteService = noteService
         self._testSTT = sttProvider
         self._testLLM = llmProvider
         self.audioCapture = audioCapture
     }
 
-    // MARK: - Provider Resolution
-
-    private var resolvedSTT: any STTProvider {
-        if let test = _testSTT { return test }
-        return STTResolver.resolve(config: config)
-    }
-
-    private var resolvedLLM: (any NoteLLMProvider)? {
-        if let test = _testLLM { return test }
-        // In production: resolve from config (mirroring DictationViewModel pattern)
-        let profileID = ModelProfileReference.normalized(config.llmProfile)
-        guard !profileID.isEmpty,
-              let profile = config.modelProfiles.first(where: { $0.id == profileID }) else {
-            return nil
-        }
-        let key = (try? KeychainStore(service: "com.fonos.models").get(profile.id)) ?? ""
-        let service = LLMService(
-            apiKey: key,
-            modelID: profile.modelID,
-            baseURL: profile.effectiveBaseURL,
-            provider: profile.provider
-        )
-        return LLMServiceNoteAdapter(service: service)
-    }
-
     // MARK: - Recording Control
 
-    func startRecording() {
-        guard recordingState == .idle || {
+    func startRecording(to containerId: UUID) {
+        guard activeContainerID == nil,
+              (recordingState == .idle || {
             if case .done = recordingState { return true }
             if case .error = recordingState { return true }
             return false
-        }() else { return }
+        }()) else { return }
+        activeContainerID = containerId
 
         let permission = audioCapture.micPermissionStatus()
         switch permission {
         case .granted:
-            doStartCapture()
+            doStartCapture(to: containerId)
         case .undetermined:
             Task { @MainActor in
                 let granted = await audioCapture.requestMicPermission()
-                if granted {
-                    doStartCapture()
+                if granted, activeContainerID == containerId {
+                    doStartCapture(to: containerId)
                 } else {
+                    activeContainerID = nil
                     recordingState = .error(message: "Microphone permission is required.")
                 }
             }
         case .denied:
+            activeContainerID = nil
             recordingState = .error(message: "Microphone permission denied.")
         @unknown default:
+            activeContainerID = nil
             recordingState = .error(message: "Microphone permission unavailable.")
         }
     }
 
-    private func doStartCapture() {
+    private func doStartCapture(to containerId: UUID) {
         recordingState = .recording
         startLevelPolling()
-        audioCapture.startCapture { [weak self] error in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                if let error {
-                    self.recordingState = .error(message: error.localizedDescription)
+        audioCapture.startCapture(
+            onInterruption: { [weak self] in
+                Task { @MainActor in
+                    guard let self, self.activeContainerID == containerId else { return }
+                    self.activeContainerID = nil
                     self.stopLevelPolling()
+                    self.recordingState = .error(message: "Recording was interrupted.")
+                }
+            },
+            onMaximumDurationReached: { [weak self] wavData in
+                Task { @MainActor in
+                    guard let self, self.activeContainerID == containerId else { return }
+                    self.activeContainerID = nil
+                    self.stopLevelPolling()
+                    guard let wavData, !wavData.isEmpty else {
+                        self.recordingState = .error(
+                            message: "Recording reached the five-minute limit, but the audio could not be finalized."
+                        )
+                        return
+                    }
+                    self.recordingState = .processing
+                    await self.recordAndStore(to: containerId, audioData: wavData)
+                }
+            },
+            completion: { [weak self] error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.activeContainerID = nil
+                        self.recordingState = .error(message: error.localizedDescription)
+                        self.stopLevelPolling()
+                    }
                 }
             }
-        }
+        )
     }
 
     func stopRecording(to containerId: UUID) {
         guard case .recording = recordingState else { return }
         stopLevelPolling()
+        activeContainerID = nil
 
         let wavData = audioCapture.stopCapture() ?? Data()
         recordingState = .processing
@@ -162,87 +155,60 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Backwards-compat wrapper. Old call sites passing `mode` are ignored —
-    /// the runtime now derives behavior from the notebook's systemPrompt.
-    func stopRecording(to containerId: UUID, mode: String) {
-        stopRecording(to: containerId)
-    }
+    // MARK: - Core workflow
 
-    // MARK: - Core Pipeline (v2)
-
-    /// Transcribe audio, optionally apply LLM (when systemPrompt is non-empty),
-    /// then persist a NoteEntry. Driven entirely by the per-notebook config.
+    /// Compile the notebook's settings into a frozen voice workflow, execute it,
+    /// then adapt the result into a NoteEntry. Dictate, keyboard and Notes now
+    /// share provider resolution, vocabulary, correction, fallback and tracing.
     func recordAndStore(to containerId: UUID, audioData: Data) async {
-        let stt = resolvedSTT
-        let llm = resolvedLLM
-
         guard let notebook = noteService.notebook(id: containerId) else {
             recordingState = .error(message: "Notebook not found.")
             return
         }
-        let resolved = NotebookPipeline.resolve(notebook)
-        let vocab = vocabStore.context(notebookID: containerId)
+        let recipe = NotebookPipeline.workflowRecipe(for: notebook)
 
         do {
-            let sttText = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
-                Task {
-                    do {
-                        let text = try await stt.transcribe(
-                            audioData: audioData,
-                            language: resolved.sttLanguage,
-                            vocabulary: vocab.terms
-                        )
-                        cont.resume(returning: text)
-                    } catch {
-                        cont.resume(throwing: error)
-                    }
-                }
-            }
-            let rawText = vocab.correct(sttText)
-
-            var processedText: String?
-            if let baseLLMConfig = resolved.llm, let llmProvider = llm {
-                let glossary = vocab.glossary ?? ""
-                let llmConfig = NotebookLLMConfig(
-                    systemPrompt: baseLLMConfig.systemPrompt + glossary,
-                    outputLanguage: baseLLMConfig.outputLanguage,
-                    modelOverride: baseLLMConfig.modelOverride
-                )
-                do {
-                    let result = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
-                        Task {
-                            do {
-                                let text = try await llmProvider.process(text: rawText, config: llmConfig)
-                                cont.resume(returning: text)
-                            } catch {
-                                cont.resume(throwing: error)
-                            }
-                        }
-                    }
-                    processedText = result
-                } catch {
-                    noteVMLog.warning("LLM processing failed, using raw: \(error.localizedDescription)")
-                }
-            }
-
-            noteService.addEntry(
-                to: containerId,
-                rawText: rawText,
-                processedText: processedText,
-                mode: resolved.llm == nil ? "raw" : "llm",
-                language: resolved.sttLanguage
+            let factory = VoiceWorkflowPlanFactory(
+                config: config,
+                vocabStore: vocabStore,
+                sttProviderOverride: _testSTT,
+                llmProviderOverride: _testLLM,
+                effectiveVocabularyBooks: vocabStore.effectiveBooks(notebookID: containerId)
             )
+            let compilation = try factory.compile(
+                definition: recipe.definition,
+                catalog: recipe.catalog,
+                legacyScopeID: nil,
+                supportedOutputTypes: ["return_to_caller"],
+                resolveOutput: { _ in ReturnToCallerVoiceWorkflowOutput() }
+            )
+            let result = try await VoiceWorkflowEngine().run(
+                VoiceWorkflowRunInput(audioData: audioData),
+                using: compilation.plan
+            )
+            try persist(result, recipe: recipe, to: containerId)
             recordingState = .done
         } catch {
-            noteVMLog.error("STT transcription failed: \(error.localizedDescription)")
+            noteVMLog.error("Notebook workflow failed: \(error.localizedDescription)")
             recordingState = .error(message: error.localizedDescription)
         }
     }
 
-    /// Backwards-compat wrapper. Old `mode` argument is ignored; behavior is now
-    /// derived from the notebook's systemPrompt.
-    func recordAndStore(to containerId: UUID, mode: String, audioData: Data) async {
-        await recordAndStore(to: containerId, audioData: audioData)
+    private func persist(
+        _ result: VoiceWorkflowResult,
+        recipe: NotebookPipeline.WorkflowRecipe,
+        to containerId: UUID
+    ) throws {
+        let processedText = recipe.hasLLM && result.degradations.isEmpty
+            ? result.finalText
+            : nil
+        try noteService.addEntry(
+            to: containerId,
+            rawText: result.rawText,
+            processedText: processedText,
+            mode: recipe.hasLLM ? "llm" : "raw",
+            language: recipe.language
+        )
     }
 
     // MARK: - Audio Level Polling
@@ -267,29 +233,5 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         levelPollTimer?.invalidate()
         levelPollTimer = nil
         audioLevel = 0
-    }
-}
-
-// MARK: - LLMService Adapter
-
-/// Bridges LLMService into the NoteLLMProvider protocol used by NoteViewModel.
-/// Production path uses `processNote` directly so the per-notebook
-/// systemPrompt and outputLanguage actually take effect.
-private final class LLMServiceNoteAdapter: NoteLLMProvider {
-    private let service: LLMService
-
-    init(service: LLMService) { self.service = service }
-
-    /// Legacy entry point — only reached when something calls the old
-    /// (text:prompt:) signature directly. We synthesize a NotebookLLMConfig
-    /// so all paths converge through processNote.
-    func process(text: String, prompt: String?) async throws -> String {
-        let cfg = NotebookLLMConfig(systemPrompt: prompt ?? "", outputLanguage: nil, modelOverride: nil)
-        return try await service.processNote(text: text, config: cfg)
-    }
-
-    /// v2 path used by NoteViewModel.recordAndStore.
-    func process(text: String, config: NotebookLLMConfig) async throws -> String {
-        try await service.processNote(text: text, config: config)
     }
 }

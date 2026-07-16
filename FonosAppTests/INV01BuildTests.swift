@@ -12,27 +12,6 @@ import Testing
 
 struct INV01BuildLaunchTests {
 
-    // Validates that FonosApp (the @main entry point) can be referenced without crash.
-    // If the type doesn't exist or the module fails to compile, this file itself fails to compile.
-    @Test("FonosApp type is accessible — module compiled successfully")
-    func appTypeAccessible() throws {
-        // If we reach this point, the module compiled and linked successfully.
-        // The mere existence of @testable import FonosApp above is the Level-1 build check.
-        #expect(Bool(true)) // sentinel — real assertion is compile-time
-    }
-
-    // Validates that the root content view initialises without throwing.
-    @Test("DictationView initialises without crash")
-    @MainActor
-    func dictationViewInitialises() throws {
-        // DictationView is the expected root view — it must be constructible.
-        let view = DictationView()
-        // If DictationView requires environment objects, the initialiser should still succeed
-        // (environment objects are injected at runtime by FonosApp).
-        _ = view // suppress unused-variable warning
-        #expect(Bool(true))
-    }
-
     // Validates that AppConfig (required by DictationView) has sensible defaults.
     @Test("AppConfig default initialisation succeeds")
     func appConfigDefaultInit() throws {

@@ -1,5 +1,194 @@
 import Foundation
 
+/// One credential replacement in the model Keychain. A `nil` value removes
+/// the credential instead of leaving an older secret attached to the profile.
+struct ModelCredentialUpdate: Equatable, Sendable {
+    let profileID: String
+    let value: String?
+}
+
+/// Applies one or more model credential replacements as a best-effort
+/// transaction. Keychain has no multi-item transaction API, so every original
+/// value is captured before the first write and restored if a later operation
+/// fails. A rollback failure is surfaced explicitly instead of being hidden.
+enum ModelCredentialTransaction {
+    typealias KeyReader = @Sendable (_ profileID: String) throws -> String?
+    typealias KeyWriter = @Sendable (_ profileID: String, _ apiKey: String) throws -> Void
+    typealias KeyDeleter = @Sendable (_ profileID: String) throws -> Void
+
+    static let defaultReader: KeyReader = { id in
+        try KeychainStore(service: "com.fonos.models").get(id)
+    }
+    static let defaultWriter: KeyWriter = { id, key in
+        try KeychainStore(service: "com.fonos.models").set(key, forKey: id)
+    }
+    static let defaultDeleter: KeyDeleter = { id in
+        try KeychainStore(service: "com.fonos.models").delete(id)
+    }
+
+    struct Failure: LocalizedError, Sendable {
+        let profileID: String
+        let operation: String
+        let reason: String
+        let rollbackReason: String?
+
+        var errorDescription: String? {
+            var message = "Could not \(operation) the API key for profile “\(profileID)”: \(reason)"
+            if let rollbackReason {
+                message += " The previous Keychain state could not be fully restored: \(rollbackReason)"
+            } else if operation != "read" {
+                message += " No profile or vocabulary changes were applied."
+            }
+            return message
+        }
+    }
+
+    private enum Snapshot {
+        case missing
+        case value(String)
+    }
+
+    static func apply(
+        _ updates: [ModelCredentialUpdate],
+        reader: KeyReader = defaultReader,
+        writer: KeyWriter = defaultWriter,
+        deleter: KeyDeleter = defaultDeleter
+    ) throws {
+        let updates = deduplicated(updates)
+        guard !updates.isEmpty else { return }
+
+        var snapshots: [String: Snapshot] = [:]
+        for update in updates {
+            do {
+                snapshots[update.profileID] = try reader(update.profileID)
+                    .map(Snapshot.value) ?? .missing
+            } catch {
+                throw Failure(
+                    profileID: update.profileID,
+                    operation: "read",
+                    reason: error.localizedDescription,
+                    rollbackReason: nil
+                )
+            }
+        }
+
+        var touchedProfileIDs: [String] = []
+        for update in updates {
+            guard let snapshot = snapshots[update.profileID],
+                  requiresMutation(update, from: snapshot) else { continue }
+            do {
+                if let value = update.value {
+                    try writer(update.profileID, value)
+                } else {
+                    try deleter(update.profileID)
+                }
+                touchedProfileIDs.append(update.profileID)
+            } catch {
+                let rollbackReason = rollback(
+                    profileIDs: touchedProfileIDs.reversed(),
+                    snapshots: snapshots,
+                    writer: writer,
+                    deleter: deleter
+                )
+                throw Failure(
+                    profileID: update.profileID,
+                    operation: update.value == nil ? "delete" : "save",
+                    reason: error.localizedDescription,
+                    rollbackReason: rollbackReason
+                )
+            }
+        }
+    }
+
+    private static func deduplicated(_ updates: [ModelCredentialUpdate]) -> [ModelCredentialUpdate] {
+        var result: [ModelCredentialUpdate] = []
+        var indexByProfileID: [String: Int] = [:]
+        for update in updates {
+            if let index = indexByProfileID[update.profileID] {
+                result[index] = update
+            } else {
+                indexByProfileID[update.profileID] = result.count
+                result.append(update)
+            }
+        }
+        return result
+    }
+
+    private static func requiresMutation(
+        _ update: ModelCredentialUpdate,
+        from snapshot: Snapshot
+    ) -> Bool {
+        switch (snapshot, update.value) {
+        case (.missing, nil): false
+        case (.value(let current), .some(let replacement)): current != replacement
+        default: true
+        }
+    }
+
+    private static func rollback(
+        profileIDs: ReversedCollection<[String]>,
+        snapshots: [String: Snapshot],
+        writer: KeyWriter,
+        deleter: KeyDeleter
+    ) -> String? {
+        var failures: [String] = []
+        for profileID in profileIDs {
+            guard let snapshot = snapshots[profileID] else { continue }
+            do {
+                switch snapshot {
+                case .missing:
+                    try deleter(profileID)
+                case .value(let value):
+                    try writer(profileID, value)
+                }
+            } catch {
+                failures.append("\(profileID): \(error.localizedDescription)")
+            }
+        }
+        return failures.isEmpty ? nil : failures.joined(separator: "; ")
+    }
+}
+
+/// Security boundary for deciding whether a key-stripped profile may keep a
+/// locally stored credential. Unlike network consent (provider + origin), API
+/// keys are scoped to the complete service base because custom gateway paths
+/// commonly identify different tenants.
+private struct ModelCredentialScopeIdentity: Equatable {
+    let provider: String
+    let serviceBaseURL: String
+
+    init?(profile: ModelProfile) {
+        let baseURL = profile.effectiveBaseURL
+        guard let endpoint = RemoteAIEndpointIdentity(
+            provider: profile.provider,
+            baseURL: baseURL
+        ), let components = URLComponents(string: baseURL) else { return nil }
+
+        var path = components.percentEncodedPath
+        while path.hasSuffix("/") { path.removeLast() }
+        let concreteEndpointSuffixes = [
+            "/v1/audio/transcriptions",
+            "/v1/chat/completions",
+            "/audio/transcriptions",
+            "/chat/completions"
+        ]
+        let lowercasePath = path.lowercased()
+        if let suffix = concreteEndpointSuffixes.first(where: {
+            lowercasePath.hasSuffix($0)
+        }) {
+            path.removeLast(suffix.count)
+            while path.hasSuffix("/") { path.removeLast() }
+        }
+
+        var normalizedURL = endpoint.origin + path
+        if let query = components.percentEncodedQuery, !query.isEmpty {
+            normalizedURL += "?\(query)"
+        }
+        provider = endpoint.provider
+        serviceBaseURL = normalizedURL
+    }
+}
+
 /// What a scenario/config import changed (or would change, for a preview).
 struct ScenarioImportSummary: Equatable {
     var name: String = ""
@@ -8,6 +197,9 @@ struct ScenarioImportSummary: Equatable {
     var llmProfileSet = false
     var dictationApplied = false
     var vocabBooksImported: Int = 0
+    /// A present vocab section replaces the recipient's complete book list and
+    /// global mounts, including when that snapshot is empty.
+    var vocabApplied = false
     var importedWorkflows: Int = 0
     var importedWidgets: Int = 0
     /// Definitions retained for round-trip compatibility but not executable by
@@ -33,7 +225,7 @@ struct ScenarioImportSummary: Equatable {
     var skippedSections: [String] = []
 }
 
-private struct DictationImport {
+struct DictationImport {
     let activeWorkflowID: String?
     let legacyMode: String?
     let translateTarget: String?
@@ -41,7 +233,6 @@ private struct DictationImport {
     let invalidWidgetCount: Int
     let workflows: [WorkflowDefinition]
     let invalidWorkflowCount: Int
-    let hasLegacyUserModes: Bool
     let requiresMigration: Bool
 
     var hasImportedDictation: Bool {
@@ -53,7 +244,23 @@ private struct DictationImport {
     }
 }
 
-private struct WorkflowSupportAssessment {
+struct LegacyModeWidgetImport {
+    let widgets: [WorkflowWidget]
+    let invalidCount: Int
+}
+
+enum LegacyModeWidgetDecode {
+    case widget(WorkflowWidget)
+    case noLLMContent
+    case invalid
+}
+
+struct VocabSnapshot {
+    let books: [VocabBook]
+    let globalMountIDs: [String]
+}
+
+struct WorkflowSupportAssessment {
     let unsupportedWidgets: Int
     let unsupportedWorkflows: Int
     let adaptedWorkflows: Int
@@ -70,26 +277,31 @@ enum ScenarioImporter {
 
     enum ImportError: LocalizedError {
         case notAScenario
+        case invalidSection(name: String, reason: String)
 
         var errorDescription: String? {
-            "This file is not a Fonos scenario export."
+            switch self {
+            case .notAScenario:
+                "This file is not a Fonos scenario export."
+            case .invalidSection(let name, let reason):
+                "The \(name) section is invalid: \(reason)"
+            }
         }
     }
 
-    /// Writes an imported profile's API key. Injectable for tests; defaults to
-    /// the models Keychain (never UserDefaults).
-    typealias KeyWriter = @Sendable (_ profileID: String, _ apiKey: String) -> Void
-    static let defaultKeyWriter: KeyWriter = { id, key in
-        try? KeychainStore(service: "com.fonos.models").set(key, forKey: id)
-    }
+    /// Injectable credential operations for tests. All operations throw so an
+    /// import cannot claim success after a Keychain failure.
+    typealias KeyReader = ModelCredentialTransaction.KeyReader
+    typealias KeyWriter = ModelCredentialTransaction.KeyWriter
+    typealias KeyDeleter = ModelCredentialTransaction.KeyDeleter
+    static let defaultKeyReader = ModelCredentialTransaction.defaultReader
+    static let defaultKeyWriter = ModelCredentialTransaction.defaultWriter
+    static let defaultKeyDeleter = ModelCredentialTransaction.defaultDeleter
 
     /// Dry-run: what an import of `data` would change, without mutating anything.
     /// Used by the import preview sheet.
     static func preview(data: Data) throws -> ScenarioImportSummary {
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw ImportError.notAScenario
-        }
-        return summarize(root)
+        try summarize(normalizedRoot(data: data))
     }
 
     /// Parses `data` and applies the iOS-relevant sections. Returns the
@@ -98,17 +310,25 @@ enum ScenarioImporter {
     static func apply(data: Data,
                       to config: AppConfig,
                       vocabStore: VocabStore,
-                      keyWriter: KeyWriter = defaultKeyWriter) throws -> (AppConfig, ScenarioImportSummary) {
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw ImportError.notAScenario
-        }
+                      keyReader: KeyReader = defaultKeyReader,
+                      keyWriter: KeyWriter = defaultKeyWriter,
+                      keyDeleter: KeyDeleter = defaultKeyDeleter) throws -> (AppConfig, ScenarioImportSummary) {
+        // Parse, normalize legacy flat model bundles, and validate every
+        // destructive section before any Keychain or VocabStore mutation.
+        let root = try normalizedRoot(data: data)
 
         let priorActiveWorkflowID = config.activeVoiceWorkflowID
         var config = config
         var summary = ScenarioImportSummary(name: root["name"] as? String ?? "")
+        var credentialUpdates: [ModelCredentialUpdate] = []
 
         if let models = root["models"] as? [String: Any] {
-            applyModels(models, to: &config, summary: &summary, keyWriter: keyWriter)
+            applyModels(
+                models,
+                to: &config,
+                summary: &summary,
+                credentialUpdates: &credentialUpdates
+            )
         }
         if let dictation = root["dictation"] as? [String: Any] {
             applyDictation(
@@ -118,27 +338,135 @@ enum ScenarioImporter {
                 summary: &summary
             )
         }
-        if let vocab = root["vocab"] as? [String: Any] {
-            applyVocab(vocab, to: vocabStore, summary: &summary)
-        }
         appendSkippedRootSections(root, to: &summary)
+
+        // Perform all fallible external mutations only after the complete
+        // config has been parsed and validated. VocabStore is updated last and
+        // has no throwing operations, so a Keychain error leaves config and
+        // vocabulary untouched.
+        try ModelCredentialTransaction.apply(
+            credentialUpdates,
+            reader: keyReader,
+            writer: keyWriter,
+            deleter: keyDeleter
+        )
+        if let vocab = root["vocab"] as? [String: Any] {
+            try applyVocab(vocab, to: vocabStore, summary: &summary)
+        }
         return (config, summary)
     }
 
-    private static func applyModels(
+    static let scenarioSectionNames = [
+        "models", "dictation", "speech", "vocab", "hotkeys"
+    ]
+
+    /// Mirrors desktop `parse_saved_scenario`: a scenario must carry at least
+    /// one non-null section. The old flat models-only bundle is normalized into
+    /// a models section before validation.
+    static func normalizedRoot(data: Data) throws -> [String: Any] {
+        guard var root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw ImportError.notAScenario
+        }
+
+        let hasSection = scenarioSectionNames.contains { name in
+            guard let value = root[name] else { return false }
+            return !(value is NSNull)
+        }
+        if !hasSection {
+            guard let profiles = root["profiles"] as? [Any],
+                  let assignments = root["assignments"] as? [String: Any] else {
+                throw ImportError.notAScenario
+            }
+            root["models"] = [
+                "profiles": profiles,
+                "assignments": assignments
+            ]
+            root.removeValue(forKey: "profiles")
+            root.removeValue(forKey: "assignments")
+        }
+
+        for name in scenarioSectionNames {
+            guard let value = root[name], !(value is NSNull) else { continue }
+            guard value is [String: Any] else {
+                throw ImportError.invalidSection(name: name, reason: "expected an object")
+            }
+        }
+        if let models = root["models"] as? [String: Any] {
+            try validateModelsSection(models)
+        }
+        if let vocab = root["vocab"] as? [String: Any] {
+            _ = try decodeVocabSnapshot(vocab)
+        }
+        return root
+    }
+
+    static func validateModelsSection(_ models: [String: Any]) throws {
+        if let profiles = models["profiles"], !(profiles is [Any]) {
+            throw ImportError.invalidSection(
+                name: "models",
+                reason: "profiles must be an array"
+            )
+        }
+        guard let rawAssignments = models["assignments"] else { return }
+        guard let assignments = rawAssignments as? [String: Any] else {
+            throw ImportError.invalidSection(
+                name: "models",
+                reason: "assignments must be an object"
+            )
+        }
+        let stringAssignments = [
+            "stt_profile", "llm_profile", "tts_profile", "sts_voice_profile",
+            "listen_voice_profile", "sts_voice", "listen_voice"
+        ]
+        for key in stringAssignments where assignments[key] != nil {
+            guard assignments[key] is String else {
+                throw ImportError.invalidSection(
+                    name: "models",
+                    reason: "assignments.\(key) must be a string"
+                )
+            }
+        }
+    }
+
+    static func applyModels(
         _ models: [String: Any],
         to config: inout AppConfig,
         summary: inout ScenarioImportSummary,
-        keyWriter: KeyWriter
+        credentialUpdates: inout [ModelCredentialUpdate]
     ) {
+        let existingProfiles = Dictionary(
+            config.modelProfiles.map { ($0.id, $0) },
+            uniquingKeysWith: { _, last in last }
+        )
+        var finalEntries: [String: (profile: ModelProfile, apiKey: String?)] = [:]
+        var profileOrder: [String] = []
+
         for entry in models["profiles"] as? [[String: Any]] ?? [] {
             guard let profile = mapProfile(entry) else { continue }
             upsert(profile, into: &config.modelProfiles)
             summary.importedProfiles += 1
-            if let key = entry["api_key"] as? String, !key.isEmpty {
-                keyWriter(profile.id, key)
-            } else {
+            let apiKey = (entry["api_key"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty
+            if apiKey == nil {
                 summary.profilesNeedingKeys += 1
+            }
+            if finalEntries[profile.id] == nil { profileOrder.append(profile.id) }
+            finalEntries[profile.id] = (profile, apiKey)
+        }
+
+        for profileID in profileOrder {
+            guard let incoming = finalEntries[profileID] else { continue }
+            if let apiKey = incoming.apiKey {
+                credentialUpdates.append(ModelCredentialUpdate(profileID: profileID, value: apiKey))
+            } else if existingProfiles[profileID].map({
+                !hasSameCredentialScope($0, incoming.profile)
+            }) ?? true {
+                // A key-stripped scenario may preserve a locally entered key
+                // only when both provider and network origin are unchanged.
+                // New profiles and changed destinations fail closed by
+                // removing any orphaned/stale credential with the same id.
+                credentialUpdates.append(ModelCredentialUpdate(profileID: profileID, value: nil))
             }
         }
         guard let assignments = models["assignments"] as? [String: Any] else { return }
@@ -152,372 +480,10 @@ enum ScenarioImporter {
         }
     }
 
-    private static func applyDictation(
-        _ dictation: [String: Any],
-        priorActiveWorkflowID: String,
-        to config: inout AppConfig,
-        summary: inout ScenarioImportSummary
-    ) {
-        let imported = decodeDictation(dictation)
-        if let mode = imported.legacyMode {
-            config.activeModeID = mode
-            summary.dictationApplied = true
-        }
-        if let target = imported.translateTarget {
-            config.translateTargetLanguage = target
-            summary.dictationApplied = true
-        }
-        if imported.hasLegacyUserModes {
-            summary.skippedSections.append("dictation.user_modes (legacy)")
-        }
-        for widget in imported.widgets { upsert(widget, into: &config.widgets) }
-        for workflow in imported.workflows { upsert(workflow, into: &config.workflows) }
-        recordWorkflowImport(imported, summary: &summary)
-
-        if imported.requiresMigration {
-            // Imported overlays were upserted first, so the legacy bridge
-            // fills only missing local recipes and never replaces desktop
-            // definitions with the same id.
-            WorkflowMigration.migrate(&config)
-        }
-        if let target = imported.translateTarget,
-           !imported.widgets.contains(where: { $0.id == "llm.translate" }) {
-            WorkflowMigration.synchronizeBuiltinTranslateTarget(target, in: &config)
-        }
-        applyWorkflowSelection(
-            imported,
-            priorActiveWorkflowID: priorActiveWorkflowID,
-            to: &config,
-            summary: &summary
-        )
+    static func hasSameCredentialScope(_ lhs: ModelProfile, _ rhs: ModelProfile) -> Bool {
+        guard let lhs = ModelCredentialScopeIdentity(profile: lhs),
+              let rhs = ModelCredentialScopeIdentity(profile: rhs) else { return false }
+        return lhs == rhs
     }
 
-    private static func applyWorkflowSelection(
-        _ imported: DictationImport,
-        priorActiveWorkflowID: String,
-        to config: inout AppConfig,
-        summary: inout ScenarioImportSummary
-    ) {
-        let requestedWorkflowID = imported.activeWorkflowID
-            ?? (imported.hasImportedDictation ? "wf.dictation" : nil)
-            ?? imported.mappedLegacyWorkflowID
-            ?? priorActiveWorkflowID.nilIfEmpty
-        let selectedWorkflow = firstRunnableMicrophone(
-            catalog: config.workflowCatalog,
-            config: config,
-            importedActiveWorkflowID: imported.activeWorkflowID,
-            hasImportedDictation: imported.hasImportedDictation,
-            mappedLegacyWorkflowID: imported.mappedLegacyWorkflowID,
-            priorActiveWorkflowID: priorActiveWorkflowID
-        )
-        config.activeVoiceWorkflowID = selectedWorkflow?.id ?? ""
-        recordSelection(
-            requestedWorkflowID: requestedWorkflowID,
-            selectedWorkflow: selectedWorkflow,
-            in: &summary
-        )
-    }
-
-    private static func applyVocab(
-        _ vocab: [String: Any],
-        to vocabStore: VocabStore,
-        summary: inout ScenarioImportSummary
-    ) {
-        for object in vocab["vocab_books"] as? [[String: Any]] ?? [] {
-            guard let bookData = try? JSONSerialization.data(withJSONObject: object),
-                  let book = try? JSONDecoder().decode(VocabBook.self, from: bookData),
-                  !book.id.isEmpty else { continue }
-            vocabStore.upsert(book)
-            summary.vocabBooksImported += 1
-        }
-        for id in vocab["global_vocab_books"] as? [String] ?? [] {
-            vocabStore.setMounted(true, bookID: id, forKey: VocabStore.globalMountKey)
-        }
-    }
-
-    /// Counts what an import would change, without mutating (for the preview).
-    private static func summarize(_ root: [String: Any]) -> ScenarioImportSummary {
-        var summary = ScenarioImportSummary(name: root["name"] as? String ?? "")
-        if let models = root["models"] as? [String: Any] {
-            summarizeModels(models, in: &summary)
-        }
-        if let dictation = root["dictation"] as? [String: Any] {
-            summarizeDictation(dictation, root: root, in: &summary)
-        }
-        if let vocab = root["vocab"] as? [String: Any] {
-            summary.vocabBooksImported = (vocab["vocab_books"] as? [[String: Any]] ?? [])
-                .filter { ($0["id"] as? String)?.isEmpty == false }.count
-        }
-        appendSkippedRootSections(root, to: &summary)
-        return summary
-    }
-
-    private static func summarizeModels(
-        _ models: [String: Any],
-        in summary: inout ScenarioImportSummary
-    ) {
-        for entry in models["profiles"] as? [[String: Any]] ?? [] {
-            guard (entry["id"] as? String)?.isEmpty == false else { continue }
-            summary.importedProfiles += 1
-            let hasKey = (entry["api_key"] as? String).map { !$0.isEmpty } ?? false
-            if !hasKey { summary.profilesNeedingKeys += 1 }
-        }
-        guard let assignments = models["assignments"] as? [String: Any] else { return }
-        summary.sttProfileSet = assignments["stt_profile"] is String
-        summary.llmProfileSet = assignments["llm_profile"] is String
-    }
-
-    private static func summarizeDictation(
-        _ dictation: [String: Any],
-        root: [String: Any],
-        in summary: inout ScenarioImportSummary
-    ) {
-        let imported = decodeDictation(dictation)
-        summary.dictationApplied = imported.legacyMode != nil
-            || imported.translateTarget != nil
-            || imported.activeWorkflowID != nil
-        if imported.hasLegacyUserModes {
-            summary.skippedSections.append("dictation.user_modes (legacy)")
-        }
-        recordWorkflowImport(imported, summary: &summary)
-
-        // Preview selection against imported overlays plus iOS builtins. Apply
-        // also considers the recipient's prior active recipe before fallback.
-        let previewConfig = makePreviewConfig(root: root, imported: imported)
-        let requestedWorkflowID = imported.activeWorkflowID
-            ?? (imported.hasImportedDictation ? "wf.dictation" : nil)
-            ?? imported.mappedLegacyWorkflowID
-        let selectedWorkflow = firstRunnableMicrophone(
-            catalog: previewConfig.workflowCatalog,
-            config: previewConfig,
-            importedActiveWorkflowID: imported.activeWorkflowID,
-            hasImportedDictation: imported.hasImportedDictation,
-            mappedLegacyWorkflowID: imported.mappedLegacyWorkflowID,
-            priorActiveWorkflowID: ""
-        )
-        recordSelection(
-            requestedWorkflowID: requestedWorkflowID,
-            selectedWorkflow: selectedWorkflow,
-            in: &summary
-        )
-    }
-
-    private static func makePreviewConfig(
-        root: [String: Any],
-        imported: DictationImport
-    ) -> AppConfig {
-        var config = AppConfig()
-        config.activeModeID = imported.legacyMode ?? config.activeModeID
-        if let models = root["models"] as? [String: Any] {
-            config.modelProfiles = (models["profiles"] as? [[String: Any]] ?? [])
-                .compactMap(mapProfile)
-            if let assignments = models["assignments"] as? [String: Any] {
-                config.sttProfile = ModelProfileReference.normalized(
-                    assignments["stt_profile"] as? String ?? ""
-                )
-                config.llmProfile = ModelProfileReference.normalized(
-                    assignments["llm_profile"] as? String ?? ""
-                )
-            }
-        }
-        config.widgets = imported.widgets
-        config.workflows = imported.workflows
-        if imported.requiresMigration { WorkflowMigration.migrate(&config) }
-        return config
-    }
-
-    private static func decodeDictation(_ dictation: [String: Any]) -> DictationImport {
-        let widgets: ([WorkflowWidget], invalid: Int) = decodeEntries(dictation["user_widgets"])
-        let workflows: ([WorkflowDefinition], invalid: Int) = decodeEntries(dictation["user_workflows"])
-        let legacyMode = (dictation["dictation_mode"] as? String)?.nilIfEmpty
-        return DictationImport(
-            activeWorkflowID: (dictation["active_voice_workflow"] as? String)?.nilIfEmpty,
-            legacyMode: legacyMode,
-            translateTarget: (dictation["translate_target"] as? String)?.nilIfEmpty,
-            widgets: widgets.0,
-            invalidWidgetCount: widgets.invalid,
-            workflows: workflows.0,
-            invalidWorkflowCount: workflows.invalid,
-            hasLegacyUserModes: hasLegacyUserModes(dictation["user_modes"]),
-            requiresMigration: legacyMode != nil
-                || dictation["user_widgets"] != nil
-                || dictation["user_workflows"] != nil
-        )
-    }
-
-    private static func recordWorkflowImport(
-        _ imported: DictationImport,
-        summary: inout ScenarioImportSummary
-    ) {
-        summary.importedWidgets = imported.widgets.count
-        summary.importedWorkflows = imported.workflows.count
-        let support = assessSupport(widgets: imported.widgets, workflows: imported.workflows)
-        summary.unsupportedWidgets = support.unsupportedWidgets + imported.invalidWidgetCount
-        summary.unsupportedWorkflows = support.unsupportedWorkflows + imported.invalidWorkflowCount
-        summary.adaptedWorkflows = support.adaptedWorkflows
-    }
-
-    private static func appendSkippedRootSections(
-        _ root: [String: Any],
-        to summary: inout ScenarioImportSummary
-    ) {
-        if root["speech"] != nil { summary.skippedSections.append("speech") }
-        if root["hotkeys"] != nil { summary.skippedSections.append("hotkeys") }
-    }
-
-    private static func decodeEntries<T: Decodable>(_ rawValue: Any?) -> ([T], invalid: Int) {
-        guard let rawValue else { return ([], 0) }
-        guard let entries = rawValue as? [Any] else { return ([], 1) }
-        var values: [T] = []
-        var invalid = 0
-        let decoder = JSONDecoder()
-        for entry in entries {
-            guard JSONSerialization.isValidJSONObject(entry),
-                  let data = try? JSONSerialization.data(withJSONObject: entry),
-                  let value = try? decoder.decode(T.self, from: data) else {
-                invalid += 1
-                continue
-            }
-            values.append(value)
-        }
-        return (values, invalid)
-    }
-
-    private static func hasLegacyUserModes(_ value: Any?) -> Bool {
-        switch value {
-        case nil, is NSNull:
-            false
-        case let object as [String: Any]:
-            !object.isEmpty
-        case let array as [Any]:
-            !array.isEmpty
-        default:
-            true
-        }
-    }
-
-    private static func upsert<T: Identifiable>(_ value: T, into values: inout [T])
-    where T.ID: Equatable {
-        if let index = values.firstIndex(where: { $0.id == value.id }) {
-            values[index] = value
-        } else {
-            values.append(value)
-        }
-    }
-
-    private static func assessSupport(
-        widgets: [WorkflowWidget],
-        workflows: [WorkflowDefinition]
-    ) -> WorkflowSupportAssessment {
-        let catalog = WorkflowCatalog.effective(userWidgets: widgets, userWorkflows: workflows)
-        let unsupportedWidgets = widgets.filter { !isSupported($0) }.count
-        let engine = VoiceWorkflowEngine()
-        var unsupportedWorkflows = 0
-        var adaptedWorkflows = 0
-
-        for workflow in workflows {
-            guard (try? engine.validate(definition: workflow, catalog: catalog)) != nil else {
-                unsupportedWorkflows += 1
-                continue
-            }
-            if workflow.outputs.contains(where: { catalog.widget(id: $0)?.typeTag == "insert" }) {
-                adaptedWorkflows += 1
-            }
-        }
-        return WorkflowSupportAssessment(
-            unsupportedWidgets: unsupportedWidgets,
-            unsupportedWorkflows: unsupportedWorkflows,
-            adaptedWorkflows: adaptedWorkflows
-        )
-    }
-
-    /// Selection order mirrors the product contract for a voice surface:
-    /// explicit iOS round-trip identity, imported desktop wf.dictation, mapped
-    /// legacy preference, the recipient's prior active recipe, then the first
-    /// runnable microphone recipe.
-    private static func firstRunnableMicrophone(
-        catalog: WorkflowCatalog,
-        config: AppConfig,
-        importedActiveWorkflowID: String?,
-        hasImportedDictation: Bool,
-        mappedLegacyWorkflowID: String?,
-        priorActiveWorkflowID: String
-    ) -> WorkflowDefinition? {
-        var preferredIDs: [String] = []
-        if let importedActiveWorkflowID { preferredIDs.append(importedActiveWorkflowID) }
-        if hasImportedDictation { preferredIDs.append("wf.dictation") }
-        if let mappedLegacyWorkflowID { preferredIDs.append(mappedLegacyWorkflowID) }
-        if !priorActiveWorkflowID.isEmpty { preferredIDs.append(priorActiveWorkflowID) }
-
-        var visited = Set<String>()
-        for id in preferredIDs where visited.insert(id).inserted {
-            guard let workflow = catalog.workflow(id: id),
-                  isRunnableMicrophone(workflow, catalog: catalog, config: config) else { continue }
-            return workflow
-        }
-        return catalog.workflows.first { workflow in
-            visited.insert(workflow.id).inserted
-                && isRunnableMicrophone(workflow, catalog: catalog, config: config)
-        }
-    }
-
-    private static func isRunnableMicrophone(
-        _ workflow: WorkflowDefinition,
-        catalog: WorkflowCatalog,
-        config: AppConfig
-    ) -> Bool {
-        guard let validation = try? VoiceWorkflowOperationalValidator.validateMicrophone(
-            definition: workflow,
-            catalog: catalog,
-            config: config
-        ) else { return false }
-        return validation.sourceKind == .microphone
-    }
-
-    private static func recordSelection(
-        requestedWorkflowID: String?,
-        selectedWorkflow: WorkflowDefinition?,
-        in summary: inout ScenarioImportSummary
-    ) {
-        summary.selectedWorkflowID = selectedWorkflow?.id ?? ""
-        summary.selectedWorkflowName = selectedWorkflow?.name ?? ""
-        summary.noRunnableWorkflow = selectedWorkflow == nil
-        summary.activeWorkflowAdjusted = requestedWorkflowID.map { requested in
-            selectedWorkflow?.id != requested
-        } ?? false
-    }
-
-    private static func isSupported(_ widget: WorkflowWidget) -> Bool {
-        switch widget.role {
-        case .source:
-            return ["microphone", "provided_audio"].contains(widget.typeTag)
-        case .processor:
-            return ["stt", "llm"].contains(widget.typeTag)
-        case .output:
-            return ["insert", "return_to_caller", "clipboard"].contains(widget.typeTag)
-        case .unknown:
-            return false
-        }
-    }
-
-    /// Maps a desktop profile JSON entry ({id, name, provider, model,
-    /// base_url, capabilities}) onto the iOS ModelProfile shape.
-    private static func mapProfile(_ entry: [String: Any]) -> ModelProfile? {
-        guard let id = entry["id"] as? String, !id.isEmpty else { return nil }
-        return ModelProfile(
-            id: id,
-            name: entry["name"] as? String ?? id,
-            provider: entry["provider"] as? String ?? "custom",
-            modelID: entry["model"] as? String
-                ?? entry["model_id"] as? String
-                ?? "",
-            baseURL: entry["base_url"] as? String,
-            capabilities: entry["capabilities"] as? [String] ?? ["llm"],
-            sttAPI: entry["stt_api"] as? String
-        )
-    }
-}
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

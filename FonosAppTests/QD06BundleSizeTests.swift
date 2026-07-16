@@ -104,18 +104,20 @@ struct QD06BundleSizeTests {
 
     @Test("Package.resolved contains only lightweight/system-bridging dependencies")
     func packageResolvedLightweightDeps() throws {
-        // Find Package.resolved relative to the test bundle's source package
-        let possiblePaths = [
-            "/Users/ethan/Projects/design/FonosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
-            "/Users/ethan/Projects/design/fonos-ios/Package.resolved",
+        // Resolve from this source file so the check works in any clone or
+        // worktree instead of silently looking in one developer's old path.
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let possibleURLs = [
+            repositoryRoot.appendingPathComponent(
+                "FonosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+            ),
+            repositoryRoot.appendingPathComponent("Package.resolved"),
         ]
 
-        var resolvedURL: URL?
-        for path in possiblePaths {
-            if FileManager.default.fileExists(atPath: path) {
-                resolvedURL = URL(fileURLWithPath: path)
-                break
-            }
+        let resolvedURL = possibleURLs.first {
+            FileManager.default.fileExists(atPath: $0.path)
         }
 
         guard let url = resolvedURL,

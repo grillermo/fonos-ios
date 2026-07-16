@@ -35,9 +35,9 @@ struct ModelProfile: Codable, Equatable, Hashable, Identifiable, Sendable {
         sttAPI == "chat" ? "chat" : "whisper"
     }
 
-    /// Scenario contract stores a service base URL, never a concrete chat
-    /// endpoint. Canonicalizing here keeps iOS-authored profiles executable on
-    /// desktop, whose client appends `/v1/chat/completions` itself.
+    /// Scenario contract stores a service base URL, never a concrete STT or
+    /// chat endpoint. Canonicalizing here keeps iOS-authored profiles
+    /// executable on desktop, whose clients append their route themselves.
     var portableBaseURL: String? {
         Self.normalizeBaseURL(baseURL)
     }
@@ -85,7 +85,15 @@ struct ModelProfile: Codable, Equatable, Hashable, Identifiable, Sendable {
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !value.isEmpty else { return nil }
         let lowercase = value.lowercased()
-        let suffixes = ["/v1/chat/completions", "/chat/completions"]
+        // Longer `/v1/...` routes must be checked first: every one also ends
+        // in its shorter counterpart, and removing only that tail would leave
+        // a stray `/v1` for desktop to append to again.
+        let suffixes = [
+            "/v1/audio/transcriptions",
+            "/v1/chat/completions",
+            "/audio/transcriptions",
+            "/chat/completions"
+        ]
         if let suffix = suffixes.first(where: { lowercase.hasSuffix($0) }) {
             value.removeLast(suffix.count)
             value = value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

@@ -48,16 +48,6 @@ private final class MockSpeechRecognizer: SpeechRecognizerProtocol, @unchecked S
 
 struct INV03AppleSTTTests {
 
-    // --- Protocol conformance ---
-
-    @Test("AppleSTT conforms to STTProvider protocol")
-    func protocolConformance() throws {
-        // Compile-time assertion: if AppleSTT doesn't conform, this cast fails to compile.
-        let stt: any STTProvider = AppleSTT()
-        _ = stt
-        #expect(Bool(true))
-    }
-
     // --- Happy path ---
 
     @Test("AppleSTT returns non-empty transcript from mocked recognizer")
