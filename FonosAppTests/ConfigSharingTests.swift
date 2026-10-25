@@ -349,6 +349,40 @@ struct ConfigDeepLinkTests {
         let decoded = try? payload.map { try ConfigBundleCodec.decode($0) } ?? nil
         #expect(decoded.map { obj($0)["name"] as? String } == "Shared")
     }
+
+    @Test("fonos://model decodes to one STT profile assigned as default")
+    func modelLinkBuildsProfile() throws {
+        let url = URL(string: "fonos://model?name=mema&base_url=http://192.168.1.3:8787&model=parakeet&api_key=secret")!
+        let root = obj(try ConfigBundleCodec.decode(url.absoluteString))
+        let models = try #require(root["models"] as? [String: Any])
+        let profile = try #require((models["profiles"] as? [[String: Any]])?.first)
+        #expect(profile["id"] as? String == "link-192-168-1-3-parakeet")
+        #expect(profile["provider"] as? String == "custom")
+        #expect(profile["capabilities"] as? [String] == ["stt"])
+        #expect(profile["api_key"] as? String == "secret")
+        #expect((models["assignments"] as? [String: String]) == ["stt_profile": "link-192-168-1-3-parakeet"])
+        // Models-only: applying it leaves dictation and vocab alone.
+        #expect(root["dictation"] == nil && root["vocab"] == nil)
+    }
+
+    @Test("fonos://model rejects missing fields and public clear-text HTTP")
+    func modelLinkRejectsInvalid() {
+        for link in [
+            "fonos://model?model=parakeet",
+            "fonos://model?base_url=http://192.168.1.3:8787",
+            "fonos://model?base_url=http://example.com&model=x",
+            "fonos://model?base_url=https://example.com&model=x&capabilities=tts"
+        ] {
+            #expect(throws: ConfigBundleCodec.CodecError.self) { try ConfigBundleCodec.decode(link) }
+        }
+    }
+
+    @Test("fonos://model profiles are offered for remote-processing consent")
+    func modelLinkRemoteProfiles() throws {
+        let data = try ConfigBundleCodec.decode("fonos://model?base_url=http://192.168.1.3:8787&model=qwen")
+        let profiles = ScenarioImporter.remoteProfiles(data: data)
+        #expect(profiles.map(\.modelID) == ["qwen"])
+    }
 }
 
 // MARK: - ScenarioImporter preview + keys

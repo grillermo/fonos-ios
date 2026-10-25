@@ -13,6 +13,7 @@ extension Notification.Name {
     /// Posted when the app receives a `fonos://config?d=…` deep link (a shared
     /// config bundle, e.g. from scanning a QR with the system Camera). userInfo
     /// carries the raw payload under "payload"; the receiver decodes + previews.
+    /// `fonos://model?…` links (one model profile) travel the same way.
     static let fonosImportConfig = Notification.Name("com.fonos.ios.importConfig")
 }
 
@@ -119,7 +120,7 @@ enum DeepLinkRouter {
             )
             return routed
 
-        case "config":
+        case "config", "model":
             // Pass the whole URL through; the receiver decodes tolerantly and
             // shows a preview before applying anything.
             let request = ConfigImportDeepLinkRequest(payload: url.absoluteString)

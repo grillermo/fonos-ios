@@ -23,3 +23,12 @@ A device must be registered on the developer portal before a build is made.
 To use it with the mema server on the PC: Settings > Models, add an OpenAI-compatible
 speech model with base URL `http://192.168.1.3:8787`, the server's `WHISKER_AUTH_TOKEN` as
 the API key, and model `parakeet`, `qwen` or `whisper` (mema's profile ids; Probe lists them).
+
+Or open a model link on the phone, which adds the profile, makes it the default speech
+model and asks for remote-processing consent on one confirmation sheet:
+
+    fonos://model?name=mema&base_url=http://192.168.1.3:8787&model=parakeet&api_key=<WHISKER_AUTH_TOKEN>
+
+Optional parameters: `id`, `provider` (default `custom`), `capabilities` (`stt`, `llm` or
+`stt,llm`; default `stt`), `stt_api` (`whisper` or `chat`) and `default` (which
+capabilities to assign; default all of them).

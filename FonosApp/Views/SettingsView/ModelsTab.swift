@@ -77,7 +77,7 @@ struct ModelsTab: View {
         .sheet(item: $pendingScenarioImport) { pending in
             ConfigImportPreviewView(
                 summary: pending.summary,
-                onImport: {
+                onImport: { _ in
                     applyScenario(pending.data)
                     pendingScenarioImport = nil
                 },

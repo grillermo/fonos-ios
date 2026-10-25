@@ -123,8 +123,12 @@ struct QRScannerView: UIViewControllerRepresentable {
 /// without this confirmation.
 struct ConfigImportPreviewView: View {
     let summary: ScenarioImportSummary
-    let onImport: () -> Void
+    /// Imported profiles whose endpoint has no remote-processing consent yet.
+    var consentProfiles: [ModelProfile] = []
+    /// Called with the profiles the user allowed remote processing for.
+    let onImport: (_ allowedProfiles: [ModelProfile]) -> Void
     let onCancel: () -> Void
+    @State private var allowRemote = true
 
     var body: some View {
         NavigationStack {
@@ -162,6 +166,16 @@ struct ConfigImportPreviewView: View {
                             )
                         } else {
                             Text("Existing items with the same id are updated; nothing else is removed.")
+                        }
+                    }
+
+                    if !consentProfiles.isEmpty {
+                        Section {
+                            Toggle("Allow remote processing", isOn: $allowRemote)
+                        } header: {
+                            Text("Remote AI")
+                        } footer: {
+                            Text(consentProfiles.map(RemoteAIConsentStore.disclosure(for:)).joined(separator: "\n\n"))
                         }
                     }
 
@@ -249,7 +263,7 @@ struct ConfigImportPreviewView: View {
                     Button("Cancel") { onCancel() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Import") { onImport() }
+                    Button("Import") { onImport(allowRemote ? consentProfiles : []) }
                 }
             }
         }
@@ -402,7 +416,12 @@ struct ConfigSetsView: View {
     @State private var importError: String?
 
     private struct ExportPayload: Identifiable { let id = UUID(); let json: Data; let name: String }
-    private struct PendingImport: Identifiable { let id = UUID(); let data: Data; let summary: ScenarioImportSummary }
+    private struct PendingImport: Identifiable {
+        let id = UUID()
+        let data: Data
+        let summary: ScenarioImportSummary
+        let consentProfiles: [ModelProfile]
+    }
 
     var body: some View {
         ZStack {
@@ -469,7 +488,8 @@ struct ConfigSetsView: View {
         .sheet(item: $pendingImport) { pending in
             ConfigImportPreviewView(
                 summary: pending.summary,
-                onImport: { applyImport(pending.data); pendingImport = nil },
+                consentProfiles: pending.consentProfiles,
+                onImport: { allowed in applyImport(pending.data, granting: allowed); pendingImport = nil },
                 onCancel: { pendingImport = nil }
             )
         }
@@ -548,19 +568,25 @@ struct ConfigSetsView: View {
 
     private func handleData(_ data: Data) {
         do {
-            pendingImport = PendingImport(data: data, summary: try ScenarioImporter.preview(data: data))
+            pendingImport = PendingImport(
+                data: data,
+                summary: try ScenarioImporter.preview(data: data),
+                consentProfiles: ScenarioImporter.remoteProfiles(data: data)
+                    .filter { !RemoteAIConsentStore.isAuthorized(for: $0) }
+            )
         } catch {
             importError = error.localizedDescription
         }
     }
 
-    private func applyImport(_ data: Data) {
+    private func applyImport(_ data: Data, granting allowedProfiles: [ModelProfile] = []) {
         do {
             let (newConfig, _) = try ScenarioImporter.apply(
                 data: data,
                 to: config,
                 vocabStore: vocabStore
             )
+            allowedProfiles.forEach { RemoteAIConsentStore.grant(for: $0) }
             // Propagates through the SettingsView binding (saves + syncs Notes VM).
             config = newConfig
         } catch {

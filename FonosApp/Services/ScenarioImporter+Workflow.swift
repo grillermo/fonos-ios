@@ -84,6 +84,21 @@ extension ScenarioImporter {
         return summary
     }
 
+    /// Imported profiles that would send data to a network endpoint, one per
+    /// consent identity, so the preview can ask for that consent up front.
+    static func remoteProfiles(data: Data) -> [ModelProfile] {
+        guard let root = try? normalizedRoot(data: data),
+              let models = root["models"] as? [String: Any] else { return [] }
+        var seen = Set<RemoteAIEndpointIdentity>()
+        return (models["profiles"] as? [[String: Any]] ?? [])
+            .compactMap(mapProfile)
+            .filter { profile in
+                guard RemoteAITransportPolicy.allows(profile.effectiveBaseURL),
+                      let identity = RemoteAIConsentStore.identity(for: profile) else { return false }
+                return seen.insert(identity).inserted
+            }
+    }
+
     static func summarizeModels(
         _ models: [String: Any],
         in summary: inout ScenarioImportSummary

@@ -7,9 +7,14 @@ import Foundation
 /// bare base64url payload, an uncompressed base64 payload, or raw bundle JSON
 /// (e.g. a desktop QR that emits JSON directly). Only the URL form triggers the
 /// system Camera's "Open in Fonos".
+///
+/// A readable `fonos://model?…` link also decodes to a bundle: one model
+/// profile plus its default assignments, so it adds a model without touching
+/// anything else (see `bundleJSON(fromModelLink:)`).
 enum ConfigBundleCodec {
     static let scheme = "fonos"
     static let host = "config"
+    static let modelHost = "model"
     static let queryKey = "d"
 
     /// Bytes a QR holds at a comfortably scannable density (version 40, medium
@@ -60,6 +65,9 @@ enum ConfigBundleCodec {
         // URL form → extract the payload.
         var payload = s
         if let url = URL(string: s), url.scheme?.lowercased() == scheme {
+            if url.host?.lowercased() == modelHost {
+                return try bundleJSON(fromModelLink: url)
+            }
             guard url.host == host,
                   let p = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                     .queryItems?.first(where: { $0.name == queryKey })?.value,
@@ -75,6 +83,73 @@ enum ConfigBundleCodec {
         // Uncompressed base64(json) fallback.
         if isJSONObject(raw) { return raw }
         throw CodecError.invalid
+    }
+
+    // MARK: - Model links
+
+    /// Builds a models-only bundle from
+    /// `fonos://model?base_url=…&model=…[&name=…][&id=…][&provider=…]
+    /// [&capabilities=stt,llm][&stt_api=whisper|chat][&api_key=…][&default=stt,llm]`.
+    ///
+    /// `base_url` and `model` are required. `provider` defaults to `custom`,
+    /// `capabilities` to `stt`, and `default` to every capability, so the new
+    /// profile becomes the active STT/LLM model. Without `id`, the id is
+    /// derived from the endpoint and model, so opening the same link twice
+    /// updates the profile instead of adding a copy.
+    static func bundleJSON(fromModelLink url: URL) throws -> Data {
+        guard let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems else {
+            throw CodecError.invalid
+        }
+        func value(_ name: String) -> String? {
+            items.first(where: { $0.name == name })?.value?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty
+        }
+        func list(_ name: String) -> [String]? {
+            value(name)?.lowercased()
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        }
+
+        guard let baseURL = value("base_url"),
+              RemoteAITransportPolicy.allows(baseURL),
+              let host = URLComponents(string: baseURL)?.host,
+              let model = value("model") else {
+            throw CodecError.invalid
+        }
+        let provider = value("provider")?.lowercased() ?? "custom"
+        let capabilities = (list("capabilities") ?? ["stt"]).filter { $0 == "stt" || $0 == "llm" }
+        guard !capabilities.isEmpty else { throw CodecError.invalid }
+        let id = value("id") ?? slug("link-\(host)-\(model)")
+
+        var profile: [String: Any] = [
+            "id": id,
+            "name": value("name") ?? model,
+            "provider": provider,
+            "model": model,
+            "base_url": baseURL,
+            "capabilities": capabilities
+        ]
+        if let sttAPI = value("stt_api") { profile["stt_api"] = sttAPI }
+        if let apiKey = value("api_key") { profile["api_key"] = apiKey }
+
+        var assignments: [String: Any] = [:]
+        for capability in (list("default") ?? capabilities) where capabilities.contains(capability) {
+            assignments["\(capability)_profile"] = id
+        }
+
+        let root: [String: Any] = [
+            "version": 1,
+            "name": value("name") ?? model,
+            "models": ["profiles": [profile], "assignments": assignments]
+        ]
+        return try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])
+    }
+
+    private static func slug(_ s: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-"))
+        return String(s.lowercased().unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
     }
 
     // MARK: - Helpers

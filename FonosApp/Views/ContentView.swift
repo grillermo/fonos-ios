@@ -134,6 +134,7 @@ struct ContentView: View {
         let id = UUID()
         let data: Data
         let summary: ScenarioImportSummary
+        let consentProfiles: [ModelProfile]
     }
 
     init(modelContainer: ModelContainer) {
@@ -264,8 +265,9 @@ struct ContentView: View {
         .sheet(item: $pendingConfigImport) { pending in
             ConfigImportPreviewView(
                 summary: pending.summary,
-                onImport: {
-                    applyImportedConfig(pending.data)
+                consentProfiles: pending.consentProfiles,
+                onImport: { allowed in
+                    applyImportedConfig(pending.data, granting: allowed)
                 },
                 onCancel: {
                     configImportError = nil
@@ -298,17 +300,19 @@ struct ContentView: View {
     }
 
     /// Apply an imported config bundle to the live config, Notes VM, and storage.
-    private func applyImportedConfig(_ data: Data) {
+    private func applyImportedConfig(_ data: Data, granting allowedProfiles: [ModelProfile]) {
         do {
             let (newConfig, _) = try ScenarioImporter.apply(
                 data: data,
                 to: dictationViewModel.config,
                 vocabStore: VocabStore()
             )
+            allowedProfiles.forEach { RemoteAIConsentStore.grant(for: $0) }
             dictationViewModel.config = newConfig
             noteViewModel.config = newConfig
             AppConfigStorage.save(newConfig)
             pendingConfigImport = nil
+            selectedTab = .dictate
         } catch {
             // Keep the preview open so the user can retry after correcting a
             // Keychain or validation failure.
@@ -333,7 +337,13 @@ struct ContentView: View {
         do {
             let data = try ConfigBundleCodec.decode(payload)
             let summary = try ScenarioImporter.preview(data: data)
-            pendingConfigImport = PendingConfigImport(data: data, summary: summary)
+            let consentProfiles = ScenarioImporter.remoteProfiles(data: data)
+                .filter { !RemoteAIConsentStore.isAuthorized(for: $0) }
+            pendingConfigImport = PendingConfigImport(
+                data: data,
+                summary: summary,
+                consentProfiles: consentProfiles
+            )
         } catch {
             configImportError = error.localizedDescription
         }
