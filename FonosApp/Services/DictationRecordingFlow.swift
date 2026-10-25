@@ -317,6 +317,7 @@ extension DictationViewModel {
         definition: WorkflowDefinition,
         destination: String
     ) {
+        lastSession = nil
         guard let context = modelContext else { return }
         let legacyModeID = WorkflowMigration.legacyModeID(
             forWorkflowID: definition.id
@@ -332,12 +333,29 @@ extension DictationViewModel {
             latencyMs: processed.timings.total * 1_000
         )
         context.insert(session)
+        lastSession = session
         do {
             try context.save()
         } catch {
             // History is non-essential: match desktop DbRecorder by absorbing
             // local persistence failures instead of failing dictation.
             dictationLog.error("❌ Failed to persist workflow record: \(error.localizedDescription)")
+        }
+    }
+
+    /// Replaces the shown result with the user's edit and updates its History
+    /// entry. The raw transcript is kept, so the edit shows as the final text.
+    @MainActor
+    func updateResultText(_ text: String) {
+        guard case .result(let transcript, let processed) = recordingState,
+              text != (processed ?? transcript) else { return }
+        recordingState = .result(transcript: transcript, processed: text == transcript ? nil : text)
+        guard let session = lastSession else { return }
+        session.outputText = text
+        do {
+            try modelContext?.save()
+        } catch {
+            dictationLog.error("❌ Failed to save edited result: \(error.localizedDescription)")
         }
     }
 

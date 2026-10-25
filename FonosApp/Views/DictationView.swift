@@ -7,6 +7,8 @@ private let viewLog = Logger(subsystem: "com.fonos.ios", category: "DictationVie
 struct DictationView: View {
     @ObservedObject var viewModel: DictationViewModel
     @State private var showCopiedFeedback = false
+    @State private var editedResult = ""
+    @FocusState private var isEditingResult: Bool
 
     /// Convenience initialiser for previews and unit tests.
     /// Uses a default no-op DictationViewModel (no STT provider).
@@ -80,6 +82,13 @@ struct DictationView: View {
             }
         }
         .background { recordShortcut }
+        .onAppear { editedResult = resultText ?? "" }
+        .onChange(of: viewModel.recordingState) {
+            if let resultText { editedResult = resultText }
+        }
+        .onChange(of: isEditingResult) { _, editing in
+            if !editing { viewModel.updateResultText(editedResult) }
+        }
     }
 
     /// Return on a hardware keyboard starts or stops a recording, like a tap
@@ -88,7 +97,7 @@ struct DictationView: View {
     private var recordShortcut: some View {
         Button("Toggle Recording") { handleRecordTap() }
             .keyboardShortcut(.return, modifiers: [])
-            .disabled(viewModel.recordingState == .processing)
+            .disabled(viewModel.recordingState == .processing || isEditingResult)
             .opacity(0)
             .accessibilityHidden(true)
     }
@@ -359,6 +368,11 @@ struct DictationView: View {
     }
 
     private func handleRecordTap() {
+        // Keep an in-progress edit before the result card goes away.
+        if isEditingResult {
+            viewModel.updateResultText(editedResult)
+            isEditingResult = false
+        }
         viewLog.info("👆 handleRecordTap() — current state: \(String(describing: viewModel.recordingState))")
         switch viewModel.recordingState {
         case .idle, .result, .error:
@@ -377,9 +391,7 @@ private extension DictationView {
     // MARK: - Result Card
 
     private func resultCard(transcript: String, processed: String?) -> some View {
-        let displayText = processed ?? transcript
-
-        return VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(Color(hex: "#86efac"))
@@ -394,15 +406,32 @@ private extension DictationView {
                         .foregroundColor(Color(hex: "#86efac"))
                     .transition(.opacity)
                 }
+
+                if isEditingResult {
+                    Button("Done") { isEditingResult = false }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color(hex: "#fbbf24"))
+                } else {
+                    Button(action: copyResult) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Color(hex: "#fbbf24"))
+                    }
+                    .accessibilityLabel("Copy")
+                }
             }
 
             WorkflowOutcomeBadge(viewModel: viewModel)
 
-            Text(displayText)
+            // Editable: changes replace the result and its History entry
+            // when editing ends.
+            TextEditor(text: $editedResult)
+                .focused($isEditingResult)
                 .font(.system(size: 16))
                 .foregroundColor(Color(hex: "#fafaf9"))
-                .lineLimit(6)
-                .multilineTextAlignment(.leading)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 80, maxHeight: 200)
+                .padding(.horizontal, -5)
 
             if processed != nil && processed != transcript {
                 Divider()
@@ -428,18 +457,25 @@ private extension DictationView {
                         .strokeBorder(Color(hex: "#fafaf9").opacity(0.08), lineWidth: 1)
                 )
         )
-        .onTapGesture {
-            UIPasteboard.general.string = displayText
+    }
+
+    private func copyResult() {
+        UIPasteboard.general.string = editedResult
+        withAnimation {
+            showCopiedFeedback = true
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
             withAnimation {
-                showCopiedFeedback = true
-            }
-            Task {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                withAnimation {
-                    showCopiedFeedback = false
-                }
+                showCopiedFeedback = false
             }
         }
+    }
+
+    /// Text shown for the current result, or nil when there is none.
+    private var resultText: String? {
+        guard case .result(let transcript, let processed) = viewModel.recordingState else { return nil }
+        return processed ?? transcript
     }
 
     // MARK: - Error Card

@@ -539,6 +539,9 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
     /// Set by ContentView; nil in unit tests that don't exercise persistence.
     var modelContext: ModelContext?
 
+    /// History entry of the latest run, so an edited result can update it.
+    var lastSession: DictationSession?
+
     /// Vocab books + mounts (P1-1). Feeds STT biasing, deterministic
     /// corrections, and LLM glossaries in the compiled workflow.
     var vocabStore = VocabStore()

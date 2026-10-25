@@ -104,6 +104,23 @@ struct DictationPersistenceTests {
         #expect(sessions.first?.workflowName == "Raw")
     }
 
+    @Test("Editing the result replaces the shown text and its History entry")
+    @MainActor
+    func editedResultUpdatesHistory() async throws {
+        let container = try makeContainer()
+        let vm = DictationViewModel(sttProvider: FixedSTT(transcript: "helo world"))
+        vm.modelContext = container.mainContext
+
+        vm.finishRecording(wavData: dummyWAV())
+        try await waitForResult(vm)
+        vm.updateResultText("hello world")
+
+        #expect(vm.recordingState == .result(transcript: "helo world", processed: "hello world"))
+        let sessions = try container.mainContext.fetch(FetchDescriptor<DictationSession>())
+        #expect(sessions.map(\.outputText) == ["hello world"])
+        #expect(sessions.first?.inputText == "helo world")
+    }
+
     @Test("LLM-mode dictation persists raw transcript as input and processed text as output")
     @MainActor
     func llmModePersistsRawAndProcessed() async throws {
