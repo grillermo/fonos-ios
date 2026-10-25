@@ -240,7 +240,7 @@ extension VoiceWorkflowEngine {
             )
         }
         let supportedTypes = allowSurfaceOutputs
-            ? ["insert", "return_to_caller", "clipboard", "ios_destination"]
+            ? ["insert", "return_to_caller", "clipboard", "ios_destination", "shortcut"]
             : ["insert", "return_to_caller", "clipboard"]
         guard supportedTypes.contains(widget.typeTag) else {
             throw VoiceWorkflowCompileError.unsupportedWidget(
@@ -262,6 +262,9 @@ extension VoiceWorkflowEngine {
         if widget.typeTag == "ios_destination" {
             try validateIOSDestinationProperties(widget)
         }
+        if widget.typeTag == "shortcut" {
+            try validateShortcutProperties(widget)
+        }
     }
     private func validateInsertOutputProperties(_ widget: WorkflowWidget) throws {
         if let strategy = widget.props["strategy"] {
@@ -281,6 +284,16 @@ extension VoiceWorkflowEngine {
                     reason: "expected a boolean"
                 )
             }
+        }
+    }
+    private func validateShortcutProperties(_ widget: WorkflowWidget) throws {
+        let name = try stringProperty(widget, key: "shortcut_name", default: "")
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw VoiceWorkflowCompileError.invalidProperty(
+                widgetID: widget.id,
+                key: "shortcut_name",
+                reason: "expected a non-empty string"
+            )
         }
     }
     private func validateIOSDestinationProperties(_ widget: WorkflowWidget) throws {

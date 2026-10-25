@@ -260,6 +260,7 @@ struct WorkflowProgressView: View {
         case "clipboard": return "doc.on.clipboard"
         case "return_to_caller": return "arrow.uturn.backward"
         case "ios_destination": return "arrow.up.forward.app"
+        case "shortcut": return "square.2.layers.3d"
         default:
             return node.role == .output ? "arrow.up.forward.app" : "square.grid.2x2"
         }

@@ -99,6 +99,7 @@ struct WorkflowRecipeStrip: View {
         case "clipboard": "doc.on.clipboard"
         case "return_to_caller": "arrow.uturn.backward"
         case "ios_destination": "arrow.up.forward.app"
+        case "shortcut": "square.2.layers.3d"
         default: "square.grid.2x2"
         }
     }

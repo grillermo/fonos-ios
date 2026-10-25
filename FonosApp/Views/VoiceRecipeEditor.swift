@@ -290,7 +290,39 @@ struct VoiceRecipeEditor: View {
             .tint(amber)
             .listRowBackground(rowBackground)
 
-            if !draft.insertOutput.enabled && !draft.clipboardOutput.enabled {
+            Toggle(isOn: $draft.shortcutOutput.enabled) {
+                outputLabel(
+                    title: String(localized: "Run a Shortcut"),
+                    detail: draft.shortcutOutput.detail,
+                    icon: "square.2.layers.3d"
+                )
+            }
+            .tint(amber)
+            .listRowBackground(rowBackground)
+
+            if draft.shortcutOutput.enabled {
+                // iOS has no API to list Shortcuts, so the name is typed.
+                HStack {
+                    TextField("Shortcut name, exactly as in Shortcuts", text: $draft.shortcutOutput.shortcutName)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .foregroundColor(textPrimary)
+                    Button("Test") {
+                        if let url = ShortcutVoiceWorkflowOutput.url(
+                            shortcutName: draft.shortcutOutput.shortcutName,
+                            text: String(localized: "Test from Fonos")
+                        ) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                    .foregroundColor(amber)
+                    .disabled(draft.shortcutOutput.shortcutName
+                        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                .listRowBackground(rowBackground)
+            }
+
+            if !draft.hasAnyOutput {
                 Label("Choose at least one output.", systemImage: "exclamationmark.triangle.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.red.opacity(0.86))
@@ -432,8 +464,12 @@ private struct VoiceRecipeEditorValidator {
         if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             issues.append(String(localized: "Enter a recipe name."))
         }
-        if !draft.insertOutput.enabled && !draft.clipboardOutput.enabled {
+        if !draft.hasAnyOutput {
             issues.append(String(localized: "Choose at least one output."))
+        }
+        if draft.shortcutOutput.enabled,
+           draft.shortcutOutput.shortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append(String(localized: "Enter the name of the Shortcut to run."))
         }
     }
 
@@ -491,7 +527,7 @@ private struct VoiceRecipeEditorValidator {
         )
         do {
             if let operationalConfig {
-                _ = try VoiceWorkflowOperationalValidator.validateMicrophone(
+                _ = try VoiceWorkflowOperationalValidator.validateMainAppMicrophone(
                     definition: result.definition,
                     catalog: validationCatalog,
                     config: operationalConfig

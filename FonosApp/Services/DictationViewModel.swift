@@ -13,6 +13,37 @@ struct TextDestinationVoiceWorkflowOutput: VoiceWorkflowOutput {
     }
 }
 
+/// Runs a Shortcuts.app shortcut by name with the final text as its input.
+/// Opening another app needs the foreground, so only the main app offers it.
+struct ShortcutVoiceWorkflowOutput: VoiceWorkflowOutput {
+    let shortcutName: String
+
+    /// `shortcuts://run-shortcut?name=…&input=text&text=…`, strictly encoded
+    /// so `+`, `&` and `=` in either value survive.
+    static func url(shortcutName: String, text: String) -> URL? {
+        let unreserved = CharacterSet(charactersIn:
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        func encoded(_ value: String) -> String {
+            value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
+        }
+        let name = shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return nil }
+        return URL(string: "shortcuts://run-shortcut?name=\(encoded(name))&input=text&text=\(encoded(text))")
+    }
+
+    func deliver(text: String, context: VoiceWorkflowOutputContext) async throws {
+        guard let url = Self.url(shortcutName: shortcutName, text: text),
+              await Self.open(url) else {
+            throw DestinationError.destinationUnavailable("Shortcut “\(shortcutName)”")
+        }
+    }
+
+    @MainActor
+    private static func open(_ url: URL) async -> Bool {
+        await UIApplication.shared.open(url)
+    }
+}
+
 /// Destinations accepted by the public `fonos://record?destination=…`
 /// contract. They are resolved separately from AppConfig because a Shortcut
 /// route applies to exactly one run and must never become a persisted setting.
@@ -456,7 +487,7 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         }
         guard config.isVoiceWorkflowEnabled(workflowID),
               let definition = config.workflowCatalog.workflow(id: workflowID),
-              (try? VoiceWorkflowOperationalValidator.validateMicrophone(
+              (try? VoiceWorkflowOperationalValidator.validateMainAppMicrophone(
                 definition: definition,
                 catalog: config.workflowCatalog,
                 config: config

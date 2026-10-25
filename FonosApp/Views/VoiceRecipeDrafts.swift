@@ -106,6 +106,7 @@ struct VoiceRecipeSourceDraft: Equatable, Sendable {
 enum VoiceRecipeOutputKind: String, Equatable, Sendable {
     case insert
     case clipboard
+    case shortcut
 }
 
 struct VoiceRecipeOutputDraft: Equatable, Sendable {
@@ -118,6 +119,8 @@ struct VoiceRecipeOutputDraft: Equatable, Sendable {
     var enabled: Bool
     var pressEnter: Bool
     var initialPressEnter: Bool
+    /// Shortcuts.app shortcut run by a `.shortcut` output.
+    var shortcutName: String = ""
 
     var supportsPressEnter: Bool {
         kind == .insert && typeTag == "insert"
@@ -136,6 +139,8 @@ struct VoiceRecipeOutputDraft: Equatable, Sendable {
             return String(localized: "The main app returns the result; the keyboard inserts it.")
         case .clipboard:
             return String(localized: "Copies the same final text after earlier outputs succeed.")
+        case .shortcut:
+            return String(localized: "Opens Shortcuts and runs this shortcut with the final text as input. Main app only.")
         }
     }
 
@@ -143,6 +148,7 @@ struct VoiceRecipeOutputDraft: Equatable, Sendable {
         switch kind {
         case .insert: "out.insert"
         case .clipboard: "out.clipboard"
+        case .shortcut: "out.shortcut"
         }
     }
 
@@ -162,7 +168,8 @@ struct VoiceRecipeOutputDraft: Equatable, Sendable {
             originalProps: widget.props,
             enabled: enabled,
             pressEnter: pressEnter,
-            initialPressEnter: pressEnter
+            initialPressEnter: pressEnter,
+            shortcutName: widget.props["shortcut_name"]?.stringValue ?? ""
         )
     }
 
@@ -172,6 +179,11 @@ struct VoiceRecipeOutputDraft: Equatable, Sendable {
         if supportsPressEnter, pressEnter != initialPressEnter {
             var props = originalProps.objectValue ?? [:]
             props["press_enter"] = .bool(pressEnter)
+            propsValue = .object(props)
+        }
+        if kind == .shortcut {
+            var props = originalProps.objectValue ?? [:]
+            props["shortcut_name"] = .string(shortcutName.trimmingCharacters(in: .whitespacesAndNewlines))
             propsValue = .object(props)
         }
         return origin.materialize(WorkflowWidget(
@@ -245,9 +257,14 @@ struct VoiceRecipeDraft: Equatable, Sendable {
     var llms: [VoiceRecipeLLMDraft]
     var insertOutput: VoiceRecipeOutputDraft
     var clipboardOutput: VoiceRecipeOutputDraft
+    var shortcutOutput: VoiceRecipeOutputDraft
     var outputOrder: [VoiceRecipeOutputKind]
     var blockingIssues: [String]
     var occupiedWidgetIDs: Set<String>
+
+    var hasAnyOutput: Bool {
+        insertOutput.enabled || clipboardOutput.enabled || shortcutOutput.enabled
+    }
     var nextLLMSequence: Int
 
     static func make(
@@ -300,6 +317,7 @@ struct VoiceRecipeDraft: Equatable, Sendable {
             llms: processors.llms,
             insertOutput: outputs.insert,
             clipboardOutput: outputs.clipboard,
+            shortcutOutput: outputs.shortcut,
             outputOrder: outputs.order,
             blockingIssues: issues,
             occupiedWidgetIDs: occupied,
@@ -419,6 +437,7 @@ struct VoiceRecipeDraft: Equatable, Sendable {
     private struct OutputDrafts {
         let insert: VoiceRecipeOutputDraft
         let clipboard: VoiceRecipeOutputDraft
+        let shortcut: VoiceRecipeOutputDraft
         let order: [VoiceRecipeOutputKind]
     }
 
@@ -431,6 +450,7 @@ struct VoiceRecipeDraft: Equatable, Sendable {
     ) -> OutputDrafts {
         var originalInsertOutput: WorkflowWidget?
         var originalClipboardOutput: WorkflowWidget?
+        var originalShortcutOutput: WorkflowWidget?
         var outputOrder: [VoiceRecipeOutputKind] = []
         for outputID in outputIDs {
             guard let widget = catalog.widget(id: outputID) else {
@@ -456,6 +476,13 @@ struct VoiceRecipeDraft: Equatable, Sendable {
                 }
                 originalClipboardOutput = widget
                 outputOrder.append(.clipboard)
+            case "shortcut":
+                guard originalShortcutOutput == nil else {
+                    issues.append("This guided editor supports one Shortcut output per recipe.")
+                    continue
+                }
+                originalShortcutOutput = widget
+                outputOrder.append(.shortcut)
             default:
                 issues.append("Output '\(outputID)' is not supported by this guided editor.")
             }
@@ -499,9 +526,29 @@ struct VoiceRecipeDraft: Equatable, Sendable {
             )
         )
 
+        // No builtin Shortcut output exists: a new one is created for this
+        // recipe, an existing one is edited in place unless shared.
+        let shortcutCloneID = VoiceRecipeID.unique(
+            base: "out.shortcut.recipe-\(component)",
+            occupied: &occupied
+        )
+        let shortcutOutput = VoiceRecipeOutputDraft.make(
+            widget: originalShortcutOutput ?? VoiceRecipeDefaults.shortcutWidget,
+            kind: .shortcut,
+            enabled: originalShortcutOutput != nil,
+            origin: VoiceRecipeWidgetOrigin(
+                original: originalShortcutOutput,
+                cloneID: shortcutCloneID,
+                cloneWhenChanged: originalShortcutOutput.map {
+                    VoiceRecipeID.usageCount(of: $0.id, in: catalog) > 1
+                } ?? false
+            )
+        )
+
         return OutputDrafts(
             insert: insertOutput,
             clipboard: clipboardOutput,
+            shortcut: shortcutOutput,
             order: outputOrder
         )
     }
@@ -548,6 +595,10 @@ struct VoiceRecipeDraft: Equatable, Sendable {
 
         let insertResult = insertOutput.materialize()
         let clipboardResult = clipboardOutput.materialize()
+        let shortcutResult = shortcutOutput.materialize()
+        if let overlay = shortcutResult?.overlay {
+            VoiceRecipeID.upsert(overlay, into: &overlays)
+        }
         if let overlay = insertResult?.overlay {
             VoiceRecipeID.upsert(overlay, into: &overlays)
         }
@@ -562,10 +613,14 @@ struct VoiceRecipeDraft: Equatable, Sendable {
         if clipboardResult != nil, !orderedKinds.contains(.clipboard) {
             orderedKinds.append(.clipboard)
         }
+        if shortcutResult != nil, !orderedKinds.contains(.shortcut) {
+            orderedKinds.append(.shortcut)
+        }
         let outputs = orderedKinds.compactMap { kind -> String? in
             switch kind {
             case .insert: insertResult?.id
             case .clipboard: clipboardResult?.id
+            case .shortcut: shortcutResult?.id
             }
         }
 

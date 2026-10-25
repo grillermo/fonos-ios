@@ -262,7 +262,7 @@ struct SettingsView: View {
             get: { config.activeVoiceWorkflowID },
             set: { workflowID in
                 guard let workflow = config.workflowCatalog.workflow(id: workflowID),
-                      (try? VoiceWorkflowOperationalValidator.validateMicrophone(
+                      (try? VoiceWorkflowOperationalValidator.validateMainAppMicrophone(
                         definition: workflow,
                         catalog: config.workflowCatalog,
                         config: config
@@ -273,7 +273,7 @@ struct SettingsView: View {
     }
 
     private func isWorkflowRunnable(_ workflow: WorkflowDefinition) -> Bool {
-        (try? VoiceWorkflowOperationalValidator.validateMicrophone(
+        (try? VoiceWorkflowOperationalValidator.validateMainAppMicrophone(
             definition: workflow,
             catalog: config.workflowCatalog,
             config: config

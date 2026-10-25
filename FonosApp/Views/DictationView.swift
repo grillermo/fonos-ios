@@ -211,7 +211,7 @@ struct DictationView: View {
     }
 
     private func isWorkflowRunnable(_ workflow: WorkflowDefinition) -> Bool {
-        (try? VoiceWorkflowOperationalValidator.validateMicrophone(
+        (try? VoiceWorkflowOperationalValidator.validateMainAppMicrophone(
             definition: workflow,
             catalog: viewModel.config.workflowCatalog,
             config: viewModel.config

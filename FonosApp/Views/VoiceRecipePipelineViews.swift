@@ -33,7 +33,11 @@ struct VoiceRecipePipelinePreview: View {
                     if draft.clipboardOutput.enabled {
                         node(String(localized: "Clipboard"), icon: "doc.on.clipboard", color: outputColor)
                     }
-                    if !draft.insertOutput.enabled && !draft.clipboardOutput.enabled {
+                    if draft.shortcutOutput.enabled {
+                        node(String(localized: "Shortcut"), icon: "square.2.layers.3d", color: outputColor)
+                    }
+                    if !draft.insertOutput.enabled && !draft.clipboardOutput.enabled
+                        && !draft.shortcutOutput.enabled {
                         node(String(localized: "No output"), icon: "exclamationmark.triangle", color: .red)
                     }
                 }
@@ -71,6 +75,7 @@ struct VoiceRecipePipelinePreview: View {
         var outputs: [String] = []
         if draft.insertOutput.enabled { outputs.append("Insert") }
         if draft.clipboardOutput.enabled { outputs.append("Clipboard") }
+        if draft.shortcutOutput.enabled { outputs.append("Shortcut") }
         if outputs.isEmpty { outputs.append("none") }
         return "\(draft.source.capture.shortLabel), "
             + "then \(processors.joined(separator: ", then ")); "

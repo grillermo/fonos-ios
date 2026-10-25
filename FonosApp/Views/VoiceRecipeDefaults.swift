@@ -56,6 +56,17 @@ enum VoiceRecipeDefaults {
     static var sttWidget: WorkflowWidget { requiredBuiltin("stt.default") }
     static var insertWidget: WorkflowWidget { requiredBuiltin("out.insert") }
     static var clipboardWidget: WorkflowWidget { requiredBuiltin("out.clipboard") }
+    /// Template for a recipe's own Shortcut output; there is no builtin one.
+    static var shortcutWidget: WorkflowWidget {
+        WorkflowWidget(
+            id: "out.shortcut",
+            role: .output,
+            typeTag: "shortcut",
+            name: String(localized: "Run Shortcut"),
+            icon: "square.2.layers.3d",
+            props: .object(["shortcut_name": .string("")])
+        )
+    }
 
     private static func requiredBuiltin(_ id: String) -> WorkflowWidget {
         guard let widget = WorkflowCatalog.builtIn.widget(id: id) else {

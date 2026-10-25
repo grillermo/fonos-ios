@@ -1087,6 +1087,59 @@ struct VoiceRecipeDraftTests {
         }
     }
 
+    @Test("a Shortcut output round-trips through the editor and runs only in the main app")
+    func shortcutOutputRoundTrip() throws {
+        let definition = try #require(WorkflowCatalog.builtIn.workflow(id: "wf.dictation"))
+        var draft = VoiceRecipeDraft.make(definition: definition, catalog: .builtIn)
+        draft.shortcutOutput.enabled = true
+        draft.shortcutOutput.shortcutName = "  Log Note  "
+
+        let result = draft.materializedResult()
+        let shortcutID = try #require(result.definition.outputs.last)
+        let widget = try #require(result.widgetOverlays.first { $0.id == shortcutID })
+        #expect(widget.typeTag == "shortcut")
+        #expect(widget.props["shortcut_name"]?.stringValue == "Log Note")
+
+        var config = WorkflowMigration.migrated(AppConfig())
+        config.widgets.append(contentsOf: result.widgetOverlays)
+        config.workflows.append(result.definition)
+        let catalog = config.workflowCatalog
+        #expect((try? VoiceWorkflowOperationalValidator.validateMainAppMicrophone(
+            definition: result.definition, catalog: catalog, config: config
+        )) != nil)
+        // The keyboard cannot open Shortcuts, so the recipe is not offered there.
+        #expect((try? VoiceWorkflowOperationalValidator.validateMicrophone(
+            definition: result.definition, catalog: catalog, config: config
+        )) == nil)
+
+        // Reopening the saved recipe shows the same Shortcut.
+        let reopened = VoiceRecipeDraft.make(definition: result.definition, catalog: catalog)
+        #expect(reopened.shortcutOutput.enabled)
+        #expect(reopened.shortcutOutput.shortcutName == "Log Note")
+        #expect(reopened.materializedResult().widgetOverlays.isEmpty)
+    }
+
+    @Test("a Shortcut output with no name is rejected")
+    func shortcutOutputRequiresName() throws {
+        let definition = try #require(WorkflowCatalog.builtIn.workflow(id: "wf.dictation"))
+        var draft = VoiceRecipeDraft.make(definition: definition, catalog: .builtIn)
+        draft.shortcutOutput.enabled = true
+        let result = draft.materializedResult()
+        var config = WorkflowMigration.migrated(AppConfig())
+        config.widgets.append(contentsOf: result.widgetOverlays)
+        #expect((try? VoiceWorkflowOperationalValidator.validateMainAppMicrophone(
+            definition: result.definition, catalog: config.workflowCatalog, config: config
+        )) == nil)
+    }
+
+    @Test("Shortcut URLs encode the name and text strictly")
+    func shortcutURLEncoding() throws {
+        let url = try #require(ShortcutVoiceWorkflowOutput.url(shortcutName: "Log & Note", text: "a+b = c?"))
+        #expect(url.absoluteString
+            == "shortcuts://run-shortcut?name=Log%20%26%20Note&input=text&text=a%2Bb%20%3D%20c%3F")
+        #expect(ShortcutVoiceWorkflowOutput.url(shortcutName: " ", text: "x") == nil)
+    }
+
     @Test("untouched builtin materializes without redundant widget overlays")
     func untouchedBuiltinIsIdentity() throws {
         let definition = try #require(

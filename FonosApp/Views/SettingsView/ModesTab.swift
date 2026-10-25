@@ -177,7 +177,7 @@ struct ModesTab: View {
     }
 
     private func isWorkflowRunnable(_ workflow: WorkflowDefinition) -> Bool {
-        (try? VoiceWorkflowOperationalValidator.validateMicrophone(
+        (try? VoiceWorkflowOperationalValidator.validateMainAppMicrophone(
             definition: workflow,
             catalog: catalog,
             config: config
@@ -199,7 +199,7 @@ struct ModesTab: View {
     ) {
         let candidateCatalog = catalog(applying: result)
         do {
-            _ = try VoiceWorkflowOperationalValidator.validateMicrophone(
+            _ = try VoiceWorkflowOperationalValidator.validateMainAppMicrophone(
                 definition: result.definition,
                 catalog: candidateCatalog,
                 config: config
@@ -551,6 +551,7 @@ private struct WorkflowDefinitionRow: View {
         case "clipboard": "doc.on.clipboard"
         case "return_to_caller": "arrow.uturn.backward"
         case "ios_destination": "arrow.up.forward.app"
+        case "shortcut": "square.2.layers.3d"
         default: "square.grid.2x2"
         }
     }

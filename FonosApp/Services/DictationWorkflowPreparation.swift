@@ -88,7 +88,7 @@ extension DictationViewModel {
             catalog: catalog,
             legacyScopeID: legacyScopeID,
             supportedOutputTypes: [
-                "insert", "return_to_caller", "clipboard", "ios_destination"
+                "insert", "return_to_caller", "clipboard", "ios_destination", "shortcut"
             ],
             allowSurfaceOutputs: true,
             resolveOutput: { widget in
@@ -98,6 +98,10 @@ extension DictationViewModel {
                 case "clipboard":
                     return TextDestinationVoiceWorkflowOutput(
                         destination: AnyTextDestination(ClipboardDestination())
+                    )
+                case "shortcut":
+                    return ShortcutVoiceWorkflowOutput(
+                        shortcutName: widget.props["shortcut_name"]?.stringValue ?? ""
                     )
                 case "ios_destination":
                     guard let output = frozenOutputs[widget.id] else {

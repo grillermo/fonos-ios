@@ -10,6 +10,26 @@ struct VoiceWorkflowOperationalValidator: Sendable {
         "insert", "return_to_caller", "clipboard"
     ]
 
+    /// The main app can also open a Shortcut, which needs the foreground, so
+    /// the keyboard and background runner stay on the portable set.
+    static let mainAppOutputTypes = portableOutputTypes.union(["shortcut"])
+
+    /// `validateMicrophone` for recipes run by the main app.
+    @discardableResult
+    static func validateMainAppMicrophone(
+        definition: WorkflowDefinition,
+        catalog: WorkflowCatalog,
+        config: AppConfig
+    ) throws -> VoiceWorkflowValidation {
+        try validateMicrophone(
+            definition: definition,
+            catalog: catalog,
+            config: config,
+            supportedOutputTypes: mainAppOutputTypes,
+            allowSurfaceOutputs: true
+        )
+    }
+
     @discardableResult
     static func validateMicrophone(
         definition: WorkflowDefinition,
