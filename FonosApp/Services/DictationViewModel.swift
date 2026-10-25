@@ -454,7 +454,8 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         } else {
             workflowID = WorkflowMigration.workflowID(forLegacyModeID: id)
         }
-        guard let definition = config.workflowCatalog.workflow(id: workflowID),
+        guard config.isVoiceWorkflowEnabled(workflowID),
+              let definition = config.workflowCatalog.workflow(id: workflowID),
               (try? VoiceWorkflowOperationalValidator.validateMicrophone(
                 definition: definition,
                 catalog: config.workflowCatalog,

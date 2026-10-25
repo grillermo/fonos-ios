@@ -254,10 +254,7 @@ struct SettingsView: View {
     }
 
     private var voiceWorkflows: [WorkflowDefinition] {
-        let catalog = config.workflowCatalog
-        return catalog.workflows.filter {
-            catalog.widget(id: $0.source)?.typeTag == "microphone"
-        }
+        config.enabledVoiceWorkflows
     }
 
     private var activeWorkflowBinding: Binding<String> {

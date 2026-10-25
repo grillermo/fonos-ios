@@ -52,6 +52,11 @@ struct AppConfig: Codable, Equatable {
     /// Selected voice recipe for the main app.
     var activeVoiceWorkflowID: String = ""
 
+    /// Voice recipes the user switched off. They stay defined (builtins cannot
+    /// be deleted) but are hidden from every mode picker and cannot be made
+    /// active. iOS-only; not part of the desktop scenario contract.
+    var disabledVoiceWorkflowIDs: [String] = []
+
     // MARK: - Models
 
     var modelProfiles: [ModelProfile] = []
@@ -78,6 +83,21 @@ struct AppConfig: Codable, Equatable {
         workflowCatalog.workflow(id: activeVoiceWorkflowID)
     }
 
+    /// Microphone recipes, including disabled ones (for Settings).
+    var voiceWorkflows: [WorkflowDefinition] {
+        let catalog = workflowCatalog
+        return catalog.workflows.filter { catalog.widget(id: $0.source)?.typeTag == "microphone" }
+    }
+
+    /// Microphone recipes the user has not disabled (for mode pickers).
+    var enabledVoiceWorkflows: [WorkflowDefinition] {
+        voiceWorkflows.filter { isVoiceWorkflowEnabled($0.id) }
+    }
+
+    func isVoiceWorkflowEnabled(_ id: String) -> Bool {
+        !disabledVoiceWorkflowIDs.contains(id)
+    }
+
     /// Removes a model and every workflow/default reference to it.
     mutating func removeModelProfile(id: String) {
         modelProfiles.removeAll(where: { $0.id == id })
@@ -102,6 +122,7 @@ extension AppConfig {
         case llmProvider, llmProfile, llmBaseURL
         case activeModeID, translateTargetLanguage, modes, modeConfigs
         case workflowSchemaVersion, widgets, workflows, activeVoiceWorkflowID
+        case disabledVoiceWorkflowIDs
         case modelProfiles, recordMode, autoSendDestination, destinations
         case historyRetentionDays
     }
@@ -123,6 +144,7 @@ extension AppConfig {
         widgets = try container.decodeIfPresent([WorkflowWidget].self, forKey: .widgets) ?? widgets
         workflows = try container.decodeIfPresent([WorkflowDefinition].self, forKey: .workflows) ?? workflows
         activeVoiceWorkflowID = try container.decodeIfPresent(String.self, forKey: .activeVoiceWorkflowID) ?? activeVoiceWorkflowID
+        disabledVoiceWorkflowIDs = try container.decodeIfPresent([String].self, forKey: .disabledVoiceWorkflowIDs) ?? disabledVoiceWorkflowIDs
         modelProfiles = try container.decodeIfPresent([ModelProfile].self, forKey: .modelProfiles) ?? modelProfiles
         recordMode = try container.decodeIfPresent(RecordMode.self, forKey: .recordMode) ?? recordMode
         autoSendDestination = try container.decodeIfPresent(String.self, forKey: .autoSendDestination) ?? autoSendDestination
@@ -142,6 +164,7 @@ extension AppConfig {
         try container.encode(widgets, forKey: .widgets)
         try container.encode(workflows, forKey: .workflows)
         try container.encode(activeVoiceWorkflowID, forKey: .activeVoiceWorkflowID)
+        try container.encode(disabledVoiceWorkflowIDs, forKey: .disabledVoiceWorkflowIDs)
         try container.encode(modelProfiles, forKey: .modelProfiles)
         try container.encode(recordMode, forKey: .recordMode)
         try container.encode(autoSendDestination, forKey: .autoSendDestination)

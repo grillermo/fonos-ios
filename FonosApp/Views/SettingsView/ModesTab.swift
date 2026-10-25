@@ -71,6 +71,7 @@ struct ModesTab: View {
                         isAvailable: isWorkflowRunnable(workflow),
                         isExpanded: expandedID == workflow.id,
                         isActive: config.activeVoiceWorkflowID == workflow.id,
+                        isEnabled: config.isVoiceWorkflowEnabled(workflow.id),
                         amber: amber,
                         green: green,
                         textPrimary: textPrimary,
@@ -89,7 +90,14 @@ struct ModesTab: View {
                         },
                         onEdit: {
                             openEditor(for: workflow)
-                        }
+                        },
+                        // Builtins cannot be deleted, so they can be switched off instead.
+                        onSetEnabled: workflow.builtin ? { enabled in
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                setRecipe(workflow.id, enabled: enabled)
+                            }
+                        } : nil,
+                        canDisable: config.enabledVoiceWorkflows.count > 1
                     )
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         if !workflow.builtin {
@@ -161,9 +169,7 @@ struct ModesTab: View {
     private var catalog: WorkflowCatalog { config.workflowCatalog }
 
     private var voiceWorkflows: [WorkflowDefinition] {
-        catalog.workflows.filter { workflow in
-            catalog.widget(id: workflow.source)?.typeTag == "microphone"
-        }
+        config.voiceWorkflows
     }
 
     private var activeWorkflow: WorkflowDefinition? {
@@ -265,14 +271,28 @@ struct ModesTab: View {
     }
 
     private func activateRecipe(_ workflowID: String) {
+        config.disabledVoiceWorkflowIDs.removeAll { $0 == workflowID }
         config.activeVoiceWorkflowID = workflowID
     }
 
-    private func activateFallbackRecipe() {
-        let updatedCatalog = config.workflowCatalog
-        let candidates = updatedCatalog.workflows.filter {
-            updatedCatalog.widget(id: $0.source)?.typeTag == "microphone"
+    /// Disabling hides a recipe from every mode picker. The last enabled
+    /// recipe cannot be disabled, and disabling the active one moves the
+    /// selection to another enabled recipe.
+    private func setRecipe(_ workflowID: String, enabled: Bool) {
+        if enabled {
+            config.disabledVoiceWorkflowIDs.removeAll { $0 == workflowID }
+            return
         }
+        guard config.isVoiceWorkflowEnabled(workflowID),
+              config.enabledVoiceWorkflows.count > 1 else { return }
+        config.disabledVoiceWorkflowIDs.append(workflowID)
+        if config.activeVoiceWorkflowID == workflowID {
+            activateFallbackRecipe()
+        }
+    }
+
+    private func activateFallbackRecipe() {
+        let candidates = config.enabledVoiceWorkflows
         let fallback = candidates.first(where: {
             $0.id == "wf.dictation" && isWorkflowRunnable($0)
         }) ?? candidates.first(where: isWorkflowRunnable)
@@ -317,6 +337,7 @@ private struct WorkflowDefinitionRow: View {
     let isAvailable: Bool
     let isExpanded: Bool
     let isActive: Bool
+    let isEnabled: Bool
     let amber: Color
     let green: Color
     let textPrimary: Color
@@ -326,6 +347,8 @@ private struct WorkflowDefinitionRow: View {
     let onTap: () -> Void
     let onActivate: () -> Void
     let onEdit: (() -> Void)?
+    let onSetEnabled: ((Bool) -> Void)?
+    let canDisable: Bool
 
     private var nodes: [WorkflowWidget] {
         ([definition.source] + definition.processors + definition.outputs).map { id in
@@ -368,6 +391,15 @@ private struct WorkflowDefinitionRow: View {
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.06)))
+                            }
+
+                            if !isEnabled {
+                                Text("Disabled")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundColor(textDim)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(Color.white.opacity(0.08)))
                             }
 
                             if !isAvailable {
@@ -421,8 +453,26 @@ private struct WorkflowDefinitionRow: View {
                     .font(.caption)
                     .foregroundColor(green.opacity(0.72))
 
+                    if let onSetEnabled {
+                        Toggle(isOn: Binding(get: { isEnabled }, set: onSetEnabled)) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Enabled")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(textPrimary)
+                                Text(isEnabled && !canDisable
+                                     ? "The only enabled recipe cannot be disabled."
+                                     : "Disabled recipes are hidden from the mode bar and keyboard.")
+                                    .font(.caption)
+                                    .foregroundColor(textDim)
+                            }
+                        }
+                        .tint(green)
+                        .disabled(isEnabled && !canDisable)
+                        .accessibilityIdentifier("modes.enabled.\(definition.id)")
+                    }
+
                     HStack(spacing: 10) {
-                        if !isActive && isAvailable {
+                        if !isActive && isAvailable && isEnabled {
                             Button(action: onActivate) {
                                 Label("Use this recipe", systemImage: "checkmark.circle")
                                     .font(.subheadline.weight(.semibold))

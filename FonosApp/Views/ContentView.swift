@@ -81,7 +81,8 @@ enum AppConfigStorage {
     static func keyboardWorkflowManifest(config: AppConfig) -> [KeyboardIPC.WorkflowManifestEntry] {
         let catalog = config.workflowCatalog
         return catalog.workflows.compactMap { workflow in
-            guard (try? VoiceWorkflowOperationalValidator.validateMicrophone(
+            guard config.isVoiceWorkflowEnabled(workflow.id),
+                  (try? VoiceWorkflowOperationalValidator.validateMicrophone(
                 definition: workflow,
                 catalog: catalog,
                 config: config

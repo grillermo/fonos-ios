@@ -152,4 +152,28 @@ struct AppConfigStorageTests {
         ])
         #expect(AppConfigStorage.keyboardWorkflowManifest(config: unavailable).isEmpty)
     }
+
+    @Test("disabled recipes stay out of the keyboard, the mode pickers and selection")
+    @MainActor
+    func disabledRecipesAreHidden() throws {
+        var config = WorkflowMigration.migrated(AppConfig())
+        config.disabledVoiceWorkflowIDs = ["wf.voice.polish"]
+
+        let decoded = try JSONDecoder().decode(AppConfig.self, from: JSONEncoder().encode(config))
+        #expect(decoded.disabledVoiceWorkflowIDs == ["wf.voice.polish"])
+        #expect(decoded.voiceWorkflows.contains { $0.id == "wf.voice.polish" })
+        #expect(!decoded.enabledVoiceWorkflows.contains { $0.id == "wf.voice.polish" })
+        #expect(!AppConfigStorage.keyboardWorkflowManifest(config: config)
+            .contains { $0.id == "wf.voice.polish" })
+
+        let vm = DictationViewModel()
+        vm.config = config
+        #expect(vm.selectMode(id: "wf.voice.polish") == false)
+    }
+
+    @Test("configs saved before the disabled list decode with every recipe enabled")
+    func legacyConfigEnablesEveryRecipe() throws {
+        let decoded = try JSONDecoder().decode(AppConfig.self, from: Data("{}".utf8))
+        #expect(decoded.disabledVoiceWorkflowIDs.isEmpty)
+    }
 }

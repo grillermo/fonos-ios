@@ -26,9 +26,12 @@ struct DictationView: View {
                     .padding(.horizontal, 20)
 
                 // MARK: - Mode Picker Strip
-                modePickerStrip
-                    .padding(.top, 12)
-                    .padding(.horizontal, 20)
+                // Nothing to choose between with a single mode.
+                if voiceWorkflows.count > 1 {
+                    modePickerStrip
+                        .padding(.top, 12)
+                        .padding(.horizontal, 20)
+                }
 
                 Spacer(minLength: 20)
 
@@ -200,10 +203,7 @@ struct DictationView: View {
     }
 
     private var voiceWorkflows: [WorkflowDefinition] {
-        let catalog = viewModel.config.workflowCatalog
-        return catalog.workflows.filter { workflow in
-            catalog.widget(id: workflow.source)?.typeTag == "microphone"
-        }
+        viewModel.config.enabledVoiceWorkflows
     }
 
     private func isWorkflowRunnable(_ workflow: WorkflowDefinition) -> Bool {
