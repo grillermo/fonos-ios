@@ -1,0 +1,206 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# deploy
+#
+# One-shot release of this Fonos fork over Safari OTA install, adapted from
+# ../../my-claude-usage/deploy-ios:
+#
+#   1. bump MARKETING_VERSION / CURRENT_PROJECT_VERSION of the app target in
+#      FonosApp.xcodeproj/project.pbxproj
+#   2. build an ad-hoc-signed .ipa + OTA manifest   (scripts/deploy/ipa_builder.rb)
+#   3. publish .ipa, icon, manifest and install page to files.chiq.me
+#   4. commit the bump, tag, and push to the `github` remote (grillermo/fonos-ios)
+#
+# The install page URL never changes, so a Home Screen bookmark always installs
+# the newest release. It is printed at the end.
+#
+#   ./deploy                  # bump patch
+#   ./deploy minor|major|2.2.0
+#   ./deploy --yes            # skip the confirmation prompt
+#   ./deploy --summary "Faster search" --note "Debounced search-as-you-type"
+#
+# The file_to_s3 service behind files.chiq.me runs on this machine, so releases
+# are written into its files/ directory (default ../../file_server/files;
+# override with FONOS_PUBLISH_DIR).
+
+require_relative "scripts/deploy/ipa_builder"
+require_relative "scripts/deploy/uploader"
+require_relative "scripts/deploy/versioning"
+require "fileutils"
+require "shellwords"
+
+B = IpaBuilder
+REPO_ROOT   = B::REPO_ROOT
+PBXPROJ_REL = "FonosApp.xcodeproj/project.pbxproj"
+REMOTE      = "github"
+BRANCH      = "main"
+
+PINNED_MANIFEST = "fonos-manifest.plist"
+PINNED_INSTALL  = "fonos-install.html"
+PINNED_ICON     = "fonos-icon.png"
+ICON_SOURCE     = File.join(REPO_ROOT, "scripts/deploy/icon.png")
+
+MANIFEST_URL = "#{Uploader.base_url}/files/#{PINNED_MANIFEST}"
+INSTALL_URL  = "#{Uploader.base_url}/files/#{PINNED_INSTALL}"
+ICON_URL     = "#{Uploader.base_url}/files/#{PINNED_ICON}"
+ITMS_URL     = "itms-services://?action=download-manifest&url=#{MANIFEST_URL}"
+
+ASSUME_YES = !ARGV.delete("--yes").nil?
+
+def take_option(argv, *names)
+  values = []
+  i = 0
+  while i < argv.length
+    if names.include?(argv[i])
+      value = argv[i + 1]
+      B.die("#{argv[i]} needs a value") if value.nil? || value.start_with?("--")
+      values << value
+      argv.slice!(i, 2)
+    else
+      i += 1
+    end
+  end
+  values
+end
+
+SUMMARY = take_option(ARGV, "--summary", "-s").last
+NOTES   = take_option(ARGV, "--note", "-n").map { |n| n.strip.sub(/\A[-*•]\s*/, "") }.reject(&:empty?)
+
+# --- preflight -----------------------------------------------------------------
+
+Uploader.check_publish_dir!
+
+branch = `git -C #{REPO_ROOT.shellescape} rev-parse --abbrev-ref HEAD`.strip
+B.die("on branch '#{branch}', not '#{BRANCH}'; releases are cut from #{BRANCH}") unless branch == BRANCH
+
+dirty = `git -C #{REPO_ROOT.shellescape} status --porcelain`
+B.die("working tree is dirty -- commit or stash before releasing:\n#{dirty}") unless dirty.strip.empty?
+
+# --- version -------------------------------------------------------------------
+
+pbxproj = B::PBXPROJ
+begin
+  current = Versioning.read(File.read(pbxproj), bundle_id: B::BUNDLE_ID)
+  version = Versioning.bump(current[:marketing], ARGV[0])
+rescue ArgumentError => e
+  B.die(e.message)
+end
+build = current[:build] + 1
+tag   = "fonos-ota-v#{version}"
+asset = "#{B::APP_NAME}-#{version}.ipa"
+
+download = "#{Uploader.base_url}/files/#{asset}"
+
+B.die("tag #{tag} already exists -- bump to a new version") if `git -C #{REPO_ROOT.shellescape} tag -l #{tag.shellescape}`.strip == tag
+
+def notes_from_git
+  last = `git -C #{REPO_ROOT.shellescape} describe --tags --abbrev=0 --match 'fonos-ota-v*' 2>/dev/null`.strip
+  range = last.empty? ? "HEAD -n 20" : "#{last}..HEAD"
+  `git -C #{REPO_ROOT.shellescape} log --no-merges --pretty=%s #{range}`.lines.map(&:strip)
+    .reject { |s| s.empty? || s =~ /\A(Release |Merge |Bump |wip\b)/i }.uniq.first(8)
+end
+
+bullets     = NOTES.empty? ? notes_from_git : NOTES
+headline    = SUMMARY || (bullets.empty? ? "Release #{version}." : "What's new in #{version}:")
+DESCRIPTION = ([headline] + (bullets.empty? ? [] : [""] + bullets.map { |b| "• #{b}" })).join("\n")
+
+puts B.bold("\n==> Releasing #{B::APP_NAME} (OTA) #{current[:marketing]} -> #{version} (build #{build})")
+puts DESCRIPTION.lines.map { |l| "      #{l}" }.join
+puts "\n    Install page: #{INSTALL_URL}"
+
+unless ASSUME_YES
+  print "\n    Continue? [y/N] "
+  B.die("aborted") unless $stdin.gets.to_s.strip.downcase.start_with?("y")
+end
+
+# --- write the bump; restore on any failure before the commit --------------------
+
+original  = File.read(pbxproj)
+committed = false
+at_exit { File.write(pbxproj, original) unless committed }
+
+File.write(pbxproj, Versioning.write(original, bundle_id: B::BUNDLE_ID, version: version, build: build))
+
+# --- build ---------------------------------------------------------------------
+
+ipa = B.build(manifest: { app_url: download, icon_url: ICON_URL })
+built_manifest = File.join(File.dirname(ipa), "manifest.plist")
+B.die("export produced no manifest.plist -- cannot publish the OTA route") unless File.exist?(built_manifest)
+puts B.green("    #{asset} — #{(File.size(ipa) / 1_048_576.0).round(1)} MB")
+
+# Anything the build rewrote besides the bump would ride along unreleased, so
+# stop before publishing.
+reformatted = `git -C #{REPO_ROOT.shellescape} status --porcelain`.lines.map(&:strip)
+                .reject { |l| l.end_with?(PBXPROJ_REL) }
+B.die("the build left changes behind -- commit them and re-run:\n#{reformatted.join("\n")}") unless reformatted.empty?
+
+# --- publish (the manifest points at the .ipa, the page at the manifest) ---------
+
+B.step "Publishing the .ipa"
+puts "    #{Uploader.upload(ipa, name: asset)}"
+B.step "Publishing the icon"
+puts "    #{Uploader.upload(ICON_SOURCE, name: PINNED_ICON)}"
+B.step "Publishing the OTA manifest"
+puts "    #{Uploader.upload(built_manifest, name: PINNED_MANIFEST)}"
+
+def h(str) = str.to_s.gsub("&", "&amp;").gsub("<", "&lt;").gsub(">", "&gt;").gsub('"', "&quot;")
+
+install_page = <<~HTML
+  <!doctype html>
+  <html lang="en">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Install Fonos</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; padding: 2.5rem 1.25rem 4rem; background: #111; color: #f2f2f2;
+      font: 16px/1.55 -apple-system, system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; }
+    main { width: 100%; max-width: 26rem; }
+    img.icon { width: 88px; height: 88px; border-radius: 20px; display: block; margin: 0 auto 1.25rem; }
+    h1 { font-size: 1.6rem; margin: 0 0 .25rem; text-align: center; }
+    .version { text-align: center; color: #9a9a9a; margin: 0 0 2rem; font-size: .95rem; }
+    a.install { display: block; background: #1E88E5; color: #fff; text-decoration: none; font-weight: 600;
+      text-align: center; padding: 1rem; border-radius: 14px; margin-bottom: 1.5rem; }
+    section { border-top: 1px solid #2a2a2a; padding-top: 1.25rem; margin-top: 1.25rem; }
+    h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: #8a8a8a; margin: 0 0 .6rem; }
+    pre.notes { white-space: pre-wrap; margin: 0; font: inherit; color: #d8d8d8; }
+    p { color: #b0b0b0; font-size: .9rem; }
+  </style>
+  </head>
+  <body>
+  <main>
+    <img class="icon" src="#{h(ICON_URL)}" alt="">
+    <h1>Fonos</h1>
+    <p class="version">Version #{h(version)} (build #{h(build)})</p>
+    <a class="install" href="#{h(ITMS_URL)}">Install Fonos</a>
+    <p>Open this page in <strong>Safari</strong>, then confirm on the Home Screen prompt.
+    Later updates: open this page again and install over the old version.</p>
+    <section><h2>What&rsquo;s new</h2><pre class="notes">#{h(DESCRIPTION)}</pre></section>
+    <section><h2>Requirements</h2>
+    <p>The device must be registered on the developer account before the build is made; a device
+    added afterwards needs a fresh <code>./deploy</code>. This fork is signed as
+    <code>#{h(B::BUNDLE_ID)}</code>, so it installs beside the App Store Fonos.</p></section>
+  </main>
+  </body>
+  </html>
+HTML
+
+B.step "Publishing the install page"
+page = File.join(File.dirname(ipa), PINNED_INSTALL)
+File.write(page, install_page)
+puts "    #{Uploader.upload(page, name: PINNED_INSTALL)}"
+FileUtils.remove_entry(File.dirname(ipa))
+
+# --- commit --------------------------------------------------------------------
+
+B.step "Committing + pushing"
+B.run("git add #{PBXPROJ_REL.shellescape}", chdir: REPO_ROOT)
+B.run("git commit -m #{"Release Fonos OTA #{tag}\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>".shellescape}", chdir: REPO_ROOT)
+committed = true
+B.run("git tag #{tag.shellescape}", chdir: REPO_ROOT)
+B.run("git push #{REMOTE} #{BRANCH} --tags", chdir: REPO_ROOT)
+
+puts B.green("\n✓ Published #{B::APP_NAME} OTA #{version}")
+puts B.bold("\n    Install from Safari on the device:\n    #{INSTALL_URL}")

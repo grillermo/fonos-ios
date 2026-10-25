@@ -1,7 +1,7 @@
 import Foundation
 
 enum KeyboardIPC {
-    static let appGroupID = "group.com.fonos.ios"
+    static let appGroupID = "group.me.chiq.fonos"
 
     enum DefaultsKey {
         static let appConfig = "app_config"

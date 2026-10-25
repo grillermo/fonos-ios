@@ -4,11 +4,11 @@
 <dict>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.com.fonos.ios</string>
+		<string>group.me.chiq.fonos</string>
 	</array>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)com.fonos.ios</string>
+		<string>$(AppIdentifierPrefix)me.chiq.fonos</string>
 	</array>
 </dict>
 </plist>
