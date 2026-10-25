@@ -22,4 +22,4 @@ A device must be registered on the developer portal before a build is made.
 
 To use it with the mema server on the PC: Settings > Models, add an OpenAI-compatible
 speech model with base URL `http://192.168.1.3:8787`, the server's `WHISKER_AUTH_TOKEN` as
-the API key, and model `balanced` (Parakeet) or any other mema profile id.
+the API key, and model `parakeet`, `qwen` or `whisper` (mema's profile ids; Probe lists them).
