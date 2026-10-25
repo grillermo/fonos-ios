@@ -81,6 +81,24 @@ struct DictationView: View {
                     .padding(.bottom, 12)
             }
         }
+        .background { stopShortcut }
+    }
+
+    /// Return on a hardware keyboard stops an active recording. The button is
+    /// invisible; it exists only to carry the shortcut.
+    private var stopShortcut: some View {
+        Button("Stop Recording") { viewModel.stopRecording() }
+            .keyboardShortcut(.return, modifiers: [])
+            .disabled(!isStoppable)
+            .opacity(0)
+            .accessibilityHidden(true)
+    }
+
+    private var isStoppable: Bool {
+        switch viewModel.recordingState {
+        case .starting, .recording: true
+        default: false
+        }
     }
 
     // MARK: - Header

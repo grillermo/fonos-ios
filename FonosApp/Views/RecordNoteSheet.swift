@@ -122,6 +122,8 @@ struct RecordNoteSheet: View {
                     .frame(width: 28, height: 28)
             }
         }
+        // Return on a hardware keyboard stops the recording.
+        .keyboardShortcut(.return, modifiers: [])
     }
 
     // MARK: - Timer
