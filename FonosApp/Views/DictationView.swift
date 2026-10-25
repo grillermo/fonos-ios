@@ -408,7 +408,10 @@ private extension DictationView {
                 }
 
                 if isEditingResult {
-                    Button("Done") { isEditingResult = false }
+                    Button("Done & Copy") {
+                        isEditingResult = false
+                        copyResult()
+                    }
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(Color(hex: "#fbbf24"))
                 } else {
