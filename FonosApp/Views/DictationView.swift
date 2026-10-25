@@ -75,13 +75,8 @@ struct DictationView: View {
                 if viewModel.workflowPresentation.totalDuration != nil {
                     latencyView
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 4)
+                        .padding(.bottom, 12)
                 }
-
-                // MARK: - Destination Quick Actions
-                destinationStrip
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 12)
             }
         }
         .background { recordShortcut }
@@ -505,75 +500,6 @@ private extension DictationView {
             Capsule()
                 .fill(Color(hex: "#fafaf9").opacity(0.04))
         )
-    }
-
-    // MARK: - Destination Strip
-
-    private var destinationStrip: some View {
-        HStack(spacing: 10) {
-            destinationButton(icon: "doc.on.clipboard", label: "Copy") {
-                if case .result(let transcript, let processed) = viewModel.recordingState {
-                    UIPasteboard.general.string = processed ?? transcript
-                }
-            }
-            destinationButton(icon: "message.fill", label: "Messages") {
-                if case .result(let transcript, let processed) = viewModel.recordingState {
-                    let text = processed ?? transcript
-                    let dest = AnyTextDestination(MessagesDestination())
-                    viewModel.sendToDestination(dest)
-                    _ = text
-                }
-            }
-            destinationButton(icon: "square.and.arrow.up", label: "Share") {
-                if case .result(let transcript, let processed) = viewModel.recordingState {
-                    let text = processed ?? transcript
-                    shareText(text)
-                }
-            }
-            Spacer()
-        }
-    }
-
-    private func destinationButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(Color(hex: "#fbbf24"))
-                Text(LocalizedStringKey(label))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(Color(hex: "#fafaf9").opacity(0.6))
-            }
-            .frame(width: 64, height: 56)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(hex: "#fafaf9").opacity(0.04))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(Color(hex: "#fafaf9").opacity(0.06), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-        .disabled({
-            if case .result = viewModel.recordingState { return false }
-            return true
-        }())
-        .opacity({
-            if case .result = viewModel.recordingState { return 1.0 }
-            return 0.4
-        }())
-    }
-
-    // MARK: - Share Sheet
-
-    private func shareText(_ text: String) {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootVC = windowScene.windows.first?.rootViewController else {
-            return
-        }
-        let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-        rootVC.present(av, animated: true)
     }
 }
 
