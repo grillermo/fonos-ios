@@ -432,6 +432,138 @@ extension DictationViewModel {
         }
     }
 
+    // MARK: - Pending recordings
+
+    /// Retry from the Dictate error card: the saved recipe, compiled from
+    /// current settings, with its outputs, shown like a fresh recording.
+    @MainActor
+    func retryPendingRecording(_ id: UUID) {
+        guard !isRunBusy, !retryingPendingIDs.contains(id) else { return }
+        resetFlowUI()
+        do {
+            let pending = try retryableRecording(id)
+            let wavData = try pendingStore.audio(id: id)
+            let prepared = try prepareMainWorkflow(workflowID: pending.workflowID)
+            workflowPresentation = WorkflowRunPresentation(
+                runID: prepared.runID,
+                definition: prepared.surface.definition,
+                catalog: prepared.surface.catalog
+            )
+            runMainWorkflow(prepared, wavData: wavData, retryingPendingID: id)
+        } catch {
+            dictationLog.error("❌ Retry could not start: \(error.localizedDescription)")
+            pendingStore.recordAttempt(id: id, error: error.localizedDescription)
+            // Point the card at the item only while it still exists.
+            lastPendingRecordingID = pendingStore.recording(id: id) != nil ? id : nil
+            recordingState = .error(message: error.localizedDescription)
+        }
+    }
+
+    /// Retry from History: saves the text and copies it, without running the
+    /// recipe's outputs or touching the Dictate screen. The audio is only
+    /// discarded once the text is safely in History.
+    @MainActor
+    @discardableResult
+    func retryPendingRecordingQuietly(_ id: UUID) async throws -> String {
+        guard !isRunBusy else { throw PendingRecordingError.dictationBusy }
+        guard !retryingPendingIDs.contains(id) else { throw PendingRecordingError.alreadyRetrying }
+        retryingPendingIDs.insert(id)
+        defer { retryingPendingIDs.remove(id) }
+
+        do {
+            let pending = try retryableRecording(id)
+            let wavData = try pendingStore.audio(id: id)
+            let (definition, compiled) = try compileQuietRetry(workflowID: pending.workflowID)
+            let saved = QuietRetrySaveFlag()
+            let result = try await VoiceWorkflowEngine().run(
+                VoiceWorkflowRunInput(
+                    audioData: wavData,
+                    source: compiled.plan.validation.sourceKind
+                ),
+                using: compiled.plan,
+                recorder: { [weak self] processed in
+                    let inserted = await self?.persistRetrySession(
+                        processed: processed,
+                        definition: definition
+                    ) ?? false
+                    saved.set(inserted)
+                }
+            )
+            if saved.value {
+                pendingStore.discard(id: id)
+            }
+            copyText(result.finalText)
+            return result.finalText
+        } catch {
+            pendingStore.recordAttempt(id: id, error: error.localizedDescription)
+            throw error
+        }
+    }
+
+    @MainActor
+    func discardPendingRecording(_ id: UUID) {
+        pendingStore.discard(id: id)
+        guard lastPendingRecordingID == id else { return }
+        lastPendingRecordingID = nil
+        if case .error = recordingState {
+            recordingState = .idle
+            resetFlowUI()
+        }
+    }
+
+    @MainActor
+    private func retryableRecording(_ id: UUID) throws -> PendingRecording {
+        guard let pending = pendingStore.recording(id: id) else {
+            throw PendingRecordingError.notFound
+        }
+        guard let workflowID = pending.workflowID,
+              config.workflowCatalog.workflow(id: workflowID) != nil else {
+            throw PendingRecordingError.recipeUnavailable
+        }
+        return pending
+    }
+
+    /// The recipe with its outputs swapped for return-to-caller, so a quiet
+    /// retry yields text and nothing else.
+    @MainActor
+    private func compileQuietRetry(
+        workflowID: String?
+    ) throws -> (WorkflowDefinition, VoiceWorkflowPlanFactory.Compilation) {
+        WorkflowMigration.migrate(&config)
+        let catalog = config.workflowCatalog
+        guard let workflowID, let definition = catalog.workflow(id: workflowID) else {
+            throw PendingRecordingError.recipeUnavailable
+        }
+        let widgetID = "out.ios-retry"
+        var quietCatalog = catalog
+        quietCatalog.widgets.removeAll { $0.id == widgetID }
+        quietCatalog.widgets.append(WorkflowWidget(
+            id: widgetID,
+            role: .output,
+            typeTag: "return_to_caller",
+            name: String(localized: "Retry"),
+            icon: "arrow.clockwise"
+        ))
+        var quietDefinition = definition
+        quietDefinition.outputs = [widgetID]
+        let compiled = try compileMainWorkflow(
+            definition: quietDefinition,
+            catalog: quietCatalog,
+            legacyScopeID: legacyScopeID(for: definition),
+            outputsByWidgetID: [:]
+        )
+        return (definition, compiled)
+    }
+
+    /// Returns whether the session was really saved to History.
+    @MainActor
+    private func persistRetrySession(
+        processed: VoiceWorkflowProcessedResult,
+        definition: WorkflowDefinition
+    ) -> Bool {
+        insertSession(processed: processed, definition: definition, destination: "result") != nil
+    }
+
     @MainActor
     func sendToDestination(_ destination: AnyTextDestination) {
         guard case .result(let transcript, let processed) = recordingState else { return }
@@ -441,4 +573,12 @@ extension DictationViewModel {
         }
     }
 
+}
+
+/// Carries "the text reached History" out of the engine's `@Sendable` recorder.
+private final class QuietRetrySaveFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = false
+    var value: Bool { lock.withLock { stored } }
+    func set(_ newValue: Bool) { lock.withLock { stored = newValue } }
 }

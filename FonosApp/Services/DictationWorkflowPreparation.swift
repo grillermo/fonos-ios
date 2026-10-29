@@ -231,14 +231,16 @@ extension DictationViewModel {
 
     @MainActor
     func prepareMainWorkflow(
-        oneShotDestination: DictationOneShotDestination? = nil
+        oneShotDestination: DictationOneShotDestination? = nil,
+        workflowID: String? = nil
     ) throws -> PreparedMainWorkflow {
         WorkflowMigration.migrate(&config)
         let catalog = config.workflowCatalog
-        guard let definition = catalog.workflow(id: config.activeVoiceWorkflowID) else {
+        let requestedID = workflowID ?? config.activeVoiceWorkflowID
+        guard let definition = catalog.workflow(id: requestedID) else {
             throw VoiceWorkflowCompileError.unknownWidget(
-                workflowID: config.activeVoiceWorkflowID,
-                widgetID: config.activeVoiceWorkflowID
+                workflowID: requestedID,
+                widgetID: requestedID
             )
         }
         guard catalog.widget(id: definition.source)?.typeTag == "microphone" else {
