@@ -160,7 +160,10 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            DictationView(viewModel: dictationViewModel)
+            DictationView(
+                viewModel: dictationViewModel,
+                onOpenHistory: { selectedTab = .history }
+            )
                 .tabItem {
                     Label("Dictate", systemImage: "mic.fill")
                 }
