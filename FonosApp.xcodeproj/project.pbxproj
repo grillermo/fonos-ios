@@ -125,6 +125,7 @@
 		WP03VON004AA004AA004001B /* RecordNoteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON004AA004AA004001A /* RecordNoteSheet.swift */; };
 		WP03VON005AA005AA005001B /* NoteINV03TabTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON005AA005AA005001A /* NoteINV03TabTests.swift */; };
 		WP03VON006AA006AA006001B /* NoteINV06RecordFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON006AA006AA006001A /* NoteINV06RecordFlowTests.swift */; };
+		8E6CA7582C85C5232A76B07A /* PendingRecordingDictationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A62124A17A0B1A2E6761AC1C /* PendingRecordingDictationTests.swift */; };
 		F8BD18081AC5EEF4280044D9 /* PendingRecordingStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AEE44FD0FD7CB450C2E3FA7 /* PendingRecordingStoreTests.swift */; };
 		WP03VON007AA007AA007001B /* NoteINV11NoAudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON007AA007AA007001A /* NoteINV11NoAudioTests.swift */; };
 		WP04000000000000000001 /* DictationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP04000000000000000011 /* DictationViewModel.swift */; };
@@ -330,6 +331,7 @@
 		WP03VON004AA004AA004001A /* RecordNoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordNoteSheet.swift; sourceTree = "<group>"; };
 		WP03VON005AA005AA005001A /* NoteINV03TabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV03TabTests.swift; sourceTree = "<group>"; };
 		WP03VON006AA006AA006001A /* NoteINV06RecordFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV06RecordFlowTests.swift; sourceTree = "<group>"; };
+		A62124A17A0B1A2E6761AC1C /* PendingRecordingDictationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingDictationTests.swift; sourceTree = "<group>"; };
 		2AEE44FD0FD7CB450C2E3FA7 /* PendingRecordingStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingStoreTests.swift; sourceTree = "<group>"; };
 		WP03VON007AA007AA007001A /* NoteINV11NoAudioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV11NoAudioTests.swift; sourceTree = "<group>"; };
 		WP04000000000000000011 /* DictationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationViewModel.swift; sourceTree = "<group>"; };
@@ -483,6 +485,7 @@
 				WP01VON006AA006AA006001A /* NoteQD03SyncFriendlyTests.swift */,
 				WP03VON005AA005AA005001A /* NoteINV03TabTests.swift */,
 				WP03VON006AA006AA006001A /* NoteINV06RecordFlowTests.swift */,
+				A62124A17A0B1A2E6761AC1C /* PendingRecordingDictationTests.swift */,
 				2AEE44FD0FD7CB450C2E3FA7 /* PendingRecordingStoreTests.swift */,
 				WP03VON007AA007AA007001A /* NoteINV11NoAudioTests.swift */,
 				WP04VON004AA004AA004001A /* NoteINV08NotebookConfigTests.swift */,
@@ -880,6 +883,7 @@
 				WP01VON006AA006AA006001B /* NoteQD03SyncFriendlyTests.swift in Sources */,
 				WP03VON005AA005AA005001B /* NoteINV03TabTests.swift in Sources */,
 				WP03VON006AA006AA006001B /* NoteINV06RecordFlowTests.swift in Sources */,
+				8E6CA7582C85C5232A76B07A /* PendingRecordingDictationTests.swift in Sources */,
 				F8BD18081AC5EEF4280044D9 /* PendingRecordingStoreTests.swift in Sources */,
 				WP03VON007AA007AA007001B /* NoteINV11NoAudioTests.swift in Sources */,
 				WP04VON004AA004AA004001B /* NoteINV08NotebookConfigTests.swift in Sources */,

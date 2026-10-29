@@ -204,8 +204,21 @@ extension DictationViewModel {
             return
         }
         preparedMainWorkflow = nil
+        runMainWorkflow(prepared, wavData: wavData, retryingPendingID: nil)
+    }
+
+    /// Runs a prepared plan on captured or saved audio. A failure before any
+    /// text reached History keeps the audio for retry; a retry that fails
+    /// again only records the attempt.
+    @MainActor
+    func runMainWorkflow(
+        _ prepared: PreparedMainWorkflow,
+        wavData: Data,
+        retryingPendingID: UUID?
+    ) {
         let processingID = prepared.runID
         activeProcessingID = processingID
+        activeRunPersistedText = false
         if workflowPresentation.runID != processingID {
             workflowPresentation = WorkflowRunPresentation(
                 runID: processingID,
@@ -254,6 +267,9 @@ extension DictationViewModel {
                 updateLatencies(from: workflowResult)
                 dictationLog.info("✅ Processing complete: \(workflowResult.finalText.prefix(50))...")
                 workflowPresentation.complete(with: workflowResult)
+                if let retryingPendingID {
+                    pendingStore.discard(id: retryingPendingID)
+                }
                 recordingState = .result(
                     transcript: workflowResult.rawText,
                     processed: workflowResult.finalText == workflowResult.rawText
@@ -266,8 +282,46 @@ extension DictationViewModel {
             } catch {
                 guard activeProcessingID == processingID else { return }
                 dictationLog.error("❌ Processing failed: \(error.localizedDescription)")
+                handleMainRunFailure(
+                    error,
+                    wavData: wavData,
+                    workflowID: prepared.persistedDefinition.id,
+                    retryingPendingID: retryingPendingID
+                )
                 recordingState = .error(message: error.localizedDescription)
             }
+        }
+    }
+
+    /// Decides what a failed run leaves behind. Text already in History means
+    /// there is nothing to retry: a retried item is then discarded.
+    @MainActor
+    func handleMainRunFailure(
+        _ error: Error,
+        wavData: Data,
+        workflowID: String,
+        retryingPendingID: UUID?
+    ) {
+        if let retryingPendingID {
+            if activeRunPersistedText {
+                pendingStore.discard(id: retryingPendingID)
+            } else {
+                pendingStore.recordAttempt(id: retryingPendingID, error: error.localizedDescription)
+                lastPendingRecordingID = retryingPendingID
+            }
+            return
+        }
+        guard !activeRunPersistedText,
+              PendingRecordingStore.shouldKeep(error: error, audio: wavData) else { return }
+        do {
+            lastPendingRecordingID = try pendingStore.save(
+                wav: wavData,
+                surface: .dictate,
+                workflowID: workflowID,
+                error: error.localizedDescription
+            ).id
+        } catch {
+            dictationLog.error("❌ Could not keep the recording for retry: \(error.localizedDescription)")
         }
     }
 
@@ -278,6 +332,7 @@ extension DictationViewModel {
         frozenLLMProviderName = nil
         sttLatency = 0
         llmLatency = 0
+        lastPendingRecordingID = nil
     }
 
     @MainActor
@@ -317,8 +372,21 @@ extension DictationViewModel {
         definition: WorkflowDefinition,
         destination: String
     ) {
-        lastSession = nil
-        guard let context = modelContext else { return }
+        activeRunPersistedText = true
+        lastSession = insertSession(
+            processed: processed,
+            definition: definition,
+            destination: destination
+        )
+    }
+
+    @MainActor
+    func insertSession(
+        processed: VoiceWorkflowProcessedResult,
+        definition: WorkflowDefinition,
+        destination: String
+    ) -> DictationSession? {
+        guard let context = modelContext else { return nil }
         let legacyModeID = WorkflowMigration.legacyModeID(
             forWorkflowID: definition.id
         )
@@ -333,7 +401,6 @@ extension DictationViewModel {
             latencyMs: processed.timings.total * 1_000
         )
         context.insert(session)
-        lastSession = session
         do {
             try context.save()
         } catch {
@@ -341,6 +408,7 @@ extension DictationViewModel {
             // local persistence failures instead of failing dictation.
             dictationLog.error("❌ Failed to persist workflow record: \(error.localizedDescription)")
         }
+        return session
     }
 
     /// Replaces the shown result with the user's edit and updates its History
