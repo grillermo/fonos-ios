@@ -11,3 +11,4 @@ build/
 # Internal planning docs — kept local, not published
 docs/
 .ratchet/
+.worktrees/
