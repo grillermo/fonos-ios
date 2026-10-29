@@ -495,6 +495,7 @@ private extension DictationView {
             HStack(spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(Color(hex: "#ef4444"))
+                    .accessibilityHidden(true)
                 Text(message)
                     .font(.system(size: 14))
                     .foregroundColor(Color(hex: "#fafaf9").opacity(0.8))
@@ -534,7 +535,8 @@ private extension DictationView {
                         .contentShape(Rectangle())
                     }
                     .disabled(viewModel.isRunBusy || viewModel.retryingPendingIDs.contains(pendingID))
-                    .accessibilityLabel("Retry options for saved recording")
+                    .accessibilityLabel("Retry")
+                    .accessibilityHint("Retry options for the saved recording")
                 }
             }
         }
