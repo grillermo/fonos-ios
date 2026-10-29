@@ -84,7 +84,8 @@ struct NotebookDetailView: View {
         }
         .onAppear { reloadEntries() }
         .onReceive(NotificationCenter.default.publisher(for: .pendingRecordingsChanged)) { _ in
-            reloadPending()
+            // A successful retry discards the item and adds a note.
+            reloadEntries()
         }
         .alert(
             "Retry Failed",
@@ -195,7 +196,7 @@ struct NotebookDetailView: View {
             } catch {
                 retryError = error.localizedDescription
             }
-            reloadPending()
+            reloadEntries()
         }
     }
 

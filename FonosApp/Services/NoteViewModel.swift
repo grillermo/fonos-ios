@@ -64,7 +64,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     @Published var retryingPendingIDs: Set<UUID> = []
 
     /// Retries copy their text. Tests replace this.
-    var copyText: (String) -> Void = { UIPasteboard.general.string = $0 }
+    var copyText: @MainActor (String) -> Void = { UIPasteboard.general.string = $0 }
 
     // MARK: - Init (production)
 

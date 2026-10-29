@@ -268,7 +268,11 @@ extension DictationViewModel {
                         )
                     }
                 )
-                guard activeProcessingID == processingID, !Task.isCancelled else { return }
+                guard activeProcessingID == processingID else { return }
+                guard !Task.isCancelled else {
+                    handleMainRunCancellation(retryingPendingID: retryingPendingID)
+                    return
+                }
                 updateLatencies(from: workflowResult)
                 dictationLog.info("✅ Processing complete: \(workflowResult.finalText.prefix(50))...")
                 workflowPresentation.complete(with: workflowResult)
@@ -285,6 +289,9 @@ extension DictationViewModel {
 
             } catch is CancellationError {
                 dictationLog.info("⏹ Processing cancelled")
+                if activeProcessingID == processingID {
+                    handleMainRunCancellation(retryingPendingID: retryingPendingID)
+                }
             } catch {
                 guard activeProcessingID == processingID else { return }
                 dictationLog.error("❌ Processing failed: \(error.localizedDescription)")
@@ -296,6 +303,26 @@ extension DictationViewModel {
                 )
                 recordingState = .error(message: error.localizedDescription)
             }
+        }
+    }
+
+    /// A cancelled retry that already put its text in History must not leave
+    /// the audio behind, or a second retry would duplicate the entry.
+    @MainActor
+    func handleMainRunCancellation(retryingPendingID: UUID?) {
+        guard let retryingPendingID, activeRunPersistedText else { return }
+        pendingStore.discard(id: retryingPendingID)
+        forgetCardItem(retryingPendingID)
+    }
+
+    /// Detaches the Dictate error card from an item that no longer exists.
+    @MainActor
+    private func forgetCardItem(_ id: UUID) {
+        guard lastPendingRecordingID == id else { return }
+        lastPendingRecordingID = nil
+        if case .error = recordingState {
+            recordingState = .idle
+            resetFlowUI()
         }
     }
 
@@ -497,6 +524,7 @@ extension DictationViewModel {
             )
             if saved.value {
                 pendingStore.discard(id: id)
+                forgetCardItem(id)
             }
             try Task.checkCancellation()
             copyText(result.finalText)
@@ -513,6 +541,7 @@ extension DictationViewModel {
     func handleQuietRetryFailure(_ error: Error, id: UUID, textSaved: Bool) {
         if textSaved {
             pendingStore.discard(id: id)
+            forgetCardItem(id)
         } else if !(error is CancellationError) {
             pendingStore.recordAttempt(id: id, error: error.localizedDescription)
         }
@@ -524,12 +553,7 @@ extension DictationViewModel {
     func discardPendingRecording(_ id: UUID) -> Bool {
         guard !retryingPendingIDs.contains(id) else { return false }
         pendingStore.discard(id: id)
-        guard lastPendingRecordingID == id else { return true }
-        lastPendingRecordingID = nil
-        if case .error = recordingState {
-            recordingState = .idle
-            resetFlowUI()
-        }
+        forgetCardItem(id)
         return true
     }
 

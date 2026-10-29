@@ -507,4 +507,43 @@ struct PendingRecordingDictationTests {
         )
         #expect(vm.lastPendingRecordingID == nil)
     }
+
+    @Test("a quiet retry of the card's item clears the card; of another item leaves it")
+    @MainActor
+    func quietRetryClearsCard() async throws {
+        let stt = SwitchableSTT()
+        let container = try makeContainer()
+        let (vm, store) = makeViewModel(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        vm.modelContext = container.mainContext
+        vm.finishRecording(wavData: dummyWAV())
+        try await waitUntil(vm, isError)
+        let cardID = try #require(vm.lastPendingRecordingID)
+        let other = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
+
+        stt.error = nil
+        try await vm.retryPendingRecordingQuietly(other.id)
+        #expect(vm.lastPendingRecordingID == cardID)
+        #expect(isError(vm.recordingState))
+
+        try await vm.retryPendingRecordingQuietly(cardID)
+        #expect(vm.lastPendingRecordingID == nil)
+        #expect(vm.recordingState == .idle)
+    }
+
+    @Test("a cancelled full retry whose text reached History discards the audio")
+    @MainActor
+    func cancelledAfterSaveDiscards() throws {
+        let (vm, store) = makeViewModel(SwitchableSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
+
+        vm.activeRunPersistedText = false
+        vm.handleMainRunCancellation(retryingPendingID: saved.id)
+        #expect(store.recording(id: saved.id) != nil)
+
+        vm.activeRunPersistedText = true
+        vm.handleMainRunCancellation(retryingPendingID: saved.id)
+        #expect(store.recording(id: saved.id) == nil)
+    }
 }
