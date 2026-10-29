@@ -80,7 +80,12 @@ final class PendingRecordingStore: @unchecked Sendable {
         try lock.withLock {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
             try wav.write(to: audioURL(recording.id), options: .atomic)
-            try writeMetadata(recording)
+            do {
+                try writeMetadata(recording)
+            } catch {
+                try? fileManager.removeItem(at: audioURL(recording.id))
+                throw error
+            }
         }
         pendingLog.info("Kept failed recording \(recording.id.uuidString.prefix(8), privacy: .public) for retry")
         postChange()
@@ -97,8 +102,11 @@ final class PendingRecordingStore: @unchecked Sendable {
             var recordings: [PendingRecording] = []
             for name in names where name.hasSuffix(".json") {
                 let url = directory.appendingPathComponent(name)
-                guard let recording = readMetadata(at: url),
-                      fileManager.fileExists(atPath: audioURL(recording.id).path) else {
+                guard let recording = readMetadata(at: url) else {
+                    pendingLog.error("Skipping unreadable pending metadata \(name, privacy: .public)")
+                    continue
+                }
+                guard fileManager.fileExists(atPath: audioURL(recording.id).path) else {
                     try? fileManager.removeItem(at: url)
                     continue
                 }
@@ -135,10 +143,13 @@ final class PendingRecordingStore: @unchecked Sendable {
     }
 
     func audio(id: UUID) throws -> Data {
-        guard let data = try? Data(contentsOf: audioURL(id)) else {
-            throw PendingRecordingError.notFound
+        try lock.withLock {
+            do {
+                return try Data(contentsOf: audioURL(id))
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+                throw PendingRecordingError.notFound
+            }
         }
-        return data
     }
 
     func discard(id: UUID) {

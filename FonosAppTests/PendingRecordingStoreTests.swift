@@ -7,13 +7,6 @@ import Testing
 import Foundation
 @testable import FonosApp
 
-private func makeTempStore() -> PendingRecordingStore {
-    PendingRecordingStore(
-        directory: FileManager.default.temporaryDirectory
-            .appendingPathComponent("pending-\(UUID().uuidString)", isDirectory: true)
-    )
-}
-
 /// 44-byte WAV header with a byte rate of 32 000, followed by one second of silence.
 private func oneSecondWAV() -> Data {
     var data = Data(count: 44 + 32_000)
@@ -22,7 +15,21 @@ private func oneSecondWAV() -> Data {
     return data
 }
 
-struct PendingRecordingStoreTests {
+final class PendingRecordingStoreTests {
+    private var stores: [PendingRecordingStore] = []
+
+    private func makeTempStore() -> PendingRecordingStore {
+        let store = PendingRecordingStore(
+            directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("pending-\(UUID().uuidString)", isDirectory: true)
+        )
+        stores.append(store)
+        return store
+    }
+
+    deinit {
+        for store in stores { try? FileManager.default.removeItem(at: store.directory) }
+    }
 
     @Test("save, list, read audio and discard round-trip")
     func roundTrip() throws {
@@ -94,6 +101,23 @@ struct PendingRecordingStoreTests {
 
         _ = store.all(now: Date().addingTimeInterval(2 * 3_600))
         #expect(!FileManager.default.fileExists(atPath: store.audioURL(id).path))
+    }
+
+    @Test("a corrupt JSON is skipped but its files are kept")
+    func corruptJSON() throws {
+        let store = makeTempStore()
+        let saved = try store.save(wav: oneSecondWAV(), surface: .dictate, error: "e")
+        try Data("not json".utf8).write(to: store.metadataURL(saved.id))
+
+        #expect(store.all().isEmpty)
+        #expect(FileManager.default.fileExists(atPath: store.metadataURL(saved.id).path))
+        #expect(FileManager.default.fileExists(atPath: store.audioURL(saved.id).path))
+    }
+
+    @Test("audio(id:) throws notFound only when the file is missing")
+    func audioNotFound() {
+        let store = makeTempStore()
+        #expect(throws: PendingRecordingError.notFound) { try store.audio(id: UUID()) }
     }
 
     @Test("shouldKeep rejects cancellation, empty audio and no-speech results")
