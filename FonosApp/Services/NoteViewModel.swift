@@ -55,7 +55,10 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     var pendingStore = PendingRecordingStore.shared
 
     /// True when the last failure kept its audio, so the sheet can say so.
+    /// Cleared when that item is retried successfully or discarded, so the
+    /// sheet never claims audio that no longer exists.
     @Published var lastFailureSavedForRetry = false
+    private var lastFailurePendingID: UUID?
 
     /// Pending recordings being retried, for row spinners.
     @Published var retryingPendingIDs: Set<UUID> = []
@@ -177,6 +180,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     /// A failure keeps the audio so the notebook can retry it.
     func recordAndStore(to containerId: UUID, audioData: Data) async {
         lastFailureSavedForRetry = false
+        lastFailurePendingID = nil
         guard noteService.notebook(id: containerId) != nil else {
             recordingState = .error(message: "Notebook not found.")
             return
@@ -189,12 +193,13 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             noteVMLog.error("Notebook workflow failed: \(error.localizedDescription)")
             if PendingRecordingStore.shouldKeep(error: error, audio: audioData) {
                 do {
-                    try pendingStore.save(
+                    let saved = try pendingStore.save(
                         wav: audioData,
                         surface: .note,
                         notebookID: containerId,
                         error: error.localizedDescription
                     )
+                    lastFailurePendingID = saved.id
                     lastFailureSavedForRetry = true
                 } catch {
                     noteVMLog.error("Could not keep the recording for retry: \(error.localizedDescription)")
@@ -221,6 +226,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             let audioData = try pendingStore.audio(id: id)
             let text = try await transcribeAndStore(to: notebookID, audioData: audioData)
             pendingStore.discard(id: id)
+            clearSavedForRetryFlag(for: id)
             copyText(text)
             return text
         } catch {
@@ -237,7 +243,15 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     func discardPendingRecording(_ id: UUID) -> Bool {
         guard !retryingPendingIDs.contains(id) else { return false }
         pendingStore.discard(id: id)
+        clearSavedForRetryFlag(for: id)
         return true
+    }
+
+    private func clearSavedForRetryFlag(for id: UUID) {
+        if lastFailurePendingID == id {
+            lastFailurePendingID = nil
+            lastFailureSavedForRetry = false
+        }
     }
 
     /// Runs the notebook recipe and stores the note. Returns the note's text.

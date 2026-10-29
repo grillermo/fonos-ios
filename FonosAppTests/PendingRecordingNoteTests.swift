@@ -180,4 +180,32 @@ struct PendingRecordingNoteTests {
         stt.release()
         _ = try await task.value
     }
+
+    @Test("the saved-for-retry message clears after a successful retry")
+    func flagClearsOnRetrySuccess() async throws {
+        let stt = SwitchableNoteSTT()
+        let (vm, _, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        await vm.recordAndStore(to: notebook.id, audioData: Data(count: 44))
+        let id = try #require(store.all().first?.id)
+        #expect(vm.lastFailureSavedForRetry)
+
+        stt.error = nil
+        try await vm.retryPendingRecording(id)
+        #expect(!vm.lastFailureSavedForRetry)
+    }
+
+    @Test("the saved-for-retry message clears when its item is discarded, not another")
+    func flagClearsOnDiscard() async throws {
+        let (vm, _, notebook, store) = try makeNotes(SwitchableNoteSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let other = try store.save(wav: Data(count: 44), surface: .note, notebookID: notebook.id, error: "e")
+        await vm.recordAndStore(to: notebook.id, audioData: Data(count: 44))
+        let id = try #require(store.all().first { $0.id != other.id }?.id)
+
+        vm.discardPendingRecording(other.id)
+        #expect(vm.lastFailureSavedForRetry)
+        vm.discardPendingRecording(id)
+        #expect(!vm.lastFailureSavedForRetry)
+    }
 }
