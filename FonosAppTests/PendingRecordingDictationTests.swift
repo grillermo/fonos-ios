@@ -77,6 +77,7 @@ struct PendingRecordingDictationTests {
     @MainActor
     func failureKeepsAudio() async throws {
         let (vm, store) = makeViewModel(SwitchableSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
         vm.finishRecording(wavData: dummyWAV())
         try await waitUntil(vm, isError)
 
@@ -84,12 +85,14 @@ struct PendingRecordingDictationTests {
         #expect(pending.surface == .dictate)
         #expect(pending.workflowID == "wf.dictation")
         #expect(vm.lastPendingRecordingID == pending.id)
+        #expect(try store.audio(id: pending.id) == dummyWAV())
     }
 
     @Test("no speech keeps nothing")
     @MainActor
     func noSpeechKeepsNothing() async throws {
         let (vm, store) = makeViewModel(SwitchableSTT(error: .noTranscript))
+        defer { try? FileManager.default.removeItem(at: store.directory) }
         vm.finishRecording(wavData: dummyWAV())
         try await waitUntil(vm, isError)
         #expect(store.all().isEmpty)
@@ -100,6 +103,7 @@ struct PendingRecordingDictationTests {
     @MainActor
     func failureAfterPersistKeepsNothing() {
         let (vm, store) = makeViewModel(SwitchableSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
         vm.activeRunPersistedText = true
         vm.handleMainRunFailure(
             DestinationError.destinationUnavailable("Shortcut"),
@@ -114,8 +118,97 @@ struct PendingRecordingDictationTests {
     @MainActor
     func successKeepsNothing() async throws {
         let (vm, store) = makeViewModel(SwitchableSTT(error: nil))
+        defer { try? FileManager.default.removeItem(at: store.directory) }
         vm.finishRecording(wavData: dummyWAV())
         try await waitUntil(vm, isResult)
         #expect(store.all().isEmpty)
+    }
+
+    private func processed(_ id: UUID = UUID()) -> VoiceWorkflowProcessedResult {
+        VoiceWorkflowProcessedResult(
+            runID: id,
+            workflowID: "wf.dictation",
+            providerTranscript: "hi",
+            rawText: "hi",
+            finalText: "hi",
+            degradations: [],
+            timings: VoiceWorkflowTimings(steps: [], total: 0)
+        )
+    }
+
+    private var definition: WorkflowDefinition {
+        WorkflowDefinition(id: "wf.dictation", name: "Dictation", source: "mic", outputs: [])
+    }
+
+    @Test("persistSession sets the flag once the session is saved")
+    @MainActor
+    func persistSessionSetsFlag() throws {
+        let (vm, store) = makeViewModel(SwitchableSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let container = try makeContainer()
+        vm.modelContext = container.mainContext
+        vm.persistSession(processed: processed(), definition: definition, destination: "x")
+        #expect(vm.activeRunPersistedText)
+        #expect(vm.lastSession != nil)
+    }
+
+    @Test("persistSession without a context leaves the flag false")
+    @MainActor
+    func persistSessionWithoutContext() {
+        let (vm, store) = makeViewModel(SwitchableSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        vm.modelContext = nil
+        vm.persistSession(processed: processed(), definition: definition, destination: "x")
+        #expect(!vm.activeRunPersistedText)
+        #expect(vm.lastSession == nil)
+    }
+
+    @Test("a failed retry records the attempt and points the card at it")
+    @MainActor
+    func retryFailureRecordsAttempt() throws {
+        let (vm, store) = makeViewModel(SwitchableSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "old")
+        vm.handleMainRunFailure(
+            STTError.networkUnavailable,
+            wavData: dummyWAV(),
+            workflowID: "wf.dictation",
+            retryingPendingID: saved.id
+        )
+        let after = try #require(store.recording(id: saved.id))
+        #expect(after.attempts == 1)
+        #expect(vm.lastPendingRecordingID == saved.id)
+    }
+
+    @Test("a retry that failed after text was persisted discards the item")
+    @MainActor
+    func retryFailureAfterPersistDiscards() throws {
+        let (vm, store) = makeViewModel(SwitchableSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "old")
+        vm.lastPendingRecordingID = saved.id
+        vm.activeRunPersistedText = true
+        vm.handleMainRunFailure(
+            DestinationError.destinationUnavailable("Shortcut"),
+            wavData: dummyWAV(),
+            workflowID: "wf.dictation",
+            retryingPendingID: saved.id
+        )
+        #expect(store.all().isEmpty)
+        #expect(vm.lastPendingRecordingID == nil)
+    }
+
+    @Test("a successful retry discards the item and clears the card id")
+    @MainActor
+    func retrySuccessDiscards() async throws {
+        let (vm, store) = makeViewModel(SwitchableSTT(error: nil))
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "old")
+        vm.lastPendingRecordingID = saved.id
+        let prepared = try vm.prepareNextMainWorkflow()
+        vm.runMainWorkflow(prepared, wavData: dummyWAV(), retryingPendingID: saved.id)
+        try await waitUntil(vm, isResult)
+        #expect(store.all().isEmpty)
+        #expect(vm.lastPendingRecordingID == nil)
     }
 }

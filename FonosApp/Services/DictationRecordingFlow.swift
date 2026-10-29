@@ -219,6 +219,7 @@ extension DictationViewModel {
         let processingID = prepared.runID
         activeProcessingID = processingID
         activeRunPersistedText = false
+        lastPendingRecordingID = nil
         if workflowPresentation.runID != processingID {
             workflowPresentation = WorkflowRunPresentation(
                 runID: processingID,
@@ -270,6 +271,7 @@ extension DictationViewModel {
                 if let retryingPendingID {
                     pendingStore.discard(id: retryingPendingID)
                 }
+                lastPendingRecordingID = nil
                 recordingState = .result(
                     transcript: workflowResult.rawText,
                     processed: workflowResult.finalText == workflowResult.rawText
@@ -305,6 +307,7 @@ extension DictationViewModel {
         if let retryingPendingID {
             if activeRunPersistedText {
                 pendingStore.discard(id: retryingPendingID)
+                lastPendingRecordingID = nil
             } else {
                 pendingStore.recordAttempt(id: retryingPendingID, error: error.localizedDescription)
                 lastPendingRecordingID = retryingPendingID
@@ -320,8 +323,8 @@ extension DictationViewModel {
                 workflowID: workflowID,
                 error: error.localizedDescription
             ).id
-        } catch {
-            dictationLog.error("❌ Could not keep the recording for retry: \(error.localizedDescription)")
+        } catch let saveError {
+            dictationLog.error("❌ Could not keep the recording for retry: \(saveError.localizedDescription)")
         }
     }
 
@@ -372,12 +375,13 @@ extension DictationViewModel {
         definition: WorkflowDefinition,
         destination: String
     ) {
-        activeRunPersistedText = true
         lastSession = insertSession(
             processed: processed,
             definition: definition,
             destination: destination
         )
+        // Only a session that was inserted and saved counts as recoverable text.
+        activeRunPersistedText = lastSession != nil
     }
 
     @MainActor
@@ -407,6 +411,7 @@ extension DictationViewModel {
             // History is non-essential: match desktop DbRecorder by absorbing
             // local persistence failures instead of failing dictation.
             dictationLog.error("❌ Failed to persist workflow record: \(error.localizedDescription)")
+            return nil
         }
         return session
     }
