@@ -169,7 +169,7 @@ struct ContentView: View {
                 }
                 .tag(AppTab.dictate)
 
-            HistoryView()
+            HistoryView(dictationViewModel: dictationViewModel)
                 .tabItem {
                     Label("History", systemImage: "clock.fill")
                 }

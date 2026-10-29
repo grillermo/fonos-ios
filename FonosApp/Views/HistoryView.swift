@@ -5,6 +5,9 @@ import SwiftData
 struct HistoryView: View {
     @Query(sort: \DictationSession.date, order: .reverse) private var sessions: [DictationSession]
     @Environment(\.modelContext) private var modelContext
+    @ObservedObject var dictationViewModel: DictationViewModel
+    @State private var pendingRecordings: [PendingRecording] = []
+    @State private var retryError: String?
 
     @State private var searchText: String = ""
     @State private var activeFilter: HistoryFilter = .all
@@ -71,9 +74,9 @@ struct HistoryView: View {
                         .padding(.bottom, 12)
 
                     // MARK: - Content
-                    if sessions.isEmpty {
+                    if sessions.isEmpty && pendingRecordings.isEmpty {
                         emptyState
-                    } else if filteredSessions.isEmpty {
+                    } else if filteredSessions.isEmpty && pendingRecordings.isEmpty {
                         noResultsState
                     } else {
                         sessionList
@@ -82,6 +85,21 @@ struct HistoryView: View {
             }
             .navigationTitle("History")
             .navigationBarTitleDisplayMode(.large)
+            .onAppear(perform: reloadPending)
+            .onReceive(NotificationCenter.default.publisher(for: .pendingRecordingsChanged)) { _ in
+                reloadPending()
+            }
+            .alert(
+                "Retry Failed",
+                isPresented: Binding(
+                    get: { retryError != nil },
+                    set: { if !$0 { retryError = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { retryError = nil }
+            } message: {
+                Text(retryError ?? "")
+            }
         }
     }
 
@@ -169,6 +187,27 @@ struct HistoryView: View {
 
     private var sessionList: some View {
         List {
+            if !pendingRecordings.isEmpty {
+                Section {
+                    ForEach(pendingRecordings) { recording in
+                        PendingRecordingRow(
+                            recording: recording,
+                            title: pendingTitle(recording),
+                            isRetrying: dictationViewModel.retryingPendingIDs.contains(recording.id),
+                            onRetry: { retry(recording.id) },
+                            onDiscard: { dictationViewModel.discardPendingRecording(recording.id) }
+                        )
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    }
+                } header: {
+                    Text("Pending")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(hex: "#fb923c"))
+                }
+            }
+
             ForEach(filteredSessions) { session in
                 ActivityCard(session: session, onResend: nil)
                     .listRowBackground(Color.clear)
@@ -227,6 +266,29 @@ struct HistoryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, 80)
+    }
+
+    // MARK: - Pending recordings
+
+    private func reloadPending() {
+        pendingRecordings = dictationViewModel.pendingStore.pending(for: .history)
+    }
+
+    private func pendingTitle(_ recording: PendingRecording) -> String {
+        recording.workflowID
+            .flatMap { dictationViewModel.config.workflowCatalog.workflow(id: $0)?.name }
+            ?? String(localized: "Dictation")
+    }
+
+    private func retry(_ id: UUID) {
+        Task {
+            do {
+                try await dictationViewModel.retryPendingRecordingQuietly(id)
+            } catch {
+                retryError = error.localizedDescription
+            }
+            reloadPending()
+        }
     }
 
     // MARK: - Delete
@@ -342,6 +404,6 @@ private struct CorrectionCaptureSheet: View {
 }
 
 #Preview {
-    HistoryView()
+    HistoryView(dictationViewModel: DictationViewModel())
         .modelContainer(for: DictationSession.self, inMemory: true)
 }
