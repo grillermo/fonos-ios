@@ -117,7 +117,9 @@ extension AudioCaptureService {
     }
 
     /// AAC bit rate for STT uploads. 32 kbps mono speech transcribed
-    /// word-for-word the same as WAV on mema (qwen, parakeet) at ~1/7.5 the size.
+    /// word-for-word the same as WAV on mema (qwen, parakeet). Output is
+    /// ~8x smaller than WAV for clips over ~10 s, but AVAudioFile adds a
+    /// fixed ~24 KB, so clips under ~1 s come out larger than the WAV.
     static let m4aUploadBitRate = 32_000
 
     /// Re-encode capture WAV as AAC in an MP4 (.m4a) container for upload.

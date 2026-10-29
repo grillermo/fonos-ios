@@ -137,7 +137,7 @@ protocol AudioCapturing: AnyObject, Sendable {
 /// owner, just as if the user had pressed Stop.
 ///
 /// Key design decisions:
-/// - `captureFormat`, `isRecording`, `encodeToWAV`, and `decodeWAV` are intentionally
+/// - `captureFormat`, `isRecording`, `encodeToWAV`, `decodeWAV`, and `encodeToM4A` are intentionally
 ///   nonisolated so tests can call them synchronously without MainActor context.
 /// - Internal state mutations happen on the main actor via DispatchQueue.main or Task.
 final class AudioCaptureService: AudioCapturing, @unchecked Sendable {

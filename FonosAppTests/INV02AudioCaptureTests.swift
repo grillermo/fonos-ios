@@ -172,8 +172,7 @@ struct INV02AudioCaptureTests {
     func m4aEncoderCompresses() throws {
         let wavData = try AudioCaptureService.encodeToWAV(buffer: makeMockPCMBuffer(frameCount: 160_000))
         let m4aData = try AudioCaptureService.encodeToM4A(wavData: wavData)
-        // 10 s at 16 kHz Int16 is 320 KB; 32 kbps AAC is ~40 KB plus a fixed
-        // ~24 KB of container padding (AVAudioFile reserves it up front).
+        // 10 s WAV is 320 KB; the m4a is ~40 KB including ~24 KB of fixed container overhead.
         #expect(m4aData.count * 4 < wavData.count)
     }
 
@@ -196,7 +195,7 @@ struct INV02AudioCaptureTests {
     func m4aEncoderRejectsEmptyWAV() throws {
         // Header only: the samples the header promises are missing.
         let wavData = Data(try AudioCaptureService.encodeToWAV(buffer: makeMockPCMBuffer()).prefix(44))
-        #expect(throws: (any Error).self) {
+        #expect(throws: WAVError.invalidData) {
             _ = try AudioCaptureService.encodeToM4A(wavData: wavData)
         }
     }
