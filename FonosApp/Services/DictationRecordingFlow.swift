@@ -220,6 +220,9 @@ extension DictationViewModel {
         activeProcessingID = processingID
         activeRunPersistedText = false
         lastPendingRecordingID = nil
+        // A retried item is busy for the whole run, so Discard and a quiet
+        // retry cannot touch it mid-flight.
+        if let retryingPendingID { retryingPendingIDs.insert(retryingPendingID) }
         if workflowPresentation.runID != processingID {
             workflowPresentation = WorkflowRunPresentation(
                 runID: processingID,
@@ -234,6 +237,7 @@ extension DictationViewModel {
         processingTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
+                if let retryingPendingID { retryingPendingIDs.remove(retryingPendingID) }
                 if activeProcessingID == processingID {
                     activeProcessingID = nil
                     processingTask = nil
@@ -310,7 +314,9 @@ extension DictationViewModel {
                 lastPendingRecordingID = nil
             } else {
                 pendingStore.recordAttempt(id: retryingPendingID, error: error.localizedDescription)
-                lastPendingRecordingID = retryingPendingID
+                lastPendingRecordingID = pendingStore.recording(id: retryingPendingID) != nil
+                    ? retryingPendingID
+                    : nil
             }
             return
         }
@@ -470,11 +476,11 @@ extension DictationViewModel {
         retryingPendingIDs.insert(id)
         defer { retryingPendingIDs.remove(id) }
 
+        let saved = QuietRetrySaveFlag()
         do {
             let pending = try retryableRecording(id)
             let wavData = try pendingStore.audio(id: id)
             let (definition, compiled) = try compileQuietRetry(workflowID: pending.workflowID)
-            let saved = QuietRetrySaveFlag()
             let result = try await VoiceWorkflowEngine().run(
                 VoiceWorkflowRunInput(
                     audioData: wavData,
@@ -492,23 +498,39 @@ extension DictationViewModel {
             if saved.value {
                 pendingStore.discard(id: id)
             }
+            try Task.checkCancellation()
             copyText(result.finalText)
             return result.finalText
         } catch {
-            pendingStore.recordAttempt(id: id, error: error.localizedDescription)
+            handleQuietRetryFailure(error, id: id, textSaved: saved.value)
             throw error
         }
     }
 
+    /// A cancelled retry is not a failed attempt, and text already in History
+    /// makes the audio redundant whatever stopped the run afterwards.
     @MainActor
-    func discardPendingRecording(_ id: UUID) {
+    func handleQuietRetryFailure(_ error: Error, id: UUID, textSaved: Bool) {
+        if textSaved {
+            pendingStore.discard(id: id)
+        } else if !(error is CancellationError) {
+            pendingStore.recordAttempt(id: id, error: error.localizedDescription)
+        }
+    }
+
+    /// Returns false, changing nothing, while the item is being retried.
+    @MainActor
+    @discardableResult
+    func discardPendingRecording(_ id: UUID) -> Bool {
+        guard !retryingPendingIDs.contains(id) else { return false }
         pendingStore.discard(id: id)
-        guard lastPendingRecordingID == id else { return }
+        guard lastPendingRecordingID == id else { return true }
         lastPendingRecordingID = nil
         if case .error = recordingState {
             recordingState = .idle
             resetFlowUI()
         }
+        return true
     }
 
     @MainActor

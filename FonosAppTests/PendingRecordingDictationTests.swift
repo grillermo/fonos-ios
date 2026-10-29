@@ -306,6 +306,7 @@ struct PendingRecordingDictationTests {
         #expect(vm.recordingState == .idle)
         #expect(vm.lastSession == nil)
         #expect(vm.retryingPendingIDs.isEmpty)
+        #expect(store.recording(id: saved.id) == nil)
         let sessions = try container.mainContext.fetch(FetchDescriptor<DictationSession>())
         #expect(sessions.map(\.outputText) == ["hello again"])
         #expect(sessions.first?.workflowID == "wf.dictation")
@@ -317,11 +318,14 @@ struct PendingRecordingDictationTests {
         let (vm, store) = makeViewModel(SwitchableSTT(error: nil))
         defer { try? FileManager.default.removeItem(at: store.directory) }
         vm.modelContext = nil
+        var copied: [String] = []
+        vm.copyText = { copied.append($0) }
         let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
 
         let text = try await vm.retryPendingRecordingQuietly(saved.id)
 
         #expect(text == "hello again")
+        #expect(copied == ["hello again"])
         #expect(store.recording(id: saved.id) != nil)
     }
 
@@ -400,5 +404,107 @@ struct PendingRecordingDictationTests {
         #expect(store.recording(id: cardID) != nil)
         #expect(vm.lastPendingRecordingID == cardID)
         #expect(isError(vm.recordingState))
+    }
+
+    @Test("an error after the text reached History discards the audio without counting an attempt")
+    @MainActor
+    func quietFailureAfterSave() throws {
+        let (vm, store) = makeViewModel(SwitchableSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
+        vm.handleQuietRetryFailure(STTError.networkUnavailable, id: saved.id, textSaved: true)
+        #expect(store.recording(id: saved.id) == nil)
+    }
+
+    @Test("an error before the text was saved counts an attempt; a cancellation does not")
+    @MainActor
+    func quietFailureBeforeSave() throws {
+        let (vm, store) = makeViewModel(SwitchableSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
+        vm.handleQuietRetryFailure(CancellationError(), id: saved.id, textSaved: false)
+        #expect(store.recording(id: saved.id)?.attempts == 0)
+        vm.handleQuietRetryFailure(STTError.networkUnavailable, id: saved.id, textSaved: false)
+        #expect(store.recording(id: saved.id)?.attempts == 1)
+    }
+
+    @Test("a cancelled quiet retry counts no attempt and keeps the audio")
+    @MainActor
+    func quietRetryCancelled() async throws {
+        let (vm, store) = makeViewModel(SwitchableSTT(error: nil))
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
+        var copied: [String] = []
+        vm.copyText = { copied.append($0) }
+
+        let task = Task { @MainActor in try await vm.retryPendingRecordingQuietly(saved.id) }
+        task.cancel()
+        _ = try? await task.value
+
+        #expect(copied.isEmpty)
+        #expect(store.recording(id: saved.id)?.attempts == 0)
+        #expect(store.recording(id: saved.id) != nil)
+        #expect(vm.retryingPendingIDs.isEmpty)
+    }
+
+    @Test("discard is refused while the item is being retried, and works after")
+    @MainActor
+    func discardDuringRetryRefused() async throws {
+        let stt = SwitchableSTT(error: nil)
+        let (vm, store) = makeViewModel(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
+
+        vm.retryPendingRecording(saved.id)
+        #expect(vm.retryingPendingIDs.contains(saved.id))
+        #expect(vm.discardPendingRecording(saved.id) == false)
+        #expect(store.recording(id: saved.id) != nil)
+
+        try await waitUntil(vm, isResult)
+        #expect(vm.retryingPendingIDs.isEmpty)
+        #expect(store.all().isEmpty)
+    }
+
+    @Test("a full retry in flight refuses a quiet retry of the same item")
+    @MainActor
+    func fullAndQuietOverlap() async throws {
+        let (vm, store) = makeViewModel(SwitchableSTT(error: nil))
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
+
+        vm.retryPendingRecording(saved.id)
+        // The run is also what makes Dictate busy, so either guard may fire.
+        await #expect(throws: (any Error).self) {
+            try await vm.retryPendingRecordingQuietly(saved.id)
+        }
+        try await waitUntil(vm, isResult)
+        #expect(store.recording(id: saved.id) == nil)
+    }
+
+    @Test("a failed full retry releases the item and a failed start releases it too")
+    @MainActor
+    func fullRetryReleasesItem() async throws {
+        let (vm, store) = makeViewModel(SwitchableSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
+        vm.retryPendingRecording(saved.id)
+        try await waitUntil(vm, isError)
+        #expect(vm.retryingPendingIDs.isEmpty)
+        #expect(vm.discardPendingRecording(saved.id))
+        #expect(store.all().isEmpty)
+    }
+
+    @Test("a retry failure for an item discarded meanwhile leaves no stale card id")
+    @MainActor
+    func failureForVanishedItem() {
+        let (vm, store) = makeViewModel(SwitchableSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        vm.handleMainRunFailure(
+            STTError.networkUnavailable,
+            wavData: dummyWAV(),
+            workflowID: "wf.dictation",
+            retryingPendingID: UUID()
+        )
+        #expect(vm.lastPendingRecordingID == nil)
     }
 }
