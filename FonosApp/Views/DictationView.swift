@@ -10,10 +10,17 @@ struct DictationView: View {
     @State private var editedResult = ""
     @FocusState private var isEditingResult: Bool
 
+    /// Switches to the History tab, where saved recordings are listed.
+    var onOpenHistory: () -> Void
+
     /// Convenience initialiser for previews and unit tests.
     /// Uses a default no-op DictationViewModel (no STT provider).
-    init(viewModel: DictationViewModel = DictationViewModel()) {
+    init(
+        viewModel: DictationViewModel = DictationViewModel(),
+        onOpenHistory: @escaping () -> Void = {}
+    ) {
         self.viewModel = viewModel
+        self.onOpenHistory = onOpenHistory
     }
 
     var body: some View {
@@ -484,13 +491,54 @@ private extension DictationView {
     // MARK: - Error Card
 
     private func errorCard(message: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(Color(hex: "#ef4444"))
-            Text(message)
-                .font(.system(size: 14))
-                .foregroundColor(Color(hex: "#fafaf9").opacity(0.8))
-                .lineLimit(3)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(Color(hex: "#ef4444"))
+                    .accessibilityHidden(true)
+                Text(message)
+                    .font(.system(size: 14))
+                    .foregroundColor(Color(hex: "#fafaf9").opacity(0.8))
+                    .lineLimit(3)
+            }
+            if let pendingID = viewModel.lastPendingRecordingID {
+                HStack {
+                    Text("Recording saved")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(Color(hex: "#fafaf9").opacity(0.6))
+                    Spacer()
+                    Menu {
+                        Button {
+                            viewModel.retryPendingRecording(pendingID)
+                        } label: {
+                            Label("Retry now", systemImage: "arrow.clockwise")
+                        }
+                        Button {
+                            onOpenHistory()
+                        } label: {
+                            Label("Open in History", systemImage: "clock")
+                        }
+                        Button(role: .destructive) {
+                            viewModel.discardPendingRecording(pendingID)
+                        } label: {
+                            Label("Discard recording", systemImage: "trash")
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Retry")
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Color(hex: "#fbbf24"))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .disabled(viewModel.isRunBusy || viewModel.retryingPendingIDs.contains(pendingID))
+                    .accessibilityLabel("Retry")
+                    .accessibilityHint("Retry options for the saved recording")
+                }
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)

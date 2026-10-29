@@ -11,6 +11,8 @@ struct NotebookDetailView: View {
     @State private var showRecordSheet = false
     @State private var handledAutoRecordRequestID: UUID?
     @State private var persistenceError: String?
+    @State private var pendingRecordings: [PendingRecording] = []
+    @State private var retryError: String?
 
     init(
         notebook: NoteContainer,
@@ -30,7 +32,7 @@ struct NotebookDetailView: View {
                 .ignoresSafeArea()
 
             Group {
-                if entries.isEmpty {
+                if entries.isEmpty && pendingRecordings.isEmpty {
                     emptyState
                 } else {
                     entriesList
@@ -81,6 +83,21 @@ struct NotebookDetailView: View {
             }
         }
         .onAppear { reloadEntries() }
+        .onReceive(NotificationCenter.default.publisher(for: .pendingRecordingsChanged)) { _ in
+            // A successful retry discards the item and adds a note.
+            reloadEntries()
+        }
+        .alert(
+            "Retry Failed",
+            isPresented: Binding(
+                get: { retryError != nil },
+                set: { if !$0 { retryError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { retryError = nil }
+        } message: {
+            Text(retryError ?? "")
+        }
         .task(id: autoRecordRequestID) {
             guard let autoRecordRequestID,
                   handledAutoRecordRequestID != autoRecordRequestID else { return }
@@ -129,6 +146,17 @@ struct NotebookDetailView: View {
 
     private var entriesList: some View {
         List {
+            ForEach(pendingRecordings) { recording in
+                PendingRecordingRow(
+                    recording: recording,
+                    title: String(localized: "Voice note"),
+                    isRetrying: noteViewModel.retryingPendingIDs.contains(recording.id),
+                    onRetry: { retry(recording.id) },
+                    onDiscard: { noteViewModel.discardPendingRecording(recording.id) }
+                )
+                .listRowBackground(Color(hex: "#1a1917"))
+                .listRowSeparator(.hidden)
+            }
             ForEach(entries, id: \.id) { entry in
                 EntryRow(entry: entry, showRawInline: notebook.showRawInline)
                     .listRowBackground(Color(hex: "#1a1917"))
@@ -152,6 +180,24 @@ struct NotebookDetailView: View {
 
     private func reloadEntries() {
         entries = noteService.entriesForNotebook(notebook.id)
+        reloadPending()
+    }
+
+    private func reloadPending() {
+        pendingRecordings = noteViewModel.pendingStore.pending(for: .notebook(notebook.id))
+    }
+
+    private func retry(_ id: UUID) {
+        Task {
+            do {
+                try await noteViewModel.retryPendingRecording(id)
+            } catch is CancellationError {
+                // Cancelled, not failed: nothing to report.
+            } catch {
+                retryError = error.localizedDescription
+            }
+            reloadEntries()
+        }
     }
 
     /// Exports the notebook (entries in chronological order) and presents

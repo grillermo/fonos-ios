@@ -204,8 +204,25 @@ extension DictationViewModel {
             return
         }
         preparedMainWorkflow = nil
+        runMainWorkflow(prepared, wavData: wavData, retryingPendingID: nil)
+    }
+
+    /// Runs a prepared plan on captured or saved audio. A failure before any
+    /// text reached History keeps the audio for retry; a retry that fails
+    /// again only records the attempt.
+    @MainActor
+    func runMainWorkflow(
+        _ prepared: PreparedMainWorkflow,
+        wavData: Data,
+        retryingPendingID: UUID?
+    ) {
         let processingID = prepared.runID
         activeProcessingID = processingID
+        activeRunPersistedText = false
+        lastPendingRecordingID = nil
+        // A retried item is busy for the whole run, so Discard and a quiet
+        // retry cannot touch it mid-flight.
+        if let retryingPendingID { retryingPendingIDs.insert(retryingPendingID) }
         if workflowPresentation.runID != processingID {
             workflowPresentation = WorkflowRunPresentation(
                 runID: processingID,
@@ -220,6 +237,7 @@ extension DictationViewModel {
         processingTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
+                if let retryingPendingID { retryingPendingIDs.remove(retryingPendingID) }
                 if activeProcessingID == processingID {
                     activeProcessingID = nil
                     processingTask = nil
@@ -250,10 +268,18 @@ extension DictationViewModel {
                         )
                     }
                 )
-                guard activeProcessingID == processingID, !Task.isCancelled else { return }
+                guard activeProcessingID == processingID else { return }
+                guard !Task.isCancelled else {
+                    handleMainRunCancellation(retryingPendingID: retryingPendingID)
+                    return
+                }
                 updateLatencies(from: workflowResult)
                 dictationLog.info("✅ Processing complete: \(workflowResult.finalText.prefix(50))...")
                 workflowPresentation.complete(with: workflowResult)
+                if let retryingPendingID {
+                    pendingStore.discard(id: retryingPendingID)
+                }
+                lastPendingRecordingID = nil
                 recordingState = .result(
                     transcript: workflowResult.rawText,
                     processed: workflowResult.finalText == workflowResult.rawText
@@ -263,11 +289,75 @@ extension DictationViewModel {
 
             } catch is CancellationError {
                 dictationLog.info("⏹ Processing cancelled")
+                if activeProcessingID == processingID {
+                    handleMainRunCancellation(retryingPendingID: retryingPendingID)
+                }
             } catch {
                 guard activeProcessingID == processingID else { return }
                 dictationLog.error("❌ Processing failed: \(error.localizedDescription)")
+                handleMainRunFailure(
+                    error,
+                    wavData: wavData,
+                    workflowID: prepared.persistedDefinition.id,
+                    retryingPendingID: retryingPendingID
+                )
                 recordingState = .error(message: error.localizedDescription)
             }
+        }
+    }
+
+    /// A cancelled retry that already put its text in History must not leave
+    /// the audio behind, or a second retry would duplicate the entry.
+    @MainActor
+    func handleMainRunCancellation(retryingPendingID: UUID?) {
+        guard let retryingPendingID, activeRunPersistedText else { return }
+        pendingStore.discard(id: retryingPendingID)
+        forgetCardItem(retryingPendingID)
+    }
+
+    /// Detaches the Dictate error card from an item that no longer exists.
+    @MainActor
+    private func forgetCardItem(_ id: UUID) {
+        guard lastPendingRecordingID == id else { return }
+        lastPendingRecordingID = nil
+        if case .error = recordingState {
+            recordingState = .idle
+            resetFlowUI()
+        }
+    }
+
+    /// Decides what a failed run leaves behind. Text already in History means
+    /// there is nothing to retry: a retried item is then discarded.
+    @MainActor
+    func handleMainRunFailure(
+        _ error: Error,
+        wavData: Data,
+        workflowID: String,
+        retryingPendingID: UUID?
+    ) {
+        if let retryingPendingID {
+            if activeRunPersistedText {
+                pendingStore.discard(id: retryingPendingID)
+                lastPendingRecordingID = nil
+            } else {
+                pendingStore.recordAttempt(id: retryingPendingID, error: error.localizedDescription)
+                lastPendingRecordingID = pendingStore.recording(id: retryingPendingID) != nil
+                    ? retryingPendingID
+                    : nil
+            }
+            return
+        }
+        guard !activeRunPersistedText,
+              PendingRecordingStore.shouldKeep(error: error, audio: wavData) else { return }
+        do {
+            lastPendingRecordingID = try pendingStore.save(
+                wav: wavData,
+                surface: .dictate,
+                workflowID: workflowID,
+                error: error.localizedDescription
+            ).id
+        } catch let saveError {
+            dictationLog.error("❌ Could not keep the recording for retry: \(saveError.localizedDescription)")
         }
     }
 
@@ -278,6 +368,7 @@ extension DictationViewModel {
         frozenLLMProviderName = nil
         sttLatency = 0
         llmLatency = 0
+        lastPendingRecordingID = nil
     }
 
     @MainActor
@@ -317,8 +408,22 @@ extension DictationViewModel {
         definition: WorkflowDefinition,
         destination: String
     ) {
-        lastSession = nil
-        guard let context = modelContext else { return }
+        lastSession = insertSession(
+            processed: processed,
+            definition: definition,
+            destination: destination
+        )
+        // Only a session that was inserted and saved counts as recoverable text.
+        activeRunPersistedText = lastSession != nil
+    }
+
+    @MainActor
+    func insertSession(
+        processed: VoiceWorkflowProcessedResult,
+        definition: WorkflowDefinition,
+        destination: String
+    ) -> DictationSession? {
+        guard let context = modelContext else { return nil }
         let legacyModeID = WorkflowMigration.legacyModeID(
             forWorkflowID: definition.id
         )
@@ -333,14 +438,15 @@ extension DictationViewModel {
             latencyMs: processed.timings.total * 1_000
         )
         context.insert(session)
-        lastSession = session
         do {
             try context.save()
         } catch {
             // History is non-essential: match desktop DbRecorder by absorbing
             // local persistence failures instead of failing dictation.
             dictationLog.error("❌ Failed to persist workflow record: \(error.localizedDescription)")
+            return nil
         }
+        return session
     }
 
     /// Replaces the shown result with the user's edit and updates its History
@@ -359,6 +465,151 @@ extension DictationViewModel {
         }
     }
 
+    // MARK: - Pending recordings
+
+    /// Retry from the Dictate error card: the saved recipe, compiled from
+    /// current settings, with its outputs, shown like a fresh recording.
+    @MainActor
+    func retryPendingRecording(_ id: UUID) {
+        guard !isRunBusy, !retryingPendingIDs.contains(id) else { return }
+        resetFlowUI()
+        do {
+            let pending = try retryableRecording(id)
+            let wavData = try pendingStore.audio(id: id)
+            let prepared = try prepareMainWorkflow(workflowID: pending.workflowID)
+            workflowPresentation = WorkflowRunPresentation(
+                runID: prepared.runID,
+                definition: prepared.surface.definition,
+                catalog: prepared.surface.catalog
+            )
+            runMainWorkflow(prepared, wavData: wavData, retryingPendingID: id)
+        } catch {
+            dictationLog.error("❌ Retry could not start: \(error.localizedDescription)")
+            pendingStore.recordAttempt(id: id, error: error.localizedDescription)
+            // Point the card at the item only while it still exists.
+            lastPendingRecordingID = pendingStore.recording(id: id) != nil ? id : nil
+            recordingState = .error(message: error.localizedDescription)
+        }
+    }
+
+    /// Retry from History: saves the text and copies it, without running the
+    /// recipe's outputs or touching the Dictate screen. The audio is only
+    /// discarded once the text is safely in History.
+    @MainActor
+    @discardableResult
+    func retryPendingRecordingQuietly(_ id: UUID) async throws -> String {
+        guard !isRunBusy else { throw PendingRecordingError.dictationBusy }
+        guard !retryingPendingIDs.contains(id) else { throw PendingRecordingError.alreadyRetrying }
+        retryingPendingIDs.insert(id)
+        defer { retryingPendingIDs.remove(id) }
+
+        let saved = QuietRetrySaveFlag()
+        do {
+            let pending = try retryableRecording(id)
+            let wavData = try pendingStore.audio(id: id)
+            let (definition, compiled) = try compileQuietRetry(workflowID: pending.workflowID)
+            let result = try await VoiceWorkflowEngine().run(
+                VoiceWorkflowRunInput(
+                    audioData: wavData,
+                    source: compiled.plan.validation.sourceKind
+                ),
+                using: compiled.plan,
+                recorder: { [weak self] processed in
+                    let inserted = await self?.persistRetrySession(
+                        processed: processed,
+                        definition: definition
+                    ) ?? false
+                    saved.set(inserted)
+                }
+            )
+            if saved.value {
+                pendingStore.discard(id: id)
+                forgetCardItem(id)
+            }
+            try Task.checkCancellation()
+            copyText(result.finalText)
+            return result.finalText
+        } catch {
+            handleQuietRetryFailure(error, id: id, textSaved: saved.value)
+            throw error
+        }
+    }
+
+    /// A cancelled retry is not a failed attempt, and text already in History
+    /// makes the audio redundant whatever stopped the run afterwards.
+    @MainActor
+    func handleQuietRetryFailure(_ error: Error, id: UUID, textSaved: Bool) {
+        if textSaved {
+            pendingStore.discard(id: id)
+            forgetCardItem(id)
+        } else if !(error is CancellationError) {
+            pendingStore.recordAttempt(id: id, error: error.localizedDescription)
+        }
+    }
+
+    /// Returns false, changing nothing, while the item is being retried.
+    @MainActor
+    @discardableResult
+    func discardPendingRecording(_ id: UUID) -> Bool {
+        guard !retryingPendingIDs.contains(id) else { return false }
+        pendingStore.discard(id: id)
+        forgetCardItem(id)
+        return true
+    }
+
+    @MainActor
+    private func retryableRecording(_ id: UUID) throws -> PendingRecording {
+        guard let pending = pendingStore.recording(id: id) else {
+            throw PendingRecordingError.notFound
+        }
+        guard let workflowID = pending.workflowID,
+              config.workflowCatalog.workflow(id: workflowID) != nil else {
+            throw PendingRecordingError.recipeUnavailable
+        }
+        return pending
+    }
+
+    /// The recipe with its outputs swapped for return-to-caller, so a quiet
+    /// retry yields text and nothing else.
+    @MainActor
+    private func compileQuietRetry(
+        workflowID: String?
+    ) throws -> (WorkflowDefinition, VoiceWorkflowPlanFactory.Compilation) {
+        WorkflowMigration.migrate(&config)
+        let catalog = config.workflowCatalog
+        guard let workflowID, let definition = catalog.workflow(id: workflowID) else {
+            throw PendingRecordingError.recipeUnavailable
+        }
+        let widgetID = "out.ios-retry"
+        var quietCatalog = catalog
+        quietCatalog.widgets.removeAll { $0.id == widgetID }
+        quietCatalog.widgets.append(WorkflowWidget(
+            id: widgetID,
+            role: .output,
+            typeTag: "return_to_caller",
+            name: String(localized: "Retry"),
+            icon: "arrow.clockwise"
+        ))
+        var quietDefinition = definition
+        quietDefinition.outputs = [widgetID]
+        let compiled = try compileMainWorkflow(
+            definition: quietDefinition,
+            catalog: quietCatalog,
+            legacyScopeID: legacyScopeID(for: definition),
+            outputsByWidgetID: [:]
+        )
+        return (definition, compiled)
+    }
+
+    /// Returns whether the session was really saved to History.
+    @MainActor
+    private func persistRetrySession(
+        processed: VoiceWorkflowProcessedResult,
+        definition: WorkflowDefinition
+    ) -> Bool {
+        insertSession(processed: processed, definition: definition, destination: "result") != nil
+    }
+
     @MainActor
     func sendToDestination(_ destination: AnyTextDestination) {
         guard case .result(let transcript, let processed) = recordingState else { return }
@@ -368,4 +619,12 @@ extension DictationViewModel {
         }
     }
 
+}
+
+/// Carries "the text reached History" out of the engine's `@Sendable` recorder.
+private final class QuietRetrySaveFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = false
+    var value: Bool { lock.withLock { stored } }
+    func set(_ newValue: Bool) { lock.withLock { stored = newValue } }
 }

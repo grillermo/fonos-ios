@@ -80,6 +80,11 @@ struct RecordNoteSheet: View {
                             .foregroundColor(Color(hex: "#fafaf9").opacity(0.7))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
+                        if noteViewModel.lastFailureSavedForRetry {
+                            Text("Saved to this notebook for retry.")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(Color(hex: "#fb923c"))
+                        }
                         Button("Dismiss") { onDismiss() }
                             .foregroundColor(Color(hex: "#fbbf24"))
                     }

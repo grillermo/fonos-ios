@@ -566,6 +566,23 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
     var processingTask: Task<Void, Never>?
     var activeProcessingID: UUID?
 
+    /// Failed recordings kept for retry. Tests swap in a temporary store.
+    var pendingStore = PendingRecordingStore.shared
+
+    /// The recording the current error card can retry, if the failure kept one.
+    @Published var lastPendingRecordingID: UUID?
+
+    /// Pending recordings being retried from History, for row spinners.
+    @Published var retryingPendingIDs: Set<UUID> = []
+
+    /// Quiet retries copy their text. Tests replace this to keep the
+    /// simulator's pasteboard out of assertions.
+    var copyText: @MainActor (String) -> Void = { UIPasteboard.general.string = $0 }
+
+    /// Set once the running workflow's recorder hook has saved text to
+    /// History; a failure after that point has nothing to retry.
+    var activeRunPersistedText = false
+
     /// SwiftData context for persisting completed sessions to History.
     /// Set by ContentView; nil in unit tests that don't exercise persistence.
     var modelContext: ModelContext?

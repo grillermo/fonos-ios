@@ -49,6 +49,23 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     /// deterministic corrections, and the notebook LLM glossary.
     var vocabStore = VocabStore()
 
+    // MARK: - Pending recordings
+
+    /// Failed recordings kept for retry. Tests swap in a temporary store.
+    var pendingStore = PendingRecordingStore.shared
+
+    /// True when the last failure kept its audio, so the sheet can say so.
+    /// Cleared when that item is retried successfully or discarded, so the
+    /// sheet never claims audio that no longer exists.
+    @Published var lastFailureSavedForRetry = false
+    private var lastFailurePendingID: UUID?
+
+    /// Pending recordings being retried, for row spinners.
+    @Published var retryingPendingIDs: Set<UUID> = []
+
+    /// Retries copy their text. Tests replace this.
+    var copyText: @MainActor (String) -> Void = { UIPasteboard.general.string = $0 }
+
     // MARK: - Init (production)
 
     init(noteService: NoteService, audioCapture: any AudioCapturing = AudioCaptureService()) {
@@ -78,6 +95,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             return false
         }()) else { return }
         activeContainerID = containerId
+        clearSavedForRetryFlag()
 
         let permission = audioCapture.micPermissionStatus()
         switch permission {
@@ -90,14 +108,17 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                     doStartCapture(to: containerId)
                 } else {
                     activeContainerID = nil
+                    clearSavedForRetryFlag()
                     recordingState = .error(message: "Microphone permission is required.")
                 }
             }
         case .denied:
             activeContainerID = nil
+            clearSavedForRetryFlag()
             recordingState = .error(message: "Microphone permission denied.")
         @unknown default:
             activeContainerID = nil
+            clearSavedForRetryFlag()
             recordingState = .error(message: "Microphone permission unavailable.")
         }
     }
@@ -111,6 +132,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                     guard let self, self.activeContainerID == containerId else { return }
                     self.activeContainerID = nil
                     self.stopLevelPolling()
+                    self.clearSavedForRetryFlag()
                     self.recordingState = .error(message: "Recording was interrupted.")
                 }
             },
@@ -120,6 +142,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                     self.activeContainerID = nil
                     self.stopLevelPolling()
                     guard let wavData, !wavData.isEmpty else {
+                        self.clearSavedForRetryFlag()
                         self.recordingState = .error(
                             message: "Recording reached the five-minute limit, but the audio could not be finalized."
                         )
@@ -134,6 +157,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                     guard let self else { return }
                     if let error {
                         self.activeContainerID = nil
+                        self.clearSavedForRetryFlag()
                         self.recordingState = .error(message: error.localizedDescription)
                         self.stopLevelPolling()
                     }
@@ -160,49 +184,126 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     /// Compile the notebook's settings into a frozen voice workflow, execute it,
     /// then adapt the result into a NoteEntry. Dictate, keyboard and Notes now
     /// share provider resolution, vocabulary, correction, fallback and tracing.
+    /// A failure keeps the audio so the notebook can retry it.
     func recordAndStore(to containerId: UUID, audioData: Data) async {
-        guard let notebook = noteService.notebook(id: containerId) else {
+        clearSavedForRetryFlag()
+        guard noteService.notebook(id: containerId) != nil else {
             recordingState = .error(message: "Notebook not found.")
             return
         }
-        let recipe = NotebookPipeline.workflowRecipe(for: notebook)
 
         do {
-            let factory = VoiceWorkflowPlanFactory(
-                config: config,
-                vocabStore: vocabStore,
-                sttProviderOverride: _testSTT,
-                llmProviderOverride: _testLLM,
-                effectiveVocabularyBooks: vocabStore.effectiveBooks(notebookID: containerId)
-            )
-            let compilation = try factory.compile(
-                definition: recipe.definition,
-                catalog: recipe.catalog,
-                legacyScopeID: nil,
-                supportedOutputTypes: ["return_to_caller"],
-                resolveOutput: { _ in ReturnToCallerVoiceWorkflowOutput() }
-            )
-            let result = try await VoiceWorkflowEngine().run(
-                VoiceWorkflowRunInput(audioData: audioData),
-                using: compilation.plan
-            )
-            try persist(result, recipe: recipe, to: containerId)
+            _ = try await transcribeAndStore(to: containerId, audioData: audioData)
             recordingState = .done
         } catch {
             noteVMLog.error("Notebook workflow failed: \(error.localizedDescription)")
+            if PendingRecordingStore.shouldKeep(error: error, audio: audioData) {
+                do {
+                    let saved = try pendingStore.save(
+                        wav: audioData,
+                        surface: .note,
+                        notebookID: containerId,
+                        error: error.localizedDescription
+                    )
+                    lastFailurePendingID = saved.id
+                    lastFailureSavedForRetry = true
+                } catch {
+                    noteVMLog.error("Could not keep the recording for retry: \(error.localizedDescription)")
+                }
+            }
             recordingState = .error(message: error.localizedDescription)
         }
+    }
+
+    /// Retry from the notebook: a new note from the saved audio, compiled
+    /// from the notebook's current settings, then copied.
+    @discardableResult
+    func retryPendingRecording(_ id: UUID) async throws -> String {
+        guard !retryingPendingIDs.contains(id) else { throw PendingRecordingError.alreadyRetrying }
+        guard let pending = pendingStore.recording(id: id) else { throw PendingRecordingError.notFound }
+        retryingPendingIDs.insert(id)
+        defer { retryingPendingIDs.remove(id) }
+
+        do {
+            guard let notebookID = pending.notebookID,
+                  noteService.notebook(id: notebookID) != nil else {
+                throw PendingRecordingError.notebookUnavailable
+            }
+            let audioData = try pendingStore.audio(id: id)
+            let text = try await transcribeAndStore(to: notebookID, audioData: audioData)
+            pendingStore.discard(id: id)
+            clearSavedForRetryFlag(for: id)
+            copyText(text)
+            return text
+        } catch {
+            // A cancelled retry is not a failed attempt.
+            if !(error is CancellationError) {
+                pendingStore.recordAttempt(id: id, error: error.localizedDescription)
+            }
+            throw error
+        }
+    }
+
+    /// Returns false, changing nothing, while the item is being retried.
+    @discardableResult
+    func discardPendingRecording(_ id: UUID) -> Bool {
+        guard !retryingPendingIDs.contains(id) else { return false }
+        pendingStore.discard(id: id)
+        clearSavedForRetryFlag(for: id)
+        return true
+    }
+
+    /// Forgets which failure was kept, so the record sheet's "saved for
+    /// retry" message only ever accompanies the failure that was saved.
+    private func clearSavedForRetryFlag() {
+        lastFailurePendingID = nil
+        lastFailureSavedForRetry = false
+    }
+
+    private func clearSavedForRetryFlag(for id: UUID) {
+        if lastFailurePendingID == id {
+            lastFailurePendingID = nil
+            lastFailureSavedForRetry = false
+        }
+    }
+
+    /// Runs the notebook recipe and stores the note. Returns the note's text.
+    private func transcribeAndStore(to containerId: UUID, audioData: Data) async throws -> String {
+        guard let notebook = noteService.notebook(id: containerId) else {
+            throw PendingRecordingError.notebookUnavailable
+        }
+        let recipe = NotebookPipeline.workflowRecipe(for: notebook)
+        let factory = VoiceWorkflowPlanFactory(
+            config: config,
+            vocabStore: vocabStore,
+            sttProviderOverride: _testSTT,
+            llmProviderOverride: _testLLM,
+            effectiveVocabularyBooks: vocabStore.effectiveBooks(notebookID: containerId)
+        )
+        let compilation = try factory.compile(
+            definition: recipe.definition,
+            catalog: recipe.catalog,
+            legacyScopeID: nil,
+            supportedOutputTypes: ["return_to_caller"],
+            resolveOutput: { _ in ReturnToCallerVoiceWorkflowOutput() }
+        )
+        let result = try await VoiceWorkflowEngine().run(
+            VoiceWorkflowRunInput(audioData: audioData),
+            using: compilation.plan
+        )
+        let entry = try persist(result, recipe: recipe, to: containerId)
+        return entry.processedText ?? entry.rawText
     }
 
     private func persist(
         _ result: VoiceWorkflowResult,
         recipe: NotebookPipeline.WorkflowRecipe,
         to containerId: UUID
-    ) throws {
+    ) throws -> NoteEntry {
         let processedText = recipe.hasLLM && result.degradations.isEmpty
             ? result.finalText
             : nil
-        try noteService.addEntry(
+        return try noteService.addEntry(
             to: containerId,
             rawText: result.rawText,
             processedText: processedText,
