@@ -5,6 +5,7 @@ import SwiftData
 struct HistoryView: View {
     @Query(sort: \DictationSession.date, order: .reverse) private var sessions: [DictationSession]
     @Environment(\.modelContext) private var modelContext
+    // Re-renders on every published change (e.g. audioLevel); accepted for now, ContentView already observes the same object.
     @ObservedObject var dictationViewModel: DictationViewModel
     @State private var pendingRecordings: [PendingRecording] = []
     @State private var retryError: String?
@@ -187,6 +188,7 @@ struct HistoryView: View {
 
     private var sessionList: some View {
         List {
+            // Pending rows intentionally ignore the search text and filter chips.
             if !pendingRecordings.isEmpty {
                 Section {
                     ForEach(pendingRecordings) { recording in
@@ -284,6 +286,7 @@ struct HistoryView: View {
         Task {
             do {
                 try await dictationViewModel.retryPendingRecordingQuietly(id)
+            } catch is CancellationError {
             } catch {
                 retryError = error.localizedDescription
             }
