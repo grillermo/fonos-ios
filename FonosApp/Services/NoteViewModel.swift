@@ -95,6 +95,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             return false
         }()) else { return }
         activeContainerID = containerId
+        clearSavedForRetryFlag()
 
         let permission = audioCapture.micPermissionStatus()
         switch permission {
@@ -107,14 +108,17 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                     doStartCapture(to: containerId)
                 } else {
                     activeContainerID = nil
+                    clearSavedForRetryFlag()
                     recordingState = .error(message: "Microphone permission is required.")
                 }
             }
         case .denied:
             activeContainerID = nil
+            clearSavedForRetryFlag()
             recordingState = .error(message: "Microphone permission denied.")
         @unknown default:
             activeContainerID = nil
+            clearSavedForRetryFlag()
             recordingState = .error(message: "Microphone permission unavailable.")
         }
     }
@@ -128,6 +132,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                     guard let self, self.activeContainerID == containerId else { return }
                     self.activeContainerID = nil
                     self.stopLevelPolling()
+                    self.clearSavedForRetryFlag()
                     self.recordingState = .error(message: "Recording was interrupted.")
                 }
             },
@@ -137,6 +142,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                     self.activeContainerID = nil
                     self.stopLevelPolling()
                     guard let wavData, !wavData.isEmpty else {
+                        self.clearSavedForRetryFlag()
                         self.recordingState = .error(
                             message: "Recording reached the five-minute limit, but the audio could not be finalized."
                         )
@@ -151,6 +157,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                     guard let self else { return }
                     if let error {
                         self.activeContainerID = nil
+                        self.clearSavedForRetryFlag()
                         self.recordingState = .error(message: error.localizedDescription)
                         self.stopLevelPolling()
                     }
@@ -179,8 +186,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     /// share provider resolution, vocabulary, correction, fallback and tracing.
     /// A failure keeps the audio so the notebook can retry it.
     func recordAndStore(to containerId: UUID, audioData: Data) async {
-        lastFailureSavedForRetry = false
-        lastFailurePendingID = nil
+        clearSavedForRetryFlag()
         guard noteService.notebook(id: containerId) != nil else {
             recordingState = .error(message: "Notebook not found.")
             return
@@ -245,6 +251,13 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         pendingStore.discard(id: id)
         clearSavedForRetryFlag(for: id)
         return true
+    }
+
+    /// Forgets which failure was kept, so the record sheet's "saved for
+    /// retry" message only ever accompanies the failure that was saved.
+    private func clearSavedForRetryFlag() {
+        lastFailurePendingID = nil
+        lastFailureSavedForRetry = false
     }
 
     private func clearSavedForRetryFlag(for id: UUID) {

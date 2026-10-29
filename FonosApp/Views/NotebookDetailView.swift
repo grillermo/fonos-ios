@@ -84,7 +84,7 @@ struct NotebookDetailView: View {
         }
         .onAppear { reloadEntries() }
         .onReceive(NotificationCenter.default.publisher(for: .pendingRecordingsChanged)) { _ in
-            reloadEntries()
+            reloadPending()
         }
         .alert(
             "Retry Failed",
@@ -179,6 +179,10 @@ struct NotebookDetailView: View {
 
     private func reloadEntries() {
         entries = noteService.entriesForNotebook(notebook.id)
+        reloadPending()
+    }
+
+    private func reloadPending() {
         pendingRecordings = noteViewModel.pendingStore.pending(for: .notebook(notebook.id))
     }
 
@@ -187,9 +191,11 @@ struct NotebookDetailView: View {
             do {
                 try await noteViewModel.retryPendingRecording(id)
             } catch is CancellationError {
+                // Cancelled, not failed: nothing to report.
             } catch {
                 retryError = error.localizedDescription
             }
+            reloadPending()
         }
     }
 

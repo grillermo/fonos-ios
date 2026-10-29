@@ -6,6 +6,7 @@
 import Testing
 import SwiftData
 import Foundation
+import AVFoundation
 @testable import FonosApp
 
 private final class SwitchableNoteSTT: STTProvider, @unchecked Sendable {
@@ -18,6 +19,22 @@ private final class SwitchableNoteSTT: STTProvider, @unchecked Sendable {
         if let error { throw error }
         return transcript
     }
+}
+
+private final class DeniedCapture: AudioCapturing, @unchecked Sendable {
+    var currentAudioLevel: Float = 0
+    var isRecording = false
+    var isStarting = false
+    func micPermissionStatus() -> AVAudioSession.RecordPermission {
+        AVAudioSession.RecordPermission(rawValue: UInt(AVAudioApplication.recordPermission.denied.rawValue))!
+    }
+    func requestMicPermission() async -> Bool { false }
+    func startCapture(
+        onInterruption: @escaping @Sendable () -> Void,
+        onMaximumDurationReached: @escaping @Sendable (Data?) -> Void,
+        completion: @escaping @Sendable (Error?) -> Void
+    ) -> AudioCaptureStartToken { AudioCaptureStartToken() }
+    @MainActor func stopCapture() -> Data? { nil }
 }
 
 private func makeTempStore() -> PendingRecordingStore {
@@ -204,8 +221,47 @@ struct PendingRecordingNoteTests {
         let id = try #require(store.all().first { $0.id != other.id }?.id)
 
         vm.discardPendingRecording(other.id)
-        #expect(vm.lastFailureSavedForRetry)
+        #expect(vm.lastFailureSavedForRetry == true)
         vm.discardPendingRecording(id)
+        #expect(!vm.lastFailureSavedForRetry)
+    }
+
+    @Test("a later unrelated error does not show the saved-for-retry message")
+    func flagClearsOnLaterError() async throws {
+        let container = try ModelContainer(
+            for: Schema([NoteContainer.self, NoteEntry.self]),
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let service = NoteService(modelContainer: container)
+        let notebook = try service.createNotebook(title: "N")
+        let vm = NoteViewModel(noteService: service, sttProvider: SwitchableNoteSTT(),
+                               llmProvider: nil, audioCapture: DeniedCapture())
+        let store = makeTempStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        vm.pendingStore = store
+        await vm.recordAndStore(to: notebook.id, audioData: Data(count: 44))
+        #expect(vm.lastFailureSavedForRetry)
+
+        vm.startRecording(to: notebook.id)
+        #expect(vm.recordingState == .error(message: "Microphone permission denied."))
+        #expect(!vm.lastFailureSavedForRetry)
+    }
+
+    @Test("a second failure replaces the first; retrying another item keeps the flag")
+    func secondFailureReplacesFirst() async throws {
+        let stt = SwitchableNoteSTT()
+        let (vm, _, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        await vm.recordAndStore(to: notebook.id, audioData: Data(count: 44))
+        let first = try #require(store.all().first?.id)
+        await vm.recordAndStore(to: notebook.id, audioData: Data(count: 44))
+        let second = try #require(store.all().first { $0.id != first }?.id)
+
+        // The flag now tracks the second item only.
+        stt.error = nil
+        try await vm.retryPendingRecording(first)
+        #expect(vm.lastFailureSavedForRetry == true)
+        vm.discardPendingRecording(second)
         #expect(!vm.lastFailureSavedForRetry)
     }
 }
