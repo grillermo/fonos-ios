@@ -62,18 +62,26 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
         try validateRemoteAccess()
         let (urlString, url) = try transcriptionEndpoint()
         let wav = UploadFile.wav(audioData)
-        let upload = (try? AudioCaptureService.encodeToM4A(wavData: audioData)).map(UploadFile.m4a) ?? wav
+        var upload = wav
+        do {
+            let m4a = try AudioCaptureService.encodeToM4A(wavData: audioData)
+            // Short clips come out larger as m4a (container overhead).
+            if m4a.count < audioData.count { upload = .m4a(m4a) }
+        } catch {
+            sttLog.error("m4a encode failed: \(error)")
+        }
         sttLog.info("🌐 WhisperSTT POST \(urlString), model=\(self.modelID), \(upload.filename)=\(upload.data.count) bytes (wav \(audioData.count))")
         var (data, response) = try await send(
             makeRequest(url: url, file: upload, language: language, prompt: prompt, temperature: temperature),
             urlString: urlString
         )
-        if upload.filename != wav.filename,
+        if upload.isM4A,
            let status = (response as? HTTPURLResponse)?.statusCode,
            status == 400 || status == 415 {
             // Servers without an AAC decoder (e.g. whisper.cpp built without
             // ffmpeg) reject m4a; WAV is the format every endpoint accepts.
-            sttLog.info("🌐 m4a rejected with HTTP \(status), retrying as WAV")
+            let body = String(data: data, encoding: .utf8)?.prefix(200) ?? ""
+            sttLog.info("🌐 m4a rejected with HTTP \(status): \(body); retrying as WAV")
             try Task.checkCancellation()
             (data, response) = try await send(
                 makeRequest(url: url, file: wav, language: language, prompt: prompt, temperature: temperature),
@@ -249,13 +257,14 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
         let data: Data
         let filename: String
         let mimeType: String
+        let isM4A: Bool
 
         static func wav(_ data: Data) -> UploadFile {
-            UploadFile(data: data, filename: "audio.wav", mimeType: "audio/wav")
+            UploadFile(data: data, filename: "audio.wav", mimeType: "audio/wav", isM4A: false)
         }
 
         static func m4a(_ data: Data) -> UploadFile {
-            UploadFile(data: data, filename: "audio.m4a", mimeType: "audio/mp4")
+            UploadFile(data: data, filename: "audio.m4a", mimeType: "audio/mp4", isM4A: true)
         }
     }
 
