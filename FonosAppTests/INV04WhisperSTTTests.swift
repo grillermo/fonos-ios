@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import AVFoundation
 @testable import FonosApp
 
 // MARK: - Mock URLProtocol
@@ -82,6 +83,29 @@ private func dummyWAVData() -> Data {
     return Data(header)
 }
 
+/// 1 s of a 440 Hz tone as capture-format WAV, which the m4a encoder accepts.
+private func toneWAVData() throws -> Data {
+    let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000,
+                               channels: 1, interleaved: false)!
+    let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000)!
+    buffer.frameLength = 16_000
+    for i in 0..<16_000 {
+        buffer.int16ChannelData![0][i] = Int16(sin(Double(i) / 16_000 * 440 * 2 * .pi) * 8_000)
+    }
+    return try AudioCaptureService.encodeToWAV(buffer: buffer)
+}
+
+/// The multipart file name of the upload ("audio.m4a" / "audio.wav"), read as
+/// bytes because an AAC body is not valid UTF-8.
+private func uploadedFilename(_ request: URLRequest) -> String? {
+    guard let body = request.httpBody else { return nil }
+    for name in ["audio.m4a", "audio.wav"]
+    where body.range(of: Data("filename=\"\(name)\"".utf8)) != nil {
+        return name
+    }
+    return nil
+}
+
 // MARK: - Tests
 
 // Serialized because MockURLProtocol.requestHandler is a shared static variable
@@ -129,6 +153,67 @@ struct INV04WhisperSTTTests {
         #expect(capturedRequest?.url?.host == "api.openai.com")
         #expect(capturedRequest?.url?.path == "/v1/audio/transcriptions")
         #expect(capturedRequest?.httpMethod == "POST")
+    }
+
+    // --- Upload format ---
+
+    @Test("WhisperSTT uploads recordings as m4a")
+    func uploadsM4A() async throws {
+        var capturedRequest: URLRequest?
+        MockURLProtocol.requestHandler = { req in
+            capturedRequest = req
+            return okResponse(for: kOpenAITranscriptURL, body: #"{"text":"hello"}"#)
+        }
+        let stt = makeWhisperSTT(session: makeSession())
+        let text = try await stt.transcribe(audioData: try toneWAVData(), language: "en")
+        #expect(text == "hello")
+        let request = try #require(capturedRequest)
+        #expect(uploadedFilename(request) == "audio.m4a")
+        #expect(request.httpBody?.range(of: Data("Content-Type: audio/mp4".utf8)) != nil)
+    }
+
+    @Test("WhisperSTT retries as WAV when the server rejects m4a", arguments: [400, 415])
+    func retriesAsWAVWhenM4ARejected(statusCode: Int) async throws {
+        var filenames: [String?] = []
+        MockURLProtocol.requestHandler = { req in
+            let name = uploadedFilename(req)
+            filenames.append(name)
+            if name == "audio.m4a" {
+                return errorResponse(for: kOpenAITranscriptURL, statusCode: statusCode)
+            }
+            return okResponse(for: kOpenAITranscriptURL, body: #"{"text":"from wav"}"#)
+        }
+        let stt = makeWhisperSTT(session: makeSession())
+        let text = try await stt.transcribe(audioData: try toneWAVData(), language: "en")
+        #expect(text == "from wav")
+        #expect(filenames == ["audio.m4a", "audio.wav"])
+    }
+
+    @Test("WhisperSTT does not retry as WAV on 401")
+    func noWAVRetryOnAuthFailure() async throws {
+        var requestCount = 0
+        MockURLProtocol.requestHandler = { _ in
+            requestCount += 1
+            return errorResponse(for: kOpenAITranscriptURL, statusCode: 401)
+        }
+        let stt = makeWhisperSTT(session: makeSession())
+        await #expect(throws: STTError.self) {
+            _ = try await stt.transcribe(audioData: try toneWAVData(), language: "en")
+        }
+        #expect(requestCount == 1)
+    }
+
+    @Test("WhisperSTT sends WAV when the audio cannot be encoded")
+    func sendsWAVWhenEncodingFails() async throws {
+        var filenames: [String?] = []
+        MockURLProtocol.requestHandler = { req in
+            filenames.append(uploadedFilename(req))
+            return okResponse(for: kOpenAITranscriptURL, body: #"{"text":"hello"}"#)
+        }
+        let stt = makeWhisperSTT(session: makeSession())
+        // Header-only WAV: no samples, so encodeToM4A throws.
+        _ = try await stt.transcribe(audioData: dummyWAVData(), language: "en")
+        #expect(filenames == ["audio.wav"])
     }
 
     @Test("WhisperSTT normalizes root, v1, trailing slash, and complete endpoint URLs")

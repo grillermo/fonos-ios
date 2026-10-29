@@ -61,15 +61,25 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
         try Task.checkCancellation()
         try validateRemoteAccess()
         let (urlString, url) = try transcriptionEndpoint()
-        sttLog.info("🌐 WhisperSTT POST \(urlString), model=\(self.modelID), audioSize=\(audioData.count)")
-        let request = makeRequest(
-            url: url,
-            audioData: audioData,
-            language: language,
-            prompt: prompt,
-            temperature: temperature
+        let wav = UploadFile.wav(audioData)
+        let upload = (try? AudioCaptureService.encodeToM4A(wavData: audioData)).map(UploadFile.m4a) ?? wav
+        sttLog.info("🌐 WhisperSTT POST \(urlString), model=\(self.modelID), \(upload.filename)=\(upload.data.count) bytes (wav \(audioData.count))")
+        var (data, response) = try await send(
+            makeRequest(url: url, file: upload, language: language, prompt: prompt, temperature: temperature),
+            urlString: urlString
         )
-        let (data, response) = try await send(request, urlString: urlString)
+        if upload.filename != wav.filename,
+           let status = (response as? HTTPURLResponse)?.statusCode,
+           status == 400 || status == 415 {
+            // Servers without an AAC decoder (e.g. whisper.cpp built without
+            // ffmpeg) reject m4a; WAV is the format every endpoint accepts.
+            sttLog.info("🌐 m4a rejected with HTTP \(status), retrying as WAV")
+            try Task.checkCancellation()
+            (data, response) = try await send(
+                makeRequest(url: url, file: wav, language: language, prompt: prompt, temperature: temperature),
+                urlString: urlString
+            )
+        }
         try Task.checkCancellation()
         try validate(response: response, data: data)
         return try parseTranscript(from: data)
@@ -116,7 +126,7 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
 
     private func makeRequest(
         url: URL,
-        audioData: Data,
+        file: UploadFile,
         language: String?,
         prompt: String?,
         temperature: Double?
@@ -132,7 +142,7 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.httpBody = makeBody(
             boundary: boundary,
-            audioData: audioData,
+            file: file,
             language: language,
             prompt: prompt,
             temperature: temperature
@@ -142,7 +152,7 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
 
     private func makeBody(
         boundary: String,
-        audioData: Data,
+        file: UploadFile,
         language: String?,
         prompt: String?,
         temperature: Double?
@@ -150,8 +160,8 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
         var body = Data()
         // Use actual model ID, not hardcoded "whisper-1"
         appendFormField(&body, boundary: boundary, name: "model", value: modelID)
-        appendFormFile(&body, boundary: boundary, name: "file", filename: "audio.wav",
-                       mimeType: "audio/wav", data: audioData)
+        appendFormFile(&body, boundary: boundary, name: "file", filename: file.filename,
+                       mimeType: file.mimeType, data: file.data)
         if let language = STTLanguageCode.normalized(language) {
             appendFormField(&body, boundary: boundary, name: "language", value: language)
         }
@@ -234,6 +244,20 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
     }
 
     // MARK: - Private helpers
+
+    private struct UploadFile {
+        let data: Data
+        let filename: String
+        let mimeType: String
+
+        static func wav(_ data: Data) -> UploadFile {
+            UploadFile(data: data, filename: "audio.wav", mimeType: "audio/wav")
+        }
+
+        static func m4a(_ data: Data) -> UploadFile {
+            UploadFile(data: data, filename: "audio.m4a", mimeType: "audio/mp4")
+        }
+    }
 
     private struct WhisperResponse: Decodable {
         let text: String
