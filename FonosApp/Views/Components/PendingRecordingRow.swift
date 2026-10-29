@@ -16,6 +16,7 @@ struct PendingRecordingRow: View {
             Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
                 .font(.system(size: 18))
                 .foregroundColor(Self.accent)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -34,12 +35,14 @@ struct PendingRecordingRow: View {
                     .foregroundColor(Self.accent.opacity(0.9))
                     .lineLimit(2)
             }
+            .accessibilityElement(children: .combine)
 
             Spacer(minLength: 8)
 
             if isRetrying {
                 ProgressView()
                     .tint(Self.accent)
+                    .accessibilityLabel(Text("Retrying"))
             } else {
                 Menu {
                     menuItems
@@ -47,8 +50,11 @@ struct PendingRecordingRow: View {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 20))
                         .foregroundColor(Color(hex: "#fafaf9").opacity(0.7))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
-                .accessibilityLabel(Text("Pending recording actions"))
+                .padding(.vertical, -10)
+                .accessibilityLabel(Text("Actions for \(title)"))
             }
         }
         .padding(14)
@@ -70,10 +76,12 @@ struct PendingRecordingRow: View {
         Button(action: onRetry) {
             Label("Retry", systemImage: "arrow.clockwise")
         }
-        Button {
-            UIPasteboard.general.string = recording.lastError
-        } label: {
-            Label("Copy error", systemImage: "doc.on.doc")
+        if !recording.lastError.isEmpty {
+            Button {
+                UIPasteboard.general.string = recording.lastError
+            } label: {
+                Label("Copy error", systemImage: "doc.on.doc")
+            }
         }
         Button(role: .destructive, action: onDiscard) {
             Label("Discard", systemImage: "trash")
@@ -81,7 +89,27 @@ struct PendingRecordingRow: View {
     }
 
     static func durationText(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds.rounded())
+        let total = seconds.isFinite ? Int(max(0, seconds).rounded()) : 0
         return String(format: "%d:%02d", total / 60, total % 60)
     }
+}
+
+#Preview {
+    func sample(_ error: String) -> PendingRecording {
+        PendingRecording(
+            id: UUID(), surface: .dictate, workflowID: nil, notebookID: nil,
+            createdAt: Date(), lastError: error, attempts: 1, durationSeconds: 75
+        )
+    }
+    return VStack(spacing: 12) {
+        PendingRecordingRow(recording: sample("The network connection was lost."),
+                            title: "Dictation", isRetrying: false, onRetry: {}, onDiscard: {})
+        PendingRecordingRow(recording: sample("The network connection was lost."),
+                            title: "Dictation", isRetrying: true, onRetry: {}, onDiscard: {})
+        PendingRecordingRow(recording: sample(String(repeating: "Transcription service returned an unexpected response. ", count: 4)),
+                            title: "Dictation", isRetrying: false, onRetry: {}, onDiscard: {})
+    }
+    .padding()
+    .background(Color.black)
+    .preferredColorScheme(.dark)
 }
