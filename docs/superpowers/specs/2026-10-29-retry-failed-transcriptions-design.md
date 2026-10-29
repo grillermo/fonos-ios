@@ -8,10 +8,9 @@ shows the failure or the record.
 
 ## Decisions
 
-1. **Surfaces: Dictate tab and Notes** save failed audio for retry. The
-   keyboard is out of scope (spec review: "Remove the keyboard surfaces,
-   nothing in this plan touches the keyboard transcription."). Rationale: keep
-   this change to the main app's own recording paths.
+1. **Surfaces: Dictate tab and Notes** save failed audio for retry.
+   Rationale: every place that records in the app should be able to recover
+   the audio.
 2. **Trigger: any transcription failure** saves the recording, not only
    connection errors. Rationale: keeping audio beats losing it to an error
    class we guessed wrong.
@@ -30,8 +29,7 @@ shows the failure or the record.
    Rationale: no silent loss; History shows pending items so they don't pile
    up unseen.
 8. **Storage: a file store in the App Group** (`PendingRecordings/<id>.wav` +
-   `<id>.json`), no SwiftData schema change. Rationale: no migration risk, and
-   the keyboard could use it later without moving files.
+   `<id>.json`), no SwiftData schema change. Rationale: no migration risk.
 9. **"Failure" means the run failed before any text was persisted.** A failed
    output after the recorder hook saved text keeps nothing; empty audio and
    "no speech" results are not kept. Rationale: History already has the text
@@ -122,6 +120,5 @@ leaves the row with its new error and `attempts + 1`.
 
 ## Out of scope
 
-The keyboard (its recordings keep today's error-only behavior), automatic
-retry, retry limits, retention expiry, retrying with a different recipe,
+Automatic retry, retry limits, retention expiry, retrying with a different recipe,
 Live Activity/widget surfaces.
