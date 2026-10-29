@@ -158,6 +158,49 @@ struct INV02AudioCaptureTests {
         }
     }
 
+    // --- M4A upload encoding ---
+
+    @Test("M4A encoder produces an MP4 container")
+    func m4aEncoderProducesMP4Container() throws {
+        let wavData = try AudioCaptureService.encodeToWAV(buffer: makeMockPCMBuffer(frameCount: 32_000))
+        let m4aData = try AudioCaptureService.encodeToM4A(wavData: wavData)
+        #expect(m4aData.count > 8)
+        #expect(String(bytes: m4aData[4..<8], encoding: .ascii) == "ftyp")
+    }
+
+    @Test("M4A encoder output is far smaller than the WAV")
+    func m4aEncoderCompresses() throws {
+        let wavData = try AudioCaptureService.encodeToWAV(buffer: makeMockPCMBuffer(frameCount: 160_000))
+        let m4aData = try AudioCaptureService.encodeToM4A(wavData: wavData)
+        // 10 s at 16 kHz Int16 is 320 KB; 32 kbps AAC is ~40 KB plus a fixed
+        // ~24 KB of container padding (AVAudioFile reserves it up front).
+        #expect(m4aData.count * 4 < wavData.count)
+    }
+
+    @Test("M4A encode keeps the recording's duration")
+    func m4aEncoderKeepsDuration() throws {
+        let wavData = try AudioCaptureService.encodeToWAV(buffer: makeMockPCMBuffer(frameCount: 32_000))
+        let m4aData = try AudioCaptureService.encodeToM4A(wavData: wavData)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("inv02-\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try m4aData.write(to: url)
+
+        let file = try AVAudioFile(forReading: url)
+        let seconds = Double(file.length) / file.fileFormat.sampleRate
+        #expect(abs(seconds - 2.0) < 0.1)
+        #expect(file.fileFormat.channelCount == 1)
+    }
+
+    @Test("M4A encoder rejects a WAV with no samples")
+    func m4aEncoderRejectsEmptyWAV() throws {
+        // Header only: the samples the header promises are missing.
+        let wavData = Data(try AudioCaptureService.encodeToWAV(buffer: makeMockPCMBuffer()).prefix(44))
+        #expect(throws: (any Error).self) {
+            _ = try AudioCaptureService.encodeToM4A(wavData: wavData)
+        }
+    }
+
     // --- Service lifecycle ---
 
     @Test("AudioCaptureService is not recording immediately after init")

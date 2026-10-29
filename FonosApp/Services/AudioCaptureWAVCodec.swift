@@ -116,6 +116,38 @@ extension AudioCaptureService {
         return outputBuffer
     }
 
+    /// AAC bit rate for STT uploads. 32 kbps mono speech transcribed
+    /// word-for-word the same as WAV on mema (qwen, parakeet) at ~1/7.5 the size.
+    static let m4aUploadBitRate = 32_000
+
+    /// Re-encode capture WAV as AAC in an MP4 (.m4a) container for upload.
+    /// Throws for WAV it cannot decode, including one with no samples.
+    nonisolated static func encodeToM4A(wavData: Data) throws -> Data {
+        let pcm = try decodeWAV(data: wavData)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fonos-upload-\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: pcm.format.sampleRate,
+            AVNumberOfChannelsKey: Int(pcm.format.channelCount),
+            AVEncoderBitRateKey: m4aUploadBitRate,
+        ]
+        // AVAudioFile finalizes the MP4 container when it is released, so it
+        // must go out of scope before the file is read back.
+        do {
+            let file = try AVAudioFile(
+                forWriting: url,
+                settings: settings,
+                commonFormat: .pcmFormatInt16,
+                interleaved: false
+            )
+            try file.write(from: pcm)
+        }
+        return try Data(contentsOf: url)
+    }
+
     private nonisolated static func findDataChunk(in data: Data) -> (offset: Int, size: UInt32) {
         var searchOffset = 36
         while searchOffset + 8 <= data.count {
