@@ -116,7 +116,6 @@ struct KeyboardReadyControl: View {
     @State private var session: KeyboardReadySession?
     @State private var status: KeyboardIPC.ReadinessStatus = .inactive
     @State private var isStarting = false
-    @State private var showStartConfirmation = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -163,7 +162,7 @@ struct KeyboardReadyControl: View {
                 }
             } else {
                 Button {
-                    showStartConfirmation = true
+                    startSession()
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "keyboard.badge.ellipsis")
@@ -193,24 +192,6 @@ struct KeyboardReadyControl: View {
         .onAppear(perform: refresh)
         .onReceive(NotificationCenter.default.publisher(for: .keyboardReadySessionDidChange)) { _ in
             refresh()
-        }
-        .confirmationDialog(
-            "Start Keyboard Ready?",
-            isPresented: $showStartConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Start for 15 Minutes") {
-                startSession()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(
-                """
-                Fonos will keep microphone input active in the background, and iOS will show its microphone indicator. \
-                Audio buffers are discarded unless you tap the microphone in the Fonos keyboard. \
-                A captured utterance is removed from memory after its recipe finishes.
-                """
-            )
         }
         .alert(
             "Keyboard Ready Couldn’t Start",
