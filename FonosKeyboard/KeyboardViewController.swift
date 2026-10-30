@@ -101,6 +101,7 @@ final class KeyboardViewController: UIInputViewController {
         // previous No Recipe state and stale selections recover immediately.
         refreshModeButton()
         updateUI()
+        autoStartIfPending()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -320,7 +321,10 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Recording
 
-    private func startRecording() {
+    /// - Parameter openFonosIfNotReady: when Keyboard Ready is off, open Fonos
+    ///   to start it and resume dictation on return, instead of only showing
+    ///   an error. Off for the automatic retry so a failure can't loop.
+    private func startRecording(openFonosIfNotReady: Bool = true) {
         refreshModeButton()
         guard hasRunnableWorkflow, !currentWorkflowID.isEmpty else { return }
         guard hasFullAccess else {
@@ -373,7 +377,14 @@ final class KeyboardViewController: UIInputViewController {
             completion: { [weak self] error in
                 guard let self else { return }
                 if let error {
-                    self.keyboardState = .error(error.localizedDescription)
+                    let needsReady = (error as NSError).code
+                        == KeyboardAudioService.needsKeyboardReadyErrorCode
+                    if needsReady, openFonosIfNotReady, self.openFonosForKeyboardReady() {
+                        self.keyboardState = .ready
+                        self.statusLabel.text = "Starting Keyboard Ready in Fonos…"
+                    } else {
+                        self.keyboardState = .error(error.localizedDescription)
+                    }
                 } else {
                     self.keyboardState = .recording
                     self.statusLabel.text = "Recording..."
@@ -381,6 +392,62 @@ final class KeyboardViewController: UIInputViewController {
                 }
             }
         )
+    }
+
+    // MARK: - Keyboard Ready hand-off
+
+    /// Opens `fonos://keyboard-ready` so the main app starts its Ready window,
+    /// and remembers to start dictating when the keyboard comes back. Returns
+    /// false when no `UIApplication` is reachable to open the URL.
+    private func openFonosForKeyboardReady() -> Bool {
+        // Keyboard extensions have no `extensionContext.open`; reach the host
+        // `UIApplication` through the responder chain. `open(_:options:)` is
+        // extension-unavailable at compile time, so call it by selector.
+        let selector = NSSelectorFromString("openURL:options:completionHandler:")
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let application = current as? UIApplication,
+               application.responds(to: selector) {
+                typealias OpenURL = @convention(c) (
+                    AnyObject, Selector, NSURL, NSDictionary, AnyObject?
+                ) -> Void
+                let open = unsafeBitCast(application.method(for: selector), to: OpenURL.self)
+                sharedDefaults()?.set(
+                    Date().timeIntervalSince1970,
+                    forKey: KeyboardIPC.DefaultsKey.pendingAutoStart
+                )
+                open(application, selector, KeyboardIPC.keyboardReadyURL as NSURL, [:], nil)
+                return true
+            }
+            responder = current.next
+        }
+        return false
+    }
+
+    /// Starts dictation right away when the user just came back from Fonos
+    /// after the keyboard opened it to start Keyboard Ready.
+    private func autoStartIfPending() {
+        guard let defaults = sharedDefaults() else { return }
+        let openedAt = defaults.double(forKey: KeyboardIPC.DefaultsKey.pendingAutoStart)
+        guard openedAt > 0 else { return }
+        defaults.removeObject(forKey: KeyboardIPC.DefaultsKey.pendingAutoStart)
+        guard Date().timeIntervalSince1970 - openedAt <= KeyboardIPC.pendingAutoStartWindow else {
+            return
+        }
+        switch keyboardState {
+        case .ready, .error, .done, .copied: break
+        case .recording, .processing: return
+        }
+        // Let the host finish presenting the keyboard before capture begins.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self else { return }
+            switch self.keyboardState {
+            case .ready, .error, .done, .copied:
+                self.startRecording(openFonosIfNotReady: false)
+            case .recording, .processing:
+                break
+            }
+        }
     }
 
     private func stopAndTranscribe() {

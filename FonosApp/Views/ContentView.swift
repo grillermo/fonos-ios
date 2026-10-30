@@ -125,6 +125,7 @@ struct ContentView: View {
     @State private var selectedTab: AppTab = .dictate
     @State private var pendingConfigImport: PendingConfigImport?
     @State private var configImportError: String?
+    @State private var keyboardReadyError: String?
     @State private var noteRecordingRequest: NoteRecordingDeepLinkRequest?
     @State private var handledDeepLinkIDs: Set<UUID> = []
     private let modelContainer: ModelContainer
@@ -266,6 +267,25 @@ struct ContentView: View {
             if let payload { handleConfigDeepLink(payload, id: request?.id ?? UUID()) }
             if let request { DeepLinkRouter.acknowledge(request.id) }
         }
+        // fonos://keyboard-ready — the Fonos keyboard's mic was tapped while
+        // Ready was off. Opening the link is the explicit user action.
+        .onReceive(NotificationCenter.default.publisher(for: .fonosStartKeyboardReady)) { notification in
+            let request = (notification.userInfo?["request"] as? KeyboardReadyDeepLinkRequest)
+                ?? KeyboardReadyDeepLinkRequest()
+            handleKeyboardReadyDeepLink(request)
+            DeepLinkRouter.acknowledge(request.id)
+        }
+        .alert(
+            "Keyboard Ready Couldn’t Start",
+            isPresented: Binding(
+                get: { keyboardReadyError != nil },
+                set: { if !$0 { keyboardReadyError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { keyboardReadyError = nil }
+        } message: {
+            Text(keyboardReadyError ?? "")
+        }
         .sheet(item: $pendingConfigImport) { pending in
             ConfigImportPreviewView(
                 summary: pending.summary,
@@ -336,6 +356,17 @@ struct ContentView: View {
         noteRecordingRequest = request
     }
 
+    private func handleKeyboardReadyDeepLink(_ request: KeyboardReadyDeepLinkRequest) {
+        guard handledDeepLinkIDs.insert(request.id).inserted else { return }
+        Task { @MainActor in
+            do {
+                _ = try await BackgroundRecordingService.shared.enableKeyboardReadySession()
+            } catch {
+                keyboardReadyError = error.localizedDescription
+            }
+        }
+    }
+
     private func handleConfigDeepLink(_ payload: String, id: UUID) {
         guard handledDeepLinkIDs.insert(id).inserted else { return }
         do {
@@ -364,6 +395,8 @@ struct ContentView: View {
                 handleNoteDeepLink(value)
             case .configImport(let value):
                 handleConfigDeepLink(value.payload, id: value.id)
+            case .keyboardReady(let value):
+                handleKeyboardReadyDeepLink(value)
             }
         }
     }

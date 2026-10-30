@@ -8,6 +8,9 @@ enum KeyboardIPC {
         static let modeOverride = "kb_active_mode_id"
         static let workflowOverride = "kb_active_workflow_id"
         static let workflowManifest = "kb_workflow_manifest_v1"
+        /// Epoch seconds when the keyboard opened `fonos://keyboard-ready`.
+        /// A fresh value makes the keyboard start dictating once it reappears.
+        static let pendingAutoStart = "kb_pending_auto_start_at"
     }
 
     enum FileName {
@@ -37,6 +40,11 @@ enum KeyboardIPC {
         static let partial = "com.fonos.ios.kb.partial"
         static let result = "com.fonos.ios.kb.result"
     }
+
+    /// Opened by the keyboard when its mic is tapped while Ready is off.
+    static let keyboardReadyURL = URL(string: "fonos://keyboard-ready")!
+    /// How long after opening Fonos the keyboard still auto-starts dictation.
+    static let pendingAutoStartWindow: TimeInterval = 60
 
     enum Delivery: String, Equatable, Sendable {
         case insert

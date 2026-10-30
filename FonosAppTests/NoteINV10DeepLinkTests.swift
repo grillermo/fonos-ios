@@ -309,6 +309,21 @@ struct NoteINV10DeepLinkTests {
         }
     }
 
+    @Test("fonos://keyboard-ready routes a buffered Keyboard Ready request")
+    func deepLinkKeyboardReady() throws {
+        _ = DeepLinkRouter.takePendingRequests()
+        let url = try #require(URL(string: "fonos://keyboard-ready"))
+        let routed = try #require(DeepLinkRouter.handle(url))
+        guard case .keyboardReady = routed else {
+            Issue.record("Expected keyboard-ready route")
+            return
+        }
+        // The test host's ContentView may acknowledge the live notification,
+        // so only assert the queue never holds anything else.
+        let pending = DeepLinkRouter.takePendingRequests()
+        #expect(pending.allSatisfy { $0 == routed })
+    }
+
     @Test("handleDeepLink rejects an unrecognised scheme")
     func deepLinkUnrecognisedScheme() throws {
         let url = try #require(URL(string: "https://example.com/note"))

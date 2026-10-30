@@ -100,11 +100,16 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
             readyExpiresAt: readyExpiresAt,
             now: now
         ) {
-            completion(makeError(readinessErrorMessage(
-                status: readinessStatus,
-                readyExpiresAt: readyExpiresAt,
-                now: now
-            )))
+            completion(makeError(
+                readinessErrorMessage(
+                    status: readinessStatus,
+                    readyExpiresAt: readyExpiresAt,
+                    now: now
+                ),
+                // Paused means Fonos itself holds the mic; renewing Ready
+                // from the keyboard would not help.
+                code: readinessStatus == .paused ? 1 : Self.needsKeyboardReadyErrorCode
+            ))
             return
         }
 
@@ -316,9 +321,13 @@ final class KeyboardAudioService: NSObject, @unchecked Sendable {
         diag("sent cancel for session=\(sessionID.prefix(8))")
     }
 
-    private func makeError(_ msg: String) -> NSError {
+    /// Error code for "the main app has no live Keyboard Ready session", which
+    /// the keyboard resolves by opening `KeyboardIPC.keyboardReadyURL`.
+    static let needsKeyboardReadyErrorCode = 2
+
+    private func makeError(_ msg: String, code: Int = 1) -> NSError {
         diag("❌ \(msg)")
-        return NSError(domain: "KB", code: 1, userInfo: [NSLocalizedDescriptionKey: msg])
+        return NSError(domain: "KB", code: code, userInfo: [NSLocalizedDescriptionKey: msg])
     }
 
     private func readinessErrorMessage(

@@ -15,6 +15,10 @@ extension Notification.Name {
     /// carries the raw payload under "payload"; the receiver decodes + previews.
     /// `fonos://model?…` links (one model profile) travel the same way.
     static let fonosImportConfig = Notification.Name("com.fonos.ios.importConfig")
+
+    /// Posted when the app receives a `fonos://keyboard-ready` deep link, sent
+    /// by the Fonos keyboard when the user taps its mic while Ready is off.
+    static let fonosStartKeyboardReady = Notification.Name("com.fonos.ios.startKeyboardReady")
 }
 
 // MARK: - DeepLinkRouter
@@ -55,6 +59,15 @@ struct ConfigImportDeepLinkRequest: Identifiable, Equatable, Sendable {
     }
 }
 
+/// A one-shot request to start the Keyboard Ready window.
+struct KeyboardReadyDeepLinkRequest: Identifiable, Equatable, Sendable {
+    let id: UUID
+
+    init(id: UUID = UUID()) {
+        self.id = id
+    }
+}
+
 /// Routes incoming `fonos://` deep links to the appropriate notification.
 enum DeepLinkRouter {
 
@@ -62,12 +75,14 @@ enum DeepLinkRouter {
         case dictation(DictationDeepLinkRequest)
         case noteRecording(NoteRecordingDeepLinkRequest)
         case configImport(ConfigImportDeepLinkRequest)
+        case keyboardReady(KeyboardReadyDeepLinkRequest)
 
         var id: UUID {
             switch self {
             case .dictation(let request): request.id
             case .noteRecording(let request): request.id
             case .configImport(let request): request.id
+            case .keyboardReady(let request): request.id
             }
         }
     }
@@ -130,6 +145,17 @@ enum DeepLinkRouter {
                 name: .fonosImportConfig,
                 object: nil,
                 userInfo: ["request": request, "payload": request.payload]
+            )
+            return routed
+
+        case "keyboard-ready":
+            let request = KeyboardReadyDeepLinkRequest()
+            let routed = Request.keyboardReady(request)
+            buffer(routed)
+            NotificationCenter.default.post(
+                name: .fonosStartKeyboardReady,
+                object: nil,
+                userInfo: ["request": request]
             )
             return routed
 
