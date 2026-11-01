@@ -30,6 +30,8 @@ enum ConfigBundleExporter {
             ]
             if p.hasSTT { d["stt_api"] = p.effectiveSTTAPI }
             if let base = p.portableBaseURL, !base.isEmpty { d["base_url"] = base }
+            // iOS-only key; desktop ignores it.
+            if let fallback = p.effectiveFallbackBaseURL { d["fallback_base_url"] = fallback }
             if includeKeys, let key = keyLookup(p.id), !key.isEmpty { d["api_key"] = key }
             return d
         }

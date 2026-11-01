@@ -251,21 +251,36 @@ enum STTResolver {
             guard !baseURL.isEmpty else {
                 return UnavailableSTT(reason: "STT profile '\(profile.name)' has no endpoint")
             }
-            if profile.effectiveSTTAPI == "chat" {
-                return ChatSTT(
-                    apiKey: key,
-                    baseURL: baseURL,
-                    modelID: profile.modelID,
-                    provider: profile.provider
-                )
-            }
-            return WhisperSTT(
-                apiKey: key,
+            let primary = remoteProvider(profile: profile, apiKey: key, baseURL: baseURL)
+            guard let fallbackURL = profile.effectiveFallbackBaseURL else { return primary }
+            sttLog.info("🔌 STT fallback endpoint: \(fallbackURL)")
+            return FailoverSTT(
+                primary: primary,
+                fallback: remoteProvider(profile: profile, apiKey: key, baseURL: fallbackURL),
+                primaryBaseURL: baseURL
+            )
+        }
+    }
+
+    private static func remoteProvider(
+        profile: ModelProfile,
+        apiKey: String,
+        baseURL: String
+    ) -> any STTProvider {
+        if profile.effectiveSTTAPI == "chat" {
+            return ChatSTT(
+                apiKey: apiKey,
                 baseURL: baseURL,
                 modelID: profile.modelID,
                 provider: profile.provider
             )
         }
+        return WhisperSTT(
+            apiKey: apiKey,
+            baseURL: baseURL,
+            modelID: profile.modelID,
+            provider: profile.provider
+        )
     }
 }
 

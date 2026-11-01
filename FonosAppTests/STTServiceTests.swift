@@ -182,3 +182,161 @@ struct STTResolverTests {
         #expect(provider is WhisperSTT)
     }
 }
+
+// MARK: - LAN-first endpoint with public fallback
+
+private final class ProbeCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    var count: Int { lock.withLock { value } }
+    func increment() { lock.withLock { value += 1 } }
+}
+
+private final class MutableBox<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: T
+    init(_ value: T) { stored = value }
+    var value: T {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
+}
+
+private struct StubSTT: STTProvider {
+    let result: Result<String, STTError>
+    let calls: ProbeCounter
+    func transcribe(audioData: Data, language: String?) async throws -> String {
+        calls.increment()
+        return try result.get()
+    }
+}
+
+private let homeWiFi = LocalNetworkFingerprint.Interface(
+    name: "en0",
+    address: LocalNetworkFingerprint.ipv4("192.168.1.42")!,
+    netmask: LocalNetworkFingerprint.ipv4("255.255.255.0")!
+)
+private let cafeWiFi = LocalNetworkFingerprint.Interface(
+    name: "en0",
+    address: LocalNetworkFingerprint.ipv4("10.0.4.17")!,
+    netmask: LocalNetworkFingerprint.ipv4("255.255.255.0")!
+)
+
+struct EndpointRouterTests {
+    private let lan = "http://192.168.1.3:8787"
+
+    private func makeRouter(
+        interfaces: MutableBox<[LocalNetworkFingerprint.Interface]>,
+        reachable: Bool,
+        probes: ProbeCounter,
+        clock: MutableBox<Date> = MutableBox(Date(timeIntervalSince1970: 0))
+    ) -> EndpointRouter {
+        EndpointRouter(
+            prober: { _, _, _ in probes.increment(); return reachable },
+            networkReader: { LocalNetworkFingerprint.evaluate(host: $0, interfaces: interfaces.value) },
+            now: { clock.value }
+        )
+    }
+
+    @Test("off the LAN subnet the fallback is chosen with no probe at all")
+    func offSubnetSkipsProbe() async {
+        let probes = ProbeCounter()
+        let router = makeRouter(interfaces: MutableBox([cafeWiFi]), reachable: true, probes: probes)
+        #expect(await router.prefersPrimary(lan) == false)
+        #expect(await router.prefersPrimary(lan) == false)
+        #expect(probes.count == 0)
+    }
+
+    @Test("on the LAN subnet one probe is reused for every request")
+    func probeIsCachedPerNetwork() async {
+        let probes = ProbeCounter()
+        let router = makeRouter(interfaces: MutableBox([homeWiFi]), reachable: true, probes: probes)
+        for _ in 0 ..< 5 { #expect(await router.prefersPrimary(lan)) }
+        #expect(probes.count == 1)
+    }
+
+    @Test("changing networks invalidates the cached verdict")
+    func networkChangeReprobes() async {
+        let probes = ProbeCounter()
+        let interfaces = MutableBox([homeWiFi])
+        let router = makeRouter(interfaces: interfaces, reachable: true, probes: probes)
+        #expect(await router.prefersPrimary(lan))
+        interfaces.value = [LocalNetworkFingerprint.Interface(
+            name: "en0", address: LocalNetworkFingerprint.ipv4("192.168.1.99")!,
+            netmask: homeWiFi.netmask
+        )]
+        #expect(await router.prefersPrimary(lan))
+        #expect(probes.count == 2)
+    }
+
+    @Test("a failed request demotes the primary until the down TTL expires")
+    func failureDemotesThenRecovers() async {
+        let probes = ProbeCounter()
+        let clock = MutableBox(Date(timeIntervalSince1970: 0))
+        let router = makeRouter(interfaces: MutableBox([homeWiFi]), reachable: true,
+                                probes: probes, clock: clock)
+        #expect(await router.prefersPrimary(lan))
+        await router.reportFailure(lan)
+        #expect(await router.prefersPrimary(lan) == false)
+        #expect(probes.count == 1)
+        clock.value = clock.value.addingTimeInterval(router.downTTL + 1)
+        #expect(await router.prefersPrimary(lan))
+        #expect(probes.count == 2)
+    }
+
+    @Test("FailoverSTT retries on the fallback when the primary fails")
+    func failoverSTTUsesFallback() async throws {
+        let router = makeRouter(interfaces: MutableBox([homeWiFi]), reachable: true, probes: ProbeCounter())
+        let primaryCalls = ProbeCounter()
+        let fallbackCalls = ProbeCounter()
+        let stt = FailoverSTT(
+            primary: StubSTT(result: .failure(.timeout), calls: primaryCalls),
+            fallback: StubSTT(result: .success("hola"), calls: fallbackCalls),
+            primaryBaseURL: lan,
+            router: router
+        )
+        #expect(try await stt.transcribe(audioData: Data(), language: nil) == "hola")
+        #expect(try await stt.transcribe(audioData: Data(), language: nil) == "hola")
+        // Second request skips the demoted primary entirely.
+        #expect(primaryCalls.count == 1)
+        #expect(fallbackCalls.count == 2)
+    }
+
+    @Test("profile with a fallback resolves to FailoverSTT; without one, unchanged")
+    func resolverWrapsOnlyWithFallback() {
+        let withFallback = ModelProfile(
+            id: "custom-1", name: "mema", provider: "custom", modelID: "qwen",
+            baseURL: lan, capabilities: ["stt"], fallbackBaseURL: "https://mema.chiq.me/"
+        )
+        #expect(withFallback.effectiveFallbackBaseURL == "https://mema.chiq.me")
+        #expect(STTResolver.resolve(config: makeConfig(profile: withFallback, sttProfile: "custom-1"))
+            is FailoverSTT)
+        var same = withFallback
+        same.fallbackBaseURL = lan
+        #expect(same.effectiveFallbackBaseURL == nil)
+        #expect(STTResolver.resolve(config: makeConfig(profile: same, sttProfile: "custom-1"))
+            is WhisperSTT)
+    }
+
+    @Test("consent covers both endpoints of a profile")
+    func consentCoversFallback() throws {
+        let defaults = try #require(UserDefaults(suiteName: "EndpointRouterTests-\(UUID())"))
+        let profile = ModelProfile(
+            id: "custom-1", name: "mema", provider: "custom", modelID: "qwen",
+            baseURL: lan, capabilities: ["stt"], fallbackBaseURL: "https://mema.chiq.me"
+        )
+        RemoteAIConsentStore.grant(provider: "custom", baseURL: lan, defaults: defaults)
+        #expect(RemoteAIConsentStore.isAuthorized(for: profile, defaults: defaults) == false)
+        RemoteAIConsentStore.grant(for: profile, defaults: defaults)
+        #expect(RemoteAIConsentStore.isAuthorized(for: profile, defaults: defaults))
+        #expect(RemoteAIConsentStore.isAuthorized(
+            provider: "custom", baseURL: "https://mema.chiq.me", defaults: defaults))
+    }
+
+    @Test("scheme-less input gets http for LAN hosts and https otherwise")
+    func schemeInference() {
+        #expect(ModelProfileForm.withScheme("192.168.1.3:8787") == "http://192.168.1.3:8787")
+        #expect(ModelProfileForm.withScheme("mema.chiq.me") == "https://mema.chiq.me")
+        #expect(ModelProfileForm.withScheme("https://x.y") == "https://x.y")
+    }
+}

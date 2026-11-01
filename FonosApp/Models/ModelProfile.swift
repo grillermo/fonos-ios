@@ -16,6 +16,10 @@ struct ModelProfile: Codable, Equatable, Hashable, Identifiable, Sendable {
     var provider: String        // openai, anthropic, google, ollama, lmstudio, custom
     var modelID: String         // Model identifier (e.g., "gpt-4o")
     var baseURL: String?        // Custom endpoint URL
+    /// iOS-only: a second endpoint for the same server, used when `baseURL`
+    /// cannot be reached (e.g. a LAN address first, a public tunnel second).
+    /// See `EndpointRouter`. Optional so older AppConfig blobs still decode.
+    var fallbackBaseURL: String?
     var capabilities: [String]  // ["stt", "llm"] or subset
     /// Desktop profile contract: `whisper` multipart or multimodal `chat`.
     /// Optional keeps pre-Flow iOS AppConfig decoding backward compatible.
@@ -59,6 +63,18 @@ struct ModelProfile: Codable, Equatable, Hashable, Identifiable, Sendable {
         }
     }
 
+    /// Normalized fallback, nil when absent or identical to the primary.
+    var effectiveFallbackBaseURL: String? {
+        guard let fallback = Self.normalizeBaseURL(fallbackBaseURL),
+              fallback != effectiveBaseURL else { return nil }
+        return fallback
+    }
+
+    /// Every endpoint this profile may send data to, primary first.
+    var allBaseURLs: [String] {
+        [effectiveBaseURL] + (effectiveFallbackBaseURL.map { [$0] } ?? [])
+    }
+
     // MARK: - Init
 
     init(
@@ -68,7 +84,8 @@ struct ModelProfile: Codable, Equatable, Hashable, Identifiable, Sendable {
         modelID: String,
         baseURL: String? = nil,
         capabilities: [String] = ["llm"],
-        sttAPI: String? = nil
+        sttAPI: String? = nil,
+        fallbackBaseURL: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -77,6 +94,7 @@ struct ModelProfile: Codable, Equatable, Hashable, Identifiable, Sendable {
         self.baseURL = Self.normalizeBaseURL(baseURL)
         self.capabilities = capabilities
         self.sttAPI = sttAPI
+        self.fallbackBaseURL = Self.normalizeBaseURL(fallbackBaseURL)
     }
 
     private static func normalizeBaseURL(_ rawValue: String?) -> String? {

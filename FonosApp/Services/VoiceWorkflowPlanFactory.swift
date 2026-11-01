@@ -394,13 +394,26 @@ struct VoiceWorkflowPlanFactory {
         }
 
         let key = (try? KeychainStore(service: "com.fonos.models").get(profile.id)) ?? ""
-        frozen.llm[widget.id] = ResolvedVoiceWorkflowLLM(
-            provider: LLMService(
+        let makeService: (String) -> LLMService = { baseURL in
+            LLMService(
                 apiKey: key,
                 modelID: profile.modelID,
-                baseURL: profile.effectiveBaseURL,
+                baseURL: baseURL,
                 provider: profile.provider
-            ),
+            )
+        }
+        let llmProvider: any VoiceWorkflowLLMProvider
+        if let fallbackURL = profile.effectiveFallbackBaseURL {
+            llmProvider = FailoverLLMProvider(
+                primary: makeService(profile.effectiveBaseURL),
+                fallback: makeService(fallbackURL),
+                primaryBaseURL: profile.effectiveBaseURL
+            )
+        } else {
+            llmProvider = makeService(profile.effectiveBaseURL)
+        }
+        frozen.llm[widget.id] = ResolvedVoiceWorkflowLLM(
+            provider: llmProvider,
             translateTarget: translateTarget
         )
         frozen.hasConfiguredLLM = true

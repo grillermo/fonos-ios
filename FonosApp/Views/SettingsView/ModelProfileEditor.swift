@@ -22,6 +22,7 @@ struct ModelProfileForm: View {
     @State private var name: String = ""
     @State private var modelID: String = ""
     @State private var baseURL: String = ""
+    @State private var fallbackBaseURL: String = ""
     @State private var apiKey: String = ""
     @State private var apiKeyWasEdited = false
     @State private var hasStt: Bool = false
@@ -180,8 +181,23 @@ struct ModelProfileForm: View {
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
                 .listRowBackground(cardBg)
+
+            TextField("Fallback URL (optional)", text: $fallbackBaseURL)
+                .foregroundColor(textPrimary)
+                .tint(amber)
+                .autocapitalization(.none)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .listRowBackground(cardBg)
         } header: {
             formHeader("Configuration")
+        } footer: {
+            Text(
+                "Base URL is tried first (e.g. http://192.168.1.3:8787). A LAN address is only "
+                    + "tried when this phone is on its subnet, checked once per network. If it "
+                    + "can't be reached, Fonos uses the fallback (e.g. https://mema.chiq.me)."
+            )
+                .foregroundColor(textDim)
         }
     }
 
@@ -224,11 +240,27 @@ struct ModelProfileForm: View {
         (hasStt || hasLlm) &&
         RemoteAIEndpointIdentity(
             provider: selectedProvider,
-            baseURL: baseURL.isEmpty ? defaultBaseURL(for: selectedProvider) : baseURL
+            baseURL: Self.withScheme(baseURL.isEmpty ? defaultBaseURL(for: selectedProvider) : baseURL)
         ) != nil &&
         RemoteAITransportPolicy.allows(
-            baseURL.isEmpty ? defaultBaseURL(for: selectedProvider) : baseURL
-        ) && !credentialReadFailed
+            Self.withScheme(baseURL.isEmpty ? defaultBaseURL(for: selectedProvider) : baseURL)
+        ) &&
+        (trimmedFallback.isEmpty || RemoteAITransportPolicy.allows(Self.withScheme(trimmedFallback))) &&
+        !credentialReadFailed
+    }
+
+    private var trimmedFallback: String {
+        fallbackBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// `192.168.1.3:8787` → `http://192.168.1.3:8787`; `mema.chiq.me` →
+    /// `https://mema.chiq.me`. LAN hosts default to HTTP, everything else to
+    /// HTTPS, matching `RemoteAITransportPolicy`.
+    nonisolated static func withScheme(_ rawValue: String) -> String {
+        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, !value.contains("://") else { return value }
+        let http = "http://" + value
+        return RemoteAITransportPolicy.allows(http) ? http : "https://" + value
     }
 
     private func formHeader(_ title: String) -> some View {
@@ -260,6 +292,7 @@ struct ModelProfileForm: View {
         name = profile.name
         modelID = profile.modelID
         baseURL = profile.baseURL ?? defaultBaseURL(for: profile.provider)
+        fallbackBaseURL = profile.fallbackBaseURL ?? ""
         hasStt = profile.hasSTT
         hasLlm = profile.hasLLM
         sttAPI = profile.effectiveSTTAPI
@@ -303,9 +336,10 @@ struct ModelProfileForm: View {
             name: name.trimmingCharacters(in: .whitespaces),
             provider: selectedProvider,
             modelID: modelID.trimmingCharacters(in: .whitespaces),
-            baseURL: baseURL.isEmpty ? nil : baseURL,
+            baseURL: baseURL.isEmpty ? nil : Self.withScheme(baseURL),
             capabilities: capabilities,
-            sttAPI: hasStt ? sttAPI : nil
+            sttAPI: hasStt ? sttAPI : nil,
+            fallbackBaseURL: trimmedFallback.isEmpty ? nil : Self.withScheme(trimmedFallback)
         )
     }
 

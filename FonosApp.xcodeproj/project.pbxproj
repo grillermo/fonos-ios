@@ -40,6 +40,7 @@
 		AC1000000000000000000002 /* AudioCaptureWAVCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1000000000000000000001 /* AudioCaptureWAVCodec.swift */; };
 		663C34A9CC884E40AD59B70A /* STTService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A7 /* STTService.swift */; };
 		CLN012000000000000000002 /* ChatSTT.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN012000000000000000001 /* ChatSTT.swift */; };
+		ERT000000000000000000002 /* EndpointRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = ERT000000000000000000001 /* EndpointRouter.swift */; };
 		CLN001000000000000000002 /* WhisperSTT.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN001000000000000000001 /* WhisperSTT.swift */; };
 		663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */; };
 		F10000000000000000000011 /* VoiceWorkflowSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000001 /* VoiceWorkflowSupport.swift */; };
@@ -238,6 +239,7 @@
 		AC1000000000000000000001 /* AudioCaptureWAVCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureWAVCodec.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A7 /* STTService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = STTService.swift; sourceTree = "<group>"; };
 		CLN012000000000000000001 /* ChatSTT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSTT.swift; sourceTree = "<group>"; };
+		ERT000000000000000000001 /* EndpointRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointRouter.swift; sourceTree = "<group>"; };
 		CLN001000000000000000001 /* WhisperSTT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperSTT.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMService.swift; sourceTree = "<group>"; };
 		F10000000000000000000001 /* VoiceWorkflowSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowSupport.swift; sourceTree = "<group>"; };
@@ -569,6 +571,7 @@
 				AC1000000000000000000001 /* AudioCaptureWAVCodec.swift */,
 				50BA9D99CDBC44ABA7E645A7 /* STTService.swift */,
 				CLN012000000000000000001 /* ChatSTT.swift */,
+				ERT000000000000000000001 /* EndpointRouter.swift */,
 				CLN001000000000000000001 /* WhisperSTT.swift */,
 				WP03001AA003001AA003001A /* FonosSTT.swift */,
 				50BA9D99CDBC44ABA7E645A8 /* LLMService.swift */,
@@ -945,6 +948,7 @@
 				AC1000000000000000000002 /* AudioCaptureWAVCodec.swift in Sources */,
 				663C34A9CC884E40AD59B70A /* STTService.swift in Sources */,
 				CLN012000000000000000002 /* ChatSTT.swift in Sources */,
+				ERT000000000000000000002 /* EndpointRouter.swift in Sources */,
 				CLN001000000000000000002 /* WhisperSTT.swift in Sources */,
 				663C34A9CC884E40AD59B70B /* LLMService.swift in Sources */,
 				F10000000000000000000011 /* VoiceWorkflowSupport.swift in Sources */,

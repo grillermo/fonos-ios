@@ -332,7 +332,8 @@ extension ScenarioImporter {
                 ?? "",
             baseURL: entry["base_url"] as? String,
             capabilities: entry["capabilities"] as? [String] ?? ["llm"],
-            sttAPI: entry["stt_api"] as? String
+            sttAPI: entry["stt_api"] as? String,
+            fallbackBaseURL: entry["fallback_base_url"] as? String
         )
     }
 }

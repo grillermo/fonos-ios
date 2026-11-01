@@ -138,8 +138,13 @@ enum RemoteAIConsentStore {
         RemoteAIEndpointIdentity(provider: profile.provider, baseURL: profile.effectiveBaseURL)
     }
 
+    /// A profile with a fallback endpoint is authorized only when both the
+    /// primary and the fallback are, so failover never reaches an origin the
+    /// user did not approve.
     static func isAuthorized(for profile: ModelProfile, defaults: UserDefaults = .standard) -> Bool {
-        isAuthorized(provider: profile.provider, baseURL: profile.effectiveBaseURL, defaults: defaults)
+        profile.allBaseURLs.allSatisfy {
+            isAuthorized(provider: profile.provider, baseURL: $0, defaults: defaults)
+        }
     }
 
     static func isAuthorized(
@@ -155,7 +160,9 @@ enum RemoteAIConsentStore {
     }
 
     static func grant(for profile: ModelProfile, defaults: UserDefaults = .standard) {
-        grant(provider: profile.provider, baseURL: profile.effectiveBaseURL, defaults: defaults)
+        for baseURL in profile.allBaseURLs {
+            grant(provider: profile.provider, baseURL: baseURL, defaults: defaults)
+        }
     }
 
     static func grant(
@@ -173,9 +180,12 @@ enum RemoteAIConsentStore {
     }
 
     static func revoke(for profile: ModelProfile, defaults: UserDefaults = .standard) {
-        guard let identity = identity(for: profile) else { return }
         var endpoints = authorizedEndpoints(defaults: defaults)
-        endpoints.remove(identity)
+        for baseURL in profile.allBaseURLs {
+            if let identity = RemoteAIEndpointIdentity(provider: profile.provider, baseURL: baseURL) {
+                endpoints.remove(identity)
+            }
+        }
         persist(endpoints, defaults: defaults)
     }
 
@@ -200,6 +210,12 @@ enum RemoteAIConsentStore {
                 $0.origin
             )
         } ?? String(localized: "the configured provider endpoint")
+        let fallbackRecipient = profile.effectiveFallbackBaseURL
+            .flatMap { RemoteAIEndpointIdentity(provider: profile.provider, baseURL: $0) }
+            .map { $0.origin }
+        let recipients = fallbackRecipient.map {
+            String(format: String(localized: "%1$@ (or %2$@ when it is unreachable)"), recipient, $0)
+        } ?? recipient
         var dataTypes: [String] = []
         if profile.hasSTT {
             dataTypes.append(String(localized: "voice recordings"))
@@ -229,7 +245,7 @@ enum RemoteAIConsentStore {
                 """
             ),
             dataDescription,
-            recipient
+            recipients
         )
     }
 
