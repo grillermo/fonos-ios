@@ -3,7 +3,7 @@ import os.log
 
 private let kbLog = Logger(subsystem: "com.fonos.ios.keyboard", category: "KeyboardVC")
 
-final class KeyboardViewController: UIInputViewController {
+final class KeyboardViewController: UIInputViewController, UIGestureRecognizerDelegate {
 
     // MARK: - State
 
@@ -78,6 +78,24 @@ final class KeyboardViewController: UIInputViewController {
     private let processingIndicator = UIActivityIndicatorView(style: .medium)
     private let statusLabel = UILabel()
     private let switchButton = UIButton(type: .system)
+
+    // MARK: - Trackpad
+
+    /// Drag anywhere on the keyboard background (not on a button) to move the
+    /// cursor: sideways by character (by word when flicked), up/down by hard
+    /// line. See `KeyboardCursorNavigator` for what the proxy allows.
+    private lazy var trackpadPan: UIPanGestureRecognizer = {
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleTrackpadPan(_:)))
+        pan.maximumNumberOfTouches = 1
+        pan.delegate = self
+        return pan
+    }()
+    private let trackpadHaptics = UISelectionFeedbackGenerator()
+    private var trackpadPending = CGPoint.zero
+    private let trackpadStepX: CGFloat = 9
+    private let trackpadStepY: CGFloat = 24
+    /// Horizontal speed (pt/s) above which each step jumps a whole word.
+    private let trackpadWordSpeed: CGFloat = 900
 
     // MARK: - Colors
 
@@ -188,7 +206,75 @@ final class KeyboardViewController: UIInputViewController {
             statusLabel.topAnchor.constraint(equalTo: micButton.bottomAnchor, constant: 6),
         ])
 
+        containerView.addGestureRecognizer(trackpadPan)
+
         refreshModeButton()
+    }
+
+    // MARK: - Trackpad
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard gestureRecognizer === trackpadPan else { return true }
+        // Buttons keep their taps and menus; only bare background is the pad.
+        var view = touch.view
+        while let current = view, current !== containerView {
+            if current is UIControl { return false }
+            view = current.superview
+        }
+        return true
+    }
+
+    @objc private func handleTrackpadPan(_ pan: UIPanGestureRecognizer) {
+        switch pan.state {
+        case .began:
+            trackpadPending = .zero
+            trackpadHaptics.prepare()
+            UIView.animate(withDuration: 0.12) {
+                self.containerView.backgroundColor = UIColor.label.withAlphaComponent(0.05)
+            }
+        case .changed:
+            let delta = pan.translation(in: containerView)
+            pan.setTranslation(.zero, in: containerView)
+            trackpadPending.x += delta.x
+            trackpadPending.y += delta.y
+            stepTrackpad(velocityX: pan.velocity(in: containerView).x)
+        default:
+            trackpadPending = .zero
+            UIView.animate(withDuration: 0.2) {
+                self.containerView.backgroundColor = .clear
+            }
+        }
+    }
+
+    /// Spends the accumulated drag on cursor moves along its dominant axis.
+    private func stepTrackpad(velocityX: CGFloat) {
+        let dx = trackpadPending.x, dy = trackpadPending.y
+        let proxy = textDocumentProxy
+        let before = proxy.documentContextBeforeInput ?? ""
+        let after = proxy.documentContextAfterInput ?? ""
+        var offset: Int?
+
+        if abs(dx) >= trackpadStepX, abs(dx) >= abs(dy) {
+            let direction: KeyboardCursorNavigator.Direction = dx < 0 ? .left : .right
+            if abs(velocityX) > trackpadWordSpeed {
+                offset = KeyboardCursorNavigator.wordOffset(direction, before: before, after: after)
+            } else {
+                let steps = Int(abs(dx) / trackpadStepX)
+                offset = KeyboardCursorNavigator.characterOffset(direction, count: steps, before: before, after: after)
+                    // Some apps hide all context; still nudge blindly there.
+                    ?? (before.isEmpty && after.isEmpty ? (dx < 0 ? -steps : steps) : nil)
+            }
+            trackpadPending = .zero
+        } else if abs(dy) >= trackpadStepY, abs(dy) > abs(dx) {
+            let direction: KeyboardCursorNavigator.Direction = dy < 0 ? .up : .down
+            offset = KeyboardCursorNavigator.lineOffset(direction, before: before, after: after)
+            trackpadPending = .zero
+        }
+
+        guard let offset, offset != 0 else { return }
+        proxy.adjustTextPosition(byCharacterOffset: offset)
+        trackpadHaptics.selectionChanged()
+        trackpadHaptics.prepare()
     }
 
     // MARK: - UI Update
@@ -205,7 +291,7 @@ final class KeyboardViewController: UIInputViewController {
             micButton.isEnabled = true
             micButton.isUserInteractionEnabled = true
             micButton.accessibilityLabel = "Start dictation"
-            statusLabel.text = "Tap to dictate"
+            statusLabel.text = "Tap to dictate · drag to move cursor"
             statusLabel.textColor = .secondaryLabel
 
         case .recording:
@@ -560,7 +646,7 @@ final class KeyboardViewController: UIInputViewController {
             sharedDefaults()?.removeObject(forKey: keyboardModeOverrideKey)
         }
         refreshModeButton()
-        statusLabel.text = "Tap to dictate"
+        statusLabel.text = "Tap to dictate · drag to move cursor"
         statusLabel.textColor = .secondaryLabel
     }
 

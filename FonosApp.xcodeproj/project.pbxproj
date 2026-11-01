@@ -84,6 +84,9 @@
 		CC08001CC008001CC008001B /* INV08URLSchemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC08001CC008001CC008001A /* INV08URLSchemeTests.swift */; };
 		KB12001AA012001AA012001B /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = KB12001AA012001AA012001A /* KeyboardViewController.swift */; };
 		KB12002AA012002AA012002B /* KeyboardAudioService.swift in Sources */ = {isa = PBXBuildFile; fileRef = KB12002AA012002AA012002A /* KeyboardAudioService.swift */; };
+		KBNAV001AA001AA001AA01B /* KeyboardCursorNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBNAV001AA001AA001AA01A /* KeyboardCursorNavigator.swift */; };
+		KBNAV001AA001AA001AA02B /* KeyboardCursorNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBNAV001AA001AA001AA01A /* KeyboardCursorNavigator.swift */; };
+		KBNAV002AA002AA002AA01B /* KeyboardCursorNavigatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBNAV002AA002AA002AA01A /* KeyboardCursorNavigatorTests.swift */; };
 		KBIPC001AA001AA001AA01B /* KeyboardIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */; };
 		KBIPC001AA001AA001AA02B /* KeyboardIPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */; };
 		KBIPC002AA002AA002AA01B /* KeyboardIPCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = KBIPC002AA002AA002AA01A /* KeyboardIPCTests.swift */; };
@@ -290,6 +293,8 @@
 		CC08001CC008001CC008001A /* INV08URLSchemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = INV08URLSchemeTests.swift; sourceTree = "<group>"; };
 		KB12001AA012001AA012001A /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		KB12002AA012002AA012002A /* KeyboardAudioService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardAudioService.swift; sourceTree = "<group>"; };
+		KBNAV001AA001AA001AA01A /* KeyboardCursorNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardCursorNavigator.swift; sourceTree = "<group>"; };
+		KBNAV002AA002AA002AA01A /* KeyboardCursorNavigatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardCursorNavigatorTests.swift; sourceTree = "<group>"; };
 		KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardIPC.swift; sourceTree = "<group>"; };
 		KBIPC002AA002AA002AA01A /* KeyboardIPCTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardIPCTests.swift; sourceTree = "<group>"; };
 		KB12004AA012004AA012004A /* FonosKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FonosKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -511,6 +516,7 @@
 				FE0008AA0008AA0008AA0001 /* NoteINV15LLMNoteTests.swift */,
 				FE0009AA0009AA0009AA0001 /* SharedNotebookCatalogTests.swift */,
 				KBIPC002AA002AA002AA01A /* KeyboardIPCTests.swift */,
+				KBNAV002AA002AA002AA01A /* KeyboardCursorNavigatorTests.swift */,
 			);
 			path = FonosAppTests;
 			sourceTree = "<group>";
@@ -629,6 +635,7 @@
 				KB12001AA012001AA012001A /* KeyboardViewController.swift */,
 				KB12002AA012002AA012002A /* KeyboardAudioService.swift */,
 				KBIPC001AA001AA001AA01A /* KeyboardIPC.swift */,
+				KBNAV001AA001AA001AA01A /* KeyboardCursorNavigator.swift */,
 				KB12006AA012006AA012006A /* Info.plist */,
 				KB12007AA012007AA012007A /* FonosKeyboard.entitlements */,
 				PRV004000000000000000001 /* PrivacyInfo.xcprivacy */,
@@ -912,6 +919,7 @@
 				FE0008AA0008AA0008AA0002 /* NoteINV15LLMNoteTests.swift in Sources */,
 				FE0009AA0009AA0009AA0002 /* SharedNotebookCatalogTests.swift in Sources */,
 				KBIPC002AA002AA002AA01B /* KeyboardIPCTests.swift in Sources */,
+				KBNAV002AA002AA002AA01B /* KeyboardCursorNavigatorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -998,6 +1006,7 @@
 				WP01VON002AA002AA002001B /* NoteEntry.swift in Sources */,
 				WP01VON003AA003AA003001B /* NoteService.swift in Sources */,
 				KBIPC001AA001AA001AA02B /* KeyboardIPC.swift in Sources */,
+				KBNAV001AA001AA001AA02B /* KeyboardCursorNavigator.swift in Sources */,
 				WP03VON001AA001AA001001B /* NoteViewModel.swift in Sources */,
 				DD4A4E53943289228BF64FAF /* PendingRecordingStore.swift in Sources */,
 				WP03VON002AA002AA002001B /* NotesView.swift in Sources */,
@@ -1020,6 +1029,7 @@
 				KB12001AA012001AA012001B /* KeyboardViewController.swift in Sources */,
 				KB12002AA012002AA012002B /* KeyboardAudioService.swift in Sources */,
 				KBIPC001AA001AA001AA01B /* KeyboardIPC.swift in Sources */,
+				KBNAV001AA001AA001AA01B /* KeyboardCursorNavigator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
