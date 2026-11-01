@@ -90,6 +90,13 @@ final class KeyboardViewController: UIInputViewController, UIGestureRecognizerDe
         pan.delegate = self
         return pan
     }()
+    /// Visible pad under the mic so it's obvious where to start a drag.
+    /// Purely visual: the gesture lives on `containerView`, so the bare
+    /// background around the buttons works too.
+    private let trackpadZone = UIView()
+    private let trackpadGlyph = UIImageView()
+    private let trackpadIdleFill = UIColor.tertiarySystemFill
+    private let trackpadActiveFill = UIColor.systemFill
     private let trackpadHaptics = UISelectionFeedbackGenerator()
     private var trackpadPending = CGPoint.zero
     private let trackpadStepX: CGFloat = 9
@@ -165,7 +172,23 @@ final class KeyboardViewController: UIInputViewController, UIGestureRecognizerDe
         processingIndicator.translatesAutoresizingMaskIntoConstraints = false
         micButton.addSubview(processingIndicator)
 
-        // Status label (bottom, full width)
+        // Trackpad zone (below mic) — holds the status label and a move glyph.
+        trackpadZone.backgroundColor = trackpadIdleFill
+        trackpadZone.layer.cornerRadius = 12
+        trackpadZone.layer.cornerCurve = .continuous
+        trackpadZone.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(trackpadZone)
+
+        let glyphConfig = UIImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+        trackpadGlyph.image = UIImage(
+            systemName: "arrow.up.and.down.and.arrow.left.and.right",
+            withConfiguration: glyphConfig
+        )
+        trackpadGlyph.tintColor = .tertiaryLabel
+        trackpadGlyph.translatesAutoresizingMaskIntoConstraints = false
+        trackpadZone.addSubview(trackpadGlyph)
+
+        // Status label (inside the trackpad zone)
         statusLabel.font = .systemFont(ofSize: 10, weight: .regular)
         statusLabel.textColor = .secondaryLabel
         statusLabel.textAlignment = .center
@@ -200,10 +223,18 @@ final class KeyboardViewController: UIInputViewController, UIGestureRecognizerDe
             switchButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
             switchButton.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
 
-            // Status: below mic
-            statusLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
-            statusLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
-            statusLabel.topAnchor.constraint(equalTo: micButton.bottomAnchor, constant: 6),
+            // Trackpad zone: below mic, to the bottom edge
+            trackpadZone.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
+            trackpadZone.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
+            trackpadZone.topAnchor.constraint(equalTo: micButton.bottomAnchor, constant: 6),
+            trackpadZone.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -6),
+            trackpadGlyph.centerXAnchor.constraint(equalTo: trackpadZone.centerXAnchor),
+            trackpadGlyph.bottomAnchor.constraint(equalTo: trackpadZone.bottomAnchor, constant: -6),
+
+            // Status: top of the trackpad zone
+            statusLabel.leadingAnchor.constraint(equalTo: trackpadZone.leadingAnchor, constant: 8),
+            statusLabel.trailingAnchor.constraint(equalTo: trackpadZone.trailingAnchor, constant: -8),
+            statusLabel.topAnchor.constraint(equalTo: trackpadZone.topAnchor, constant: 6),
         ])
 
         containerView.addGestureRecognizer(trackpadPan)
@@ -230,7 +261,8 @@ final class KeyboardViewController: UIInputViewController, UIGestureRecognizerDe
             trackpadPending = .zero
             trackpadHaptics.prepare()
             UIView.animate(withDuration: 0.12) {
-                self.containerView.backgroundColor = UIColor.label.withAlphaComponent(0.05)
+                self.trackpadZone.backgroundColor = self.trackpadActiveFill
+                self.trackpadGlyph.tintColor = .secondaryLabel
             }
         case .changed:
             let delta = pan.translation(in: containerView)
@@ -241,7 +273,8 @@ final class KeyboardViewController: UIInputViewController, UIGestureRecognizerDe
         default:
             trackpadPending = .zero
             UIView.animate(withDuration: 0.2) {
-                self.containerView.backgroundColor = .clear
+                self.trackpadZone.backgroundColor = self.trackpadIdleFill
+                self.trackpadGlyph.tintColor = .tertiaryLabel
             }
         }
     }
@@ -291,7 +324,7 @@ final class KeyboardViewController: UIInputViewController, UIGestureRecognizerDe
             micButton.isEnabled = true
             micButton.isUserInteractionEnabled = true
             micButton.accessibilityLabel = "Start dictation"
-            statusLabel.text = "Tap to dictate · drag to move cursor"
+            statusLabel.text = "Tap mic to dictate · drag here to move cursor"
             statusLabel.textColor = .secondaryLabel
 
         case .recording:
@@ -646,7 +679,7 @@ final class KeyboardViewController: UIInputViewController, UIGestureRecognizerDe
             sharedDefaults()?.removeObject(forKey: keyboardModeOverrideKey)
         }
         refreshModeButton()
-        statusLabel.text = "Tap to dictate · drag to move cursor"
+        statusLabel.text = "Tap mic to dictate · drag here to move cursor"
         statusLabel.textColor = .secondaryLabel
     }
 
