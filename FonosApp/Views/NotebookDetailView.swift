@@ -13,6 +13,7 @@ struct NotebookDetailView: View {
     @State private var persistenceError: String?
     @State private var pendingRecordings: [PendingRecording] = []
     @State private var retryError: String?
+    @State private var editingEntry: NoteEntry?
 
     init(
         notebook: NoteContainer,
@@ -111,6 +112,11 @@ struct NotebookDetailView: View {
                 onDismiss: { showRecordSheet = false }
             )
         }
+        .sheet(item: $editingEntry, onDismiss: reloadEntries) { entry in
+            EditNoteSheet(entry: entry) { text in
+                try noteService.updateEntry(entry.id, text: text)
+            }
+        }
         .alert(
             "Entry Could Not Be Deleted",
             isPresented: Binding(
@@ -158,9 +164,15 @@ struct NotebookDetailView: View {
                 .listRowSeparator(.hidden)
             }
             ForEach(entries, id: \.id) { entry in
-                EntryRow(entry: entry, showRawInline: notebook.showRawInline)
-                    .listRowBackground(Color(hex: "#1a1917"))
-                    .listRowSeparatorTint(Color(hex: "#fafaf9").opacity(0.08))
+                Button {
+                    editingEntry = entry
+                } label: {
+                    EntryRow(entry: entry, showRawInline: notebook.showRawInline)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color(hex: "#1a1917"))
+                .listRowSeparatorTint(Color(hex: "#fafaf9").opacity(0.08))
             }
             .onDelete { indexSet in
                 let ids = indexSet.map { entries[$0].id }

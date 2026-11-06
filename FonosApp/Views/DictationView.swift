@@ -435,13 +435,7 @@ private extension DictationView {
 
             // Editable: changes replace the result and its History entry
             // when editing ends.
-            TextEditor(text: $editedResult)
-                .focused($isEditingResult)
-                .font(.system(size: 16))
-                .foregroundColor(Color(hex: "#fafaf9"))
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 80, maxHeight: 200)
-                .padding(.horizontal, -5)
+            ResultTextEditor(text: $editedResult, isFocused: $isEditingResult)
 
             if processed != nil && processed != transcript {
                 Divider()

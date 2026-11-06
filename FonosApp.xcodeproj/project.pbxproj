@@ -147,6 +147,8 @@
 		WP06003AA006003AA006003B /* INV01BuildTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP06003AA006003AA006003A /* INV01BuildTests.swift */; };
 		WP06004AA006004AA006004B /* INV11OfflineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP06004AA006004AA006004A /* INV11OfflineTests.swift */; };
 		WP07002AA007002AA007002B /* ActivityCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP07002AA007002AA007002A /* ActivityCard.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E101 /* ResultTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E102 /* ResultTextEditor.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E103 /* EditNoteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E104 /* EditNoteSheet.swift */; };
 		0262812E0EF934A10031C804 /* PendingRecordingRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649718444B2EE5DFEDB797A8 /* PendingRecordingRow.swift */; };
 		WP08003AA008003AA008003B /* DestinationsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP08003AA008003AA008003A /* DestinationsSection.swift */; };
 		WP09001AA009001AA009001B /* FonosWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP09001AA009001AA009001A /* FonosWidget.swift */; };
@@ -356,6 +358,8 @@
 		WP06003AA006003AA006003A /* INV01BuildTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = INV01BuildTests.swift; sourceTree = "<group>"; };
 		WP06004AA006004AA006004A /* INV11OfflineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = INV11OfflineTests.swift; sourceTree = "<group>"; };
 		WP07002AA007002AA007002A /* ActivityCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCard.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E102 /* ResultTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultTextEditor.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E104 /* EditNoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditNoteSheet.swift; sourceTree = "<group>"; };
 		649718444B2EE5DFEDB797A8 /* PendingRecordingRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingRow.swift; sourceTree = "<group>"; };
 		WP08003AA008003AA008003A /* DestinationsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationsSection.swift; sourceTree = "<group>"; };
 		WP09001AA009001AA009001A /* FonosWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FonosWidget.swift; sourceTree = "<group>"; };
@@ -432,6 +436,7 @@
 				WP03VON003AA003AA003001A /* NotebookDetailView.swift */,
 				WP04VON003AA003AA003001A /* NotebookSettingsView.swift */,
 				WP03VON004AA004AA004001A /* RecordNoteSheet.swift */,
+				A1B2C3D4E5F6A7B8C9D0E104 /* EditNoteSheet.swift */,
 				WP06000AA006000AA006000C /* Components */,
 				WP08000AA008000AA008000C /* SettingsView */,
 			);
@@ -651,6 +656,7 @@
 				WP06002AA006002AA006002A /* RecordButton.swift */,
 				WP07002AA007002AA007002A /* ActivityCard.swift */,
 				649718444B2EE5DFEDB797A8 /* PendingRecordingRow.swift */,
+				A1B2C3D4E5F6A7B8C9D0E102 /* ResultTextEditor.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -982,6 +988,8 @@
 				WP06002AA006002AA006002B /* RecordButton.swift in Sources */,
 				WP07002AA007002AA007002B /* ActivityCard.swift in Sources */,
 				0262812E0EF934A10031C804 /* PendingRecordingRow.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E101 /* ResultTextEditor.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E103 /* EditNoteSheet.swift in Sources */,
 				WP08003AA008003AA008003B /* DestinationsSection.swift in Sources */,
 				WP11001AA011001AA011001B /* ModeConfig.swift in Sources */,
 				WP11002AA011002AA011002B /* ModelsTab.swift in Sources */,

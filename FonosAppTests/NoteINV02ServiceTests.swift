@@ -226,6 +226,25 @@ struct NoteINV02ServiceTests {
         #expect(fetched?.rawText == "edited text")
     }
 
+    @Test("NoteService.updateEntry edits the shown text and keeps the raw transcript")
+    func updateEntryProcessedText() throws {
+        let modelContainer = try makeNoteServiceContainer()
+        let service = NoteService(modelContainer: modelContainer)
+
+        let notebook = try service.createNotebook(title: "Edit Test")
+        let entry = try service.addEntry(
+            to: notebook.id,
+            rawText: "um original text",
+            processedText: "Original text."
+        )
+
+        try service.updateEntry(entry.id, text: "Original text. Appended.")
+
+        let fetched = service.entriesForNotebook(notebook.id).first
+        #expect(fetched?.processedText == "Original text. Appended.")
+        #expect(fetched?.rawText == "um original text")
+    }
+
     // MARK: - Entry delete
 
     @Test("NoteService.deleteEntry removes the entry from storage")

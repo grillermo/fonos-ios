@@ -316,11 +316,16 @@ final class NoteService {
         return entry
     }
 
-    /// Updates the rawText of an entry.
+    /// Replaces the text an entry shows: `processedText` when it has one, so
+    /// the original transcript in `rawText` survives the edit.
     func updateEntry(_ id: UUID, text: String) throws {
         let context = modelContainer.mainContext
         let entry = try requireEntry(id, in: context)
-        entry.rawText = text
+        if entry.processedText != nil {
+            entry.processedText = text
+        } else {
+            entry.rawText = text
+        }
         try persist(context)
     }
 

@@ -157,6 +157,35 @@ final class FonosAppUITests: XCTestCase {
     }
 
     @MainActor
+    func testTappingNoteAppendsToIt() throws {
+        let app = launchApp(screenshotMode: true)
+        tapTab("Notes", in: app)
+
+        let notebook = app.staticTexts["Ideas"]
+        XCTAssertTrue(notebook.waitForExistence(timeout: 5), "Expected the seeded notebook")
+        notebook.tap()
+
+        let note = app.buttons.containing(
+            NSPredicate(format: "label CONTAINS %@", "quick mode switch")
+        ).firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 5), "Expected the seeded note")
+        note.tap()
+
+        let editor = app.textViews.firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "Expected the note editor")
+        XCTAssertTrue((editor.value as? String)?.contains("quick mode switch") == true)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "Expected editor focus")
+
+        editor.typeText(" Appended words")
+        app.navigationBars["Edit Note"].buttons["Done"].tap()
+
+        let updated = app.buttons.containing(
+            NSPredicate(format: "label CONTAINS %@", "Appended words")
+        ).firstMatch
+        XCTAssertTrue(updated.waitForExistence(timeout: 5), "Expected the row to show the appended text")
+    }
+
+    @MainActor
     private func launchApp(screenshotMode: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         if screenshotMode {
