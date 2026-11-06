@@ -7,13 +7,16 @@ extension Notification.Name {
     static let pendingRecordingsChanged = Notification.Name("com.fonos.ios.pendingRecordingsChanged")
 }
 
-/// Keeps failed recordings as `<id>.wav` + `<id>.json` in the App Group so
-/// they can be retried later. The WAV is written before its JSON, so a JSON
-/// never points at missing audio; `all()` cleans up whatever a crash left.
+/// Keeps failed recordings as audio + `<id>.json` in the App Group so they can
+/// be retried later, for as long as it takes and with no limit on how many.
+/// Notes are stored as `<id>.m4a`; dictation, notes from earlier builds, and
+/// note audio that could not be encoded are `<id>.wav`. The audio is written
+/// before its JSON, so a JSON never points at missing audio; `all()` cleans up
+/// whatever a crash left.
 final class PendingRecordingStore: @unchecked Sendable {
     static let shared = PendingRecordingStore(directory: defaultDirectory())
 
-    /// A WAV this old with no JSON was abandoned mid-save.
+    /// Audio this old with no JSON was abandoned mid-save.
     private static let orphanAudioAge: TimeInterval = 3_600
 
     let directory: URL
@@ -50,8 +53,14 @@ final class PendingRecordingStore: @unchecked Sendable {
         return Double(data.count - 44) / Double(byteRate)
     }
 
+    /// Where a recording's audio is. An item with no audio resolves to M4A.
     func audioURL(_ id: UUID) -> URL {
-        directory.appendingPathComponent("\(id.uuidString).wav")
+        let wav = audioURL(id, fileExtension: "wav")
+        return fileManager.fileExists(atPath: wav.path) ? wav : audioURL(id, fileExtension: "m4a")
+    }
+
+    private func audioURL(_ id: UUID, fileExtension: String) -> URL {
+        directory.appendingPathComponent("\(id.uuidString).\(fileExtension)")
     }
 
     func metadataURL(_ id: UUID) -> URL {
@@ -77,13 +86,15 @@ final class PendingRecordingStore: @unchecked Sendable {
             attempts: 0,
             durationSeconds: Self.duration(ofWAV: wav)
         )
+        let m4a = surface == .note ? encodedForStorage(wav) : nil
+        let audioFile = audioURL(recording.id, fileExtension: m4a == nil ? "wav" : "m4a")
         try lock.withLock {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-            try wav.write(to: audioURL(recording.id), options: .atomic)
+            try (m4a ?? wav).write(to: audioFile, options: .atomic)
             do {
                 try writeMetadata(recording)
             } catch {
-                try? fileManager.removeItem(at: audioURL(recording.id))
+                try? fileManager.removeItem(at: audioFile)
                 throw error
             }
         }
@@ -92,8 +103,8 @@ final class PendingRecordingStore: @unchecked Sendable {
         return recording
     }
 
-    /// Every pending recording, newest first. Drops JSONs whose WAV is gone
-    /// and WAVs left without JSON for over an hour.
+    /// Every pending recording, newest first. Drops JSONs whose audio is gone
+    /// and audio left without JSON for over an hour.
     func all(now: Date = Date()) -> [PendingRecording] {
         lock.withLock {
             guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else {
@@ -112,9 +123,11 @@ final class PendingRecordingStore: @unchecked Sendable {
                 }
                 recordings.append(recording)
             }
-            let known = Set(recordings.map { "\($0.id.uuidString).wav" })
-            for name in names where name.hasSuffix(".wav") && !known.contains(name) {
+            let known = Set(recordings.map(\.id.uuidString))
+            for name in names {
                 let url = directory.appendingPathComponent(name)
+                guard ["wav", "m4a"].contains(url.pathExtension),
+                      !known.contains(url.deletingPathExtension().lastPathComponent) else { continue }
                 let created = (try? fileManager.attributesOfItem(atPath: url.path))?[.creationDate] as? Date
                 if now.timeIntervalSince(created ?? now) > Self.orphanAudioAge {
                     try? fileManager.removeItem(at: url)
@@ -142,20 +155,24 @@ final class PendingRecordingStore: @unchecked Sendable {
         }
     }
 
+    /// The recording as WAV, whichever format it is stored in.
     func audio(id: UUID) throws -> Data {
-        try lock.withLock {
+        let url = audioURL(id)
+        let stored = try lock.withLock {
             do {
-                return try Data(contentsOf: audioURL(id))
+                return try Data(contentsOf: url)
             } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
                 throw PendingRecordingError.notFound
             }
         }
+        return url.pathExtension == "m4a" ? try AudioCaptureService.decodeM4A(data: stored) : stored
     }
 
     func discard(id: UUID) {
         lock.withLock {
             try? fileManager.removeItem(at: metadataURL(id))
-            try? fileManager.removeItem(at: audioURL(id))
+            try? fileManager.removeItem(at: audioURL(id, fileExtension: "m4a"))
+            try? fileManager.removeItem(at: audioURL(id, fileExtension: "wav"))
         }
         postChange()
     }
@@ -174,6 +191,16 @@ final class PendingRecordingStore: @unchecked Sendable {
             }
         }
         if updated { postChange() }
+    }
+
+    /// nil keeps the WAV: a failed encode must not lose the recording.
+    private func encodedForStorage(_ wav: Data) -> Data? {
+        do {
+            return try AudioCaptureService.encodeToM4A(wavData: wav)
+        } catch {
+            pendingLog.error("Keeping WAV, M4A encode failed: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     // MARK: - Private (call with the lock held)

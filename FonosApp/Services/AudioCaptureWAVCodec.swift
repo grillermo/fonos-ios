@@ -116,18 +116,18 @@ extension AudioCaptureService {
         return outputBuffer
     }
 
-    /// AAC bit rate for STT uploads. 32 kbps mono speech transcribed
+    /// AAC bit rate for STT uploads and kept recordings. 32 kbps mono speech transcribed
     /// word-for-word the same as WAV on mema (qwen, parakeet). Output is
     /// ~8x smaller than WAV for clips over ~10 s, but AVAudioFile adds a
     /// fixed ~24 KB, so clips under ~1 s come out larger than the WAV.
     static let m4aUploadBitRate = 32_000
 
-    /// Re-encode capture WAV as AAC in an MP4 (.m4a) container for upload.
+    /// Re-encode capture WAV as AAC in an MP4 (.m4a) container.
     /// Throws for WAV it cannot decode, including one with no samples.
     nonisolated static func encodeToM4A(wavData: Data) throws -> Data {
         let pcm = try decodeWAV(data: wavData)
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("fonos-upload-\(UUID().uuidString).m4a")
+            .appendingPathComponent("fonos-encode-\(UUID().uuidString).m4a")
         defer { try? FileManager.default.removeItem(at: url) }
 
         let settings: [String: Any] = [
@@ -148,6 +148,30 @@ extension AudioCaptureService {
             try file.write(from: pcm)
         }
         return try Data(contentsOf: url)
+    }
+
+    /// Decode an .m4a from `encodeToM4A` back to WAV, the format every STT
+    /// provider takes. Throws for data AVAudioFile cannot read.
+    nonisolated static func decodeM4A(data: Data) throws -> Data {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fonos-decode-\(UUID().uuidString).m4a")
+        try data.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let file = try AVAudioFile(
+            forReading: url,
+            commonFormat: .pcmFormatInt16,
+            interleaved: false
+        )
+        guard file.length > 0 else { throw WAVError.invalidData }
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: file.processingFormat,
+            frameCapacity: AVAudioFrameCount(file.length)
+        ) else {
+            throw WAVError.bufferCreationFailed
+        }
+        try file.read(into: buffer)
+        return try encodeToWAV(buffer: buffer)
     }
 
     private nonisolated static func findDataChunk(in data: Data) -> (offset: Int, size: UInt32) {

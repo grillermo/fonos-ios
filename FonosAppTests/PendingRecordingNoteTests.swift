@@ -12,10 +12,12 @@ import AVFoundation
 private final class SwitchableNoteSTT: STTProvider, @unchecked Sendable {
     var error: STTError?
     var transcript = "note text"
+    var receivedAudio: Data?
 
     init(error: STTError? = .networkUnavailable) { self.error = error }
 
     func transcribe(audioData: Data, language: String?) async throws -> String {
+        receivedAudio = audioData
         if let error { throw error }
         return transcript
     }
@@ -128,6 +130,42 @@ struct PendingRecordingNoteTests {
         #expect(received == nil)
         #expect(store.all().count == 1)
         #expect(vm.lastFailureSavedForRetry)
+    }
+
+    @Test("an offline append saves M4A, and its retry hands the provider WAV")
+    func offlineAppendSavesM4A() async throws {
+        let stt = SwitchableNoteSTT()
+        let (vm, service, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+
+        var received: String?
+        await vm.recordAndStore(to: notebook.id, audioData: try pendingToneWAV()) { received = $0 }
+
+        #expect(received == nil)
+        let pending = try #require(store.all().first)
+        #expect(store.audioURL(pending.id).pathExtension == "m4a")
+        #expect(vm.lastFailureSavedForRetry)
+
+        stt.error = nil
+        try await vm.retryPendingRecording(pending.id)
+
+        let retried = try #require(stt.receivedAudio)
+        #expect(String(bytes: retried[0..<4], encoding: .ascii) == "RIFF")
+        #expect(store.all().isEmpty)
+        #expect(service.entriesForNotebook(notebook.id).map(\.rawText) == ["note text"])
+    }
+
+    @Test("repeated offline appends keep every recording")
+    func repeatedOfflineAppends() async throws {
+        let (vm, _, notebook, store) = try makeNotes(SwitchableNoteSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let wav = try pendingToneWAV(seconds: 0.2)
+
+        for _ in 0..<5 {
+            await vm.recordAndStore(to: notebook.id, audioData: wav) { _ in }
+        }
+
+        #expect(store.pending(for: .notebook(notebook.id)).count == 5)
     }
 
     @Test("dictated text joins the note with one space")

@@ -231,13 +231,18 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         } catch {
             noteVMLog.error("Notebook workflow failed: \(error.localizedDescription)")
             if PendingRecordingStore.shouldKeep(error: error, audio: audioData) {
+                let store = pendingStore
+                let message = error.localizedDescription
                 do {
-                    let saved = try pendingStore.save(
-                        wav: audioData,
-                        surface: .note,
-                        notebookID: containerId,
-                        error: error.localizedDescription
-                    )
+                    // Encoding a five-minute clip must not block the main actor.
+                    let saved = try await Task.detached(priority: .userInitiated) {
+                        try store.save(
+                            wav: audioData,
+                            surface: .note,
+                            notebookID: containerId,
+                            error: message
+                        )
+                    }.value
                     lastFailurePendingID = saved.id
                     lastFailureSavedForRetry = true
                 } catch {
@@ -262,7 +267,10 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                   noteService.notebook(id: notebookID) != nil else {
                 throw PendingRecordingError.notebookUnavailable
             }
-            let audioData = try pendingStore.audio(id: id)
+            let store = pendingStore
+            let audioData = try await Task.detached(priority: .userInitiated) {
+                try store.audio(id: id)
+            }.value
             let text = try await transcribeAndStore(to: notebookID, audioData: audioData)
             pendingStore.discard(id: id)
             clearSavedForRetryFlag(for: id)

@@ -1,10 +1,12 @@
-// Pending recordings: failed transcription audio is kept as <id>.wav +
-// <id>.json until a retry succeeds or the user discards it.
+// Pending recordings: failed transcription audio is kept as <id>.m4a (notes)
+// or <id>.wav (dictation) + <id>.json until a retry succeeds or the user
+// discards it.
 //
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/PendingRecordingStoreTests
 
 import Testing
 import Foundation
+import AVFoundation
 @testable import FonosApp
 
 /// 44-byte WAV header with a byte rate of 32 000, followed by one second of silence.
@@ -13,6 +15,21 @@ private func oneSecondWAV() -> Data {
     var byteRate = UInt32(32_000).littleEndian
     withUnsafeBytes(of: &byteRate) { data.replaceSubrange(28..<32, with: $0) }
     return data
+}
+
+/// A real capture-format WAV (16 kHz mono) that AVAudioFile can encode.
+func pendingToneWAV(seconds: Double = 2) throws -> Data {
+    let format = try #require(AVAudioFormat(
+        commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false
+    ))
+    let frames = AVAudioFrameCount(seconds * 16_000)
+    let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+    buffer.frameLength = frames
+    let samples = try #require(buffer.int16ChannelData)
+    for frame in 0..<Int(frames) {
+        samples[0][frame] = Int16(sin(Double(frame) / 16_000 * 440 * 2 * .pi) * 12_000)
+    }
+    return try AudioCaptureService.encodeToWAV(buffer: buffer)
 }
 
 final class PendingRecordingStoreTests {
@@ -80,7 +97,7 @@ final class PendingRecordingStoreTests {
         #expect(updated.lastError == "second")
     }
 
-    @Test("a JSON whose WAV is missing is dropped")
+    @Test("a JSON whose audio is missing is dropped")
     func orphanJSON() throws {
         let store = makeTempStore()
         let saved = try store.save(wav: oneSecondWAV(), surface: .dictate, error: "e")
@@ -101,6 +118,99 @@ final class PendingRecordingStoreTests {
 
         _ = store.all(now: Date().addingTimeInterval(2 * 3_600))
         #expect(!FileManager.default.fileExists(atPath: store.audioURL(id).path))
+    }
+
+    @Test("note audio is stored as M4A, and reads back as WAV of the same length")
+    func noteAudioIsM4A() throws {
+        let store = makeTempStore()
+        let wav = try pendingToneWAV()
+        let saved = try store.save(wav: wav, surface: .note, notebookID: UUID(), error: "e")
+
+        let url = store.audioURL(saved.id)
+        #expect(url.pathExtension == "m4a")
+        let stored = try Data(contentsOf: url)
+        #expect(String(bytes: stored[4..<8], encoding: .ascii) == "ftyp")
+        #expect(stored.count < wav.count)
+        #expect(saved.durationSeconds == 2)
+
+        let decoded = try store.audio(id: saved.id)
+        #expect(String(bytes: decoded[0..<4], encoding: .ascii) == "RIFF")
+        #expect(abs(PendingRecordingStore.duration(ofWAV: decoded) - 2) < 0.1)
+        let buffer = try AudioCaptureService.decodeWAV(data: decoded)
+        let samples = try #require(buffer.int16ChannelData)
+        #expect((0..<Int(buffer.frameLength)).contains { samples[0][$0] != 0 })
+    }
+
+    @Test("dictation audio stays WAV")
+    func dictationAudioIsWAV() throws {
+        let store = makeTempStore()
+        let wav = try pendingToneWAV()
+        let saved = try store.save(wav: wav, surface: .dictate, workflowID: "wf.dictation", error: "e")
+
+        #expect(store.audioURL(saved.id).pathExtension == "wav")
+        #expect(try store.audio(id: saved.id) == wav)
+    }
+
+    @Test("audio that cannot be encoded is still kept, as WAV")
+    func encodeFailureKeepsWAV() throws {
+        let store = makeTempStore()
+        let unencodable = Data(count: 100)
+        let saved = try store.save(wav: unencodable, surface: .note, notebookID: UUID(), error: "e")
+
+        #expect(store.audioURL(saved.id).pathExtension == "wav")
+        #expect(try store.audio(id: saved.id) == unencodable)
+    }
+
+    @Test("a note recording saved as WAV by an earlier build still works")
+    func legacyNoteWAV() throws {
+        let store = makeTempStore()
+        try FileManager.default.createDirectory(at: store.directory, withIntermediateDirectories: true)
+        let legacy = PendingRecording(
+            id: UUID(), surface: .note, workflowID: nil, notebookID: UUID(),
+            createdAt: Date(), lastError: "e", attempts: 0, durationSeconds: 1
+        )
+        let wav = try pendingToneWAV(seconds: 1)
+        try wav.write(to: store.directory.appendingPathComponent("\(legacy.id.uuidString).wav"))
+        try JSONEncoder().encode(legacy).write(to: store.metadataURL(legacy.id))
+
+        #expect(store.all() == [legacy])
+        #expect(try store.audio(id: legacy.id) == wav)
+
+        store.discard(id: legacy.id)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: store.directory.path).isEmpty)
+    }
+
+    @Test("discard removes the M4A and its JSON")
+    func discardRemovesM4A() throws {
+        let store = makeTempStore()
+        let saved = try store.save(wav: pendingToneWAV(), surface: .note, notebookID: UUID(), error: "e")
+        store.discard(id: saved.id)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: store.directory.path).isEmpty)
+    }
+
+    @Test("an M4A without JSON is deleted only after an hour")
+    func orphanM4A() throws {
+        let store = makeTempStore()
+        let saved = try store.save(wav: pendingToneWAV(), surface: .note, notebookID: UUID(), error: "e")
+        let url = store.audioURL(saved.id)
+        try FileManager.default.removeItem(at: store.metadataURL(saved.id))
+
+        _ = store.all()
+        #expect(FileManager.default.fileExists(atPath: url.path))
+
+        _ = store.all(now: Date().addingTimeInterval(2 * 3_600))
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
+    @Test("any number of note recordings is kept")
+    func noLimit() throws {
+        let store = makeTempStore()
+        let notebook = UUID()
+        let wav = try pendingToneWAV(seconds: 0.1)
+        let saved = try (0..<150).map { _ in
+            try store.save(wav: wav, surface: .note, notebookID: notebook, error: "e")
+        }
+        #expect(Set(store.pending(for: .notebook(notebook)).map(\.id)) == Set(saved.map(\.id)))
     }
 
     @Test("a corrupt JSON is skipped but its files are kept")
