@@ -12,3 +12,6 @@ build/
 docs/
 .ratchet/
 .worktrees/
+
+# Deploy overrides
+.env

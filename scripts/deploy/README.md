@@ -2,6 +2,19 @@
 
     ./deploy [patch|minor|major|X.Y.Z] [--yes] [--summary ...] [--note ...]
 
+Run it on the macmini, where the `files.chiq.me` service lives. Preflight stops it before
+anything is touched on a missing publish dir, a locked keychain it cannot unlock, a missing
+icon, a branch other than `main`, a dirty tree or an existing tag. A failed run restores
+`project.pbxproj`.
+
+Optional settings, in the gitignored `.env` or the shell: `FONOS_UPLOAD_BASE` and
+`FONOS_PUBLISH_DIR`. `FONOS_UNSIGNED=1` builds an unsigned `Payload/` zip and stops before
+publishing, for when signing is broken and you still need a binary.
+
+Deployed builds carry the manifest URL as `FonosOTAManifestURL`, which adds an Install Latest
+item to the app icon's long-press menu. The app closes itself after starting that install.
+Builds made outside `./deploy` have no manifest URL and offer no such item.
+
 Builds an ad-hoc `.ipa` signed by team Q3WS4MWCW3 as `me.chiq.fonos`, publishes it with
 its manifest, icon and install page into `../../file_server/files` (served at
 `files.chiq.me`), then commits the version bump, tags `fonos-ota-vX.Y.Z` and pushes to the

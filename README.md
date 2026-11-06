@@ -36,3 +36,7 @@ open FonosApp.xcodeproj
 ## License
 
 [MIT](LICENSE)
+
+## Deploy
+
+This fork ships over Safari OTA install with `./deploy`, run on the macmini. See [scripts/deploy/README.md](scripts/deploy/README.md).

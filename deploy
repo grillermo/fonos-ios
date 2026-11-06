@@ -20,6 +20,10 @@
 #   ./deploy --yes            # skip the confirmation prompt
 #   ./deploy --summary "Faster search" --note "Debounced search-as-you-type"
 #
+# Optional, in the gitignored .env or the shell: FONOS_UPLOAD_BASE,
+# FONOS_PUBLISH_DIR. FONOS_UNSIGNED=1 builds an unsigned Payload/ zip and stops
+# before publishing, for when signing is broken and you still need a binary.
+#
 # The file_to_s3 service behind files.chiq.me runs on this machine, so releases
 # are written into its files/ directory (default ../../file_server/files;
 # override with FONOS_PUBLISH_DIR).
@@ -27,11 +31,31 @@
 require_relative "scripts/deploy/ipa_builder"
 require_relative "scripts/deploy/uploader"
 require_relative "scripts/deploy/versioning"
+require "digest"
 require "fileutils"
 require "shellwords"
 
 B = IpaBuilder
 REPO_ROOT   = B::REPO_ROOT
+
+# Minimal dotenv: loads KEY=VALUE lines without overriding a variable already
+# exported in the shell. Runs before the URLs below are built from it.
+def load_dotenv(path)
+  return unless File.exist?(path)
+
+  File.readlines(path).each do |line|
+    line = line.strip
+    next if line.empty? || line.start_with?("#")
+
+    key, value = line.split("=", 2)
+    next unless key && value
+
+    ENV[key] ||= value.strip.gsub(/\A["']|["']\z/, "")
+  end
+end
+
+load_dotenv(File.join(REPO_ROOT, ".env"))
+
 PBXPROJ_REL = "FonosApp.xcodeproj/project.pbxproj"
 REMOTE      = "github"
 BRANCH      = "main"
@@ -57,6 +81,9 @@ def take_option(argv, *names)
       B.die("#{argv[i]} needs a value") if value.nil? || value.start_with?("--")
       values << value
       argv.slice!(i, 2)
+    elsif (eq = argv[i].match(/\A(--[a-z-]+)=(.*)\z/m)) && names.include?(eq[1])
+      values << eq[2]
+      argv.slice!(i, 1)
     else
       i += 1
     end
@@ -65,11 +92,16 @@ def take_option(argv, *names)
 end
 
 SUMMARY = take_option(ARGV, "--summary", "-s").last
-NOTES   = take_option(ARGV, "--note", "-n").map { |n| n.strip.sub(/\A[-*•]\s*/, "") }.reject(&:empty?)
+NOTES   = take_option(ARGV, "--note", "--notes", "-n")
+          .flat_map { |n| n.split("\n") }
+          .map { |n| n.strip.sub(/\A[-*•]\s*/, "") }
+          .reject(&:empty?)
 
 # --- preflight -----------------------------------------------------------------
 
 Uploader.check_publish_dir!
+B.ensure_codesign_can_sign! # unlocks the keychain now, not after a long compile
+B.die("icon not found: #{ICON_SOURCE}") unless File.file?(ICON_SOURCE)
 
 branch = `git -C #{REPO_ROOT.shellescape} rev-parse --abbrev-ref HEAD`.strip
 B.die("on branch '#{branch}', not '#{BRANCH}'; releases are cut from #{BRANCH}") unless branch == BRANCH
@@ -98,7 +130,7 @@ def notes_from_git
   last = `git -C #{REPO_ROOT.shellescape} describe --tags --abbrev=0 --match 'fonos-ota-v*' 2>/dev/null`.strip
   range = last.empty? ? "HEAD -n 20" : "#{last}..HEAD"
   `git -C #{REPO_ROOT.shellescape} log --no-merges --pretty=%s #{range}`.lines.map(&:strip)
-    .reject { |s| s.empty? || s =~ /\A(Release |Merge |Bump |wip\b)/i }.uniq.first(8)
+    .reject { |s| s.empty? || s =~ /\A(Release |Merge |Commit pending changes|Bump |wip\b)/i }.uniq.first(8)
 end
 
 bullets     = NOTES.empty? ? notes_from_git : NOTES
@@ -124,10 +156,19 @@ File.write(pbxproj, Versioning.write(original, bundle_id: B::BUNDLE_ID, version:
 
 # --- build ---------------------------------------------------------------------
 
-ipa = B.build(manifest: { app_url: download, icon_url: ICON_URL })
+ipa = B.build(manifest: { app_url: download, icon_url: ICON_URL }, ota_manifest_url: MANIFEST_URL)
+sha256 = Digest::SHA256.file(ipa).hexdigest
+puts B.green("    #{asset} — #{(File.size(ipa) / 1_048_576.0).round(1)} MB  sha256:#{sha256[0, 12]}…")
+
+# An unsigned build cannot be installed from Safari, so it is never published,
+# and the at_exit hook puts the version bump back.
+if B.unsigned?
+  puts B.bold("\n    Unsigned build, not published: #{ipa}")
+  exit 0
+end
+
 built_manifest = File.join(File.dirname(ipa), "manifest.plist")
 B.die("export produced no manifest.plist -- cannot publish the OTA route") unless File.exist?(built_manifest)
-puts B.green("    #{asset} — #{(File.size(ipa) / 1_048_576.0).round(1)} MB")
 
 # Anything the build rewrote besides the bump would ride along unreleased, so
 # stop before publishing.
@@ -144,7 +185,9 @@ puts "    #{Uploader.upload(ICON_SOURCE, name: PINNED_ICON)}"
 B.step "Publishing the OTA manifest"
 puts "    #{Uploader.upload(built_manifest, name: PINNED_MANIFEST)}"
 
-def h(str) = str.to_s.gsub("&", "&amp;").gsub("<", "&lt;").gsub(">", "&gt;").gsub('"', "&quot;")
+def h(str)
+  str.to_s.gsub("&", "&amp;").gsub("<", "&lt;").gsub(">", "&gt;").gsub('"', "&quot;")
+end
 
 install_page = <<~HTML
   <!doctype html>
@@ -176,7 +219,7 @@ install_page = <<~HTML
     <p class="version">Version #{h(version)} (build #{h(build)})</p>
     <a class="install" href="#{h(ITMS_URL)}">Install Fonos</a>
     <p>Open this page in <strong>Safari</strong>, then confirm on the Home Screen prompt.
-    Later updates: open this page again and install over the old version.</p>
+    Later updates: long-press the Fonos icon and choose Install Latest, or open this page again.</p>
     <section><h2>What&rsquo;s new</h2><pre class="notes">#{h(DESCRIPTION)}</pre></section>
     <section><h2>Requirements</h2>
     <p>The device must be registered on the developer account before the build is made; a device
@@ -199,8 +242,29 @@ B.step "Committing + pushing"
 B.run("git add #{PBXPROJ_REL.shellescape}", chdir: REPO_ROOT)
 B.run("git commit -m #{"Release Fonos OTA #{tag}\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>".shellescape}", chdir: REPO_ROOT)
 committed = true
-B.run("git tag #{tag.shellescape}", chdir: REPO_ROOT)
-B.run("git push #{REMOTE} #{BRANCH} --tags", chdir: REPO_ROOT)
+# Annotated, because with tag.gpgsign set a lightweight `git tag` asks for a
+# message and fails without a terminal.
+B.run("git tag -a #{tag.shellescape} -m #{"Fonos OTA #{version}".shellescape}", chdir: REPO_ROOT)
+
+# git-sync may push the commit before we do, which makes our push fail with
+# nothing left to push. That still counts: what matters is that the remote has
+# our HEAD.
+def push_branch(chdir:)
+  cmd = "git push #{REMOTE} #{BRANCH} --tags"
+  puts "    $ #{cmd}"
+  return if system(cmd, chdir: chdir)
+
+  local  = `git -C #{chdir.shellescape} rev-parse HEAD`.strip
+  remote = `git -C #{chdir.shellescape} ls-remote #{REMOTE} refs/heads/#{BRANCH}`.split.first.to_s
+  unless !local.empty? && local == remote
+    B.die("command failed: #{cmd} (remote is at #{remote.empty? ? "nothing" : remote[0, 7]}, " \
+          "we are at #{local[0, 7]})")
+  end
+
+  puts B.green("    remote already at #{local[0, 7]} — pushed already; continuing")
+end
+
+push_branch(chdir: REPO_ROOT)
 
 puts B.green("\n✓ Published #{B::APP_NAME} OTA #{version}")
 puts B.bold("\n    Install from Safari on the device:\n    #{INSTALL_URL}")

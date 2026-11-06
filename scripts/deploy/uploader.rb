@@ -16,9 +16,13 @@ module Uploader
 
   module_function
 
-  def base_url = ENV.fetch("FONOS_UPLOAD_BASE", DEFAULT_BASE).sub(%r{/+\z}, "")
+  def base_url
+    ENV.fetch("FONOS_UPLOAD_BASE", DEFAULT_BASE).sub(%r{/+\z}, "")
+  end
 
-  def publish_dir = ENV.fetch("FONOS_PUBLISH_DIR", DEFAULT_PUBLISH_DIR)
+  def publish_dir
+    ENV.fetch("FONOS_PUBLISH_DIR", DEFAULT_PUBLISH_DIR)
+  end
 
   def check_publish_dir!
     dir = publish_dir

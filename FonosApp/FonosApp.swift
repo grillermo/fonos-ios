@@ -3,6 +3,7 @@ import SwiftData
 
 @main
 struct FonosApp: App {
+    @UIApplicationDelegateAdaptor(FonosAppDelegate.self) private var appDelegate
 
     private static let appGroupID = KeyboardIPC.appGroupID
 

@@ -185,6 +185,28 @@ final class FonosAppUITests: XCTestCase {
         XCTAssertTrue(updated.waitForExistence(timeout: 5), "Expected the row to show the appended text")
     }
 
+    /// The Install Latest scene delegate must leave `fonos://` links reaching
+    /// SwiftUI's `onOpenURL`, which the widget and Siri depend on.
+    @MainActor
+    func testDeepLinkReachesTheApp() throws {
+        let app = launchApp(screenshotMode: true)
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+
+        let url = try XCTUnwrap(URL(string: "fonos://model?name=mema-test&base_url=http://192.168.1.3:8787&model=parakeet"))
+        app.open(url)
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let open = springboard.buttons["Open"]
+        if open.waitForExistence(timeout: 3) {
+            open.tap()
+        }
+
+        XCTAssertTrue(
+            app.navigationBars["Import Config"].waitForExistence(timeout: 5),
+            "Expected the model link to open the import sheet"
+        )
+    }
+
     @MainActor
     private func launchApp(screenshotMode: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()

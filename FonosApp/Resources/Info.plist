@@ -27,6 +27,8 @@
         <string>en</string>
         <string>zh-Hans</string>
     </array>
+    <key>FonosOTAManifestURL</key>
+    <string>$(FONOS_OTA_MANIFEST_URL)</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
