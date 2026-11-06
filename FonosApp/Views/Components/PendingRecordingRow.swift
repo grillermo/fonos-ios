@@ -1,22 +1,21 @@
 import SwiftUI
 
-/// A failed recording waiting for retry. The ⋯ button and a long press open
-/// the same popup menu.
+/// A failed recording waiting for retry. The play button on the left turns
+/// into stop while it plays. The ⋯ button and a long press open the same popup
+/// menu, and swiping left discards it.
 struct PendingRecordingRow: View {
     let recording: PendingRecording
     let title: String
     let isRetrying: Bool
     let onRetry: () -> Void
     let onDiscard: () -> Void
+    @ObservedObject var player = PendingRecordingPlayer.shared
 
     private static let accent = Color(hex: "#fb923c")
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
-                .font(.system(size: 18))
-                .foregroundColor(Self.accent)
-                .accessibilityHidden(true)
+            playbackButton
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -34,6 +33,11 @@ struct PendingRecordingRow: View {
                     .font(.system(size: 12))
                     .foregroundColor(Self.accent.opacity(0.9))
                     .lineLimit(2)
+                if recording.autoRetryStoppedAt != nil {
+                    Text("Won't retry automatically")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: "#fafaf9").opacity(0.5))
+                }
             }
             .accessibilityElement(children: .combine)
 
@@ -44,6 +48,16 @@ struct PendingRecordingRow: View {
                     .tint(Self.accent)
                     .accessibilityLabel(Text("Retrying"))
             } else {
+                Button(action: onRetry) {
+                    Text("Retry")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Self.accent)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .padding(.vertical, -10)
+
                 Menu {
                     menuItems
                 } label: {
@@ -69,6 +83,29 @@ struct PendingRecordingRow: View {
         .contextMenu {
             if !isRetrying { menuItems }
         }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if !isRetrying {
+                Button(role: .destructive, action: onDiscard) {
+                    Label("Discard", systemImage: "trash")
+                }
+            }
+        }
+    }
+
+    private var playbackButton: some View {
+        let isPlaying = player.playingID == recording.id
+        return Button {
+            player.toggle(recording.id)
+        } label: {
+            Image(systemName: isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                .font(.system(size: 30))
+                .foregroundColor(Self.accent)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .padding(.vertical, -7)
+        .accessibilityLabel(isPlaying ? Text("Stop") : Text("Play"))
     }
 
     @ViewBuilder

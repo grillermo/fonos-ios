@@ -118,11 +118,15 @@ enum AppConfigStorage {
 struct ContentView: View {
 
     enum AppTab: Hashable, CaseIterable {
-        case dictate, history, notes, settings
+        case dictate, history, notes, pending, settings
     }
 
     @StateObject private var dictationViewModel = DictationViewModel()
     @State private var selectedTab: AppTab = .dictate
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var autoRetrier = PendingRecordingAutoRetrier()
+    @State private var networkMonitor = PendingNetworkMonitor()
+    @State private var pendingCount = 0
     @State private var pendingConfigImport: PendingConfigImport?
     @State private var configImportError: String?
     @State private var keyboardReadyError: String?
@@ -159,6 +163,25 @@ struct ContentView: View {
         }
     }
 
+    private func startAutoRetry() {
+        pendingCount = dictationViewModel.pendingStore.all().count
+        let isBusy: @MainActor () -> Bool = { [dictationViewModel, noteViewModel] in
+            dictationViewModel.isRunBusy || noteViewModel.isRunBusy
+        }
+        autoRetrier.isBusy = isBusy
+        PendingRecordingPlayer.shared.isBlocked = isBusy
+        autoRetrier.retry = { [dictationViewModel, noteViewModel] recording in
+            switch recording.surface {
+            case .dictate:
+                _ = try await dictationViewModel.retryPendingRecordingQuietly(recording.id, copy: false)
+            case .note:
+                _ = try await noteViewModel.retryPendingRecording(recording.id, copy: false)
+            }
+        }
+        networkMonitor.start { [autoRetrier] in autoRetrier.networkBecameAvailable() }
+        autoRetrier.setActive(scenePhase == .active)
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             DictationView(
@@ -185,6 +208,18 @@ struct ContentView: View {
                     Label("Notes", systemImage: "note.text")
                 }
                 .tag(AppTab.notes)
+
+            PendingRecordingsView(
+                dictationViewModel: dictationViewModel,
+                noteViewModel: noteViewModel,
+                autoRetrier: autoRetrier,
+                noteService: noteService
+            )
+                .tabItem {
+                    Label("Pending", systemImage: "waveform.badge.exclamationmark")
+                }
+                .badge(pendingCount)
+                .tag(AppTab.pending)
 
             SettingsView(config: Binding(
                 get: { dictationViewModel.config },
@@ -225,6 +260,15 @@ struct ContentView: View {
             AppConfigStorage.save(dictationViewModel.config)
 #endif
             drainPendingDeepLinks()
+            startAutoRetry()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            autoRetrier.setActive(phase == .active)
+            if phase != .active { PendingRecordingPlayer.shared.stop() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pendingRecordingsChanged)) { _ in
+            pendingCount = dictationViewModel.pendingStore.all().count
+            autoRetrier.recordingsChanged()
         }
         // Dictate chips and deep links mutate the view model directly rather
         // than going through Settings' Binding. Persist every workflow change

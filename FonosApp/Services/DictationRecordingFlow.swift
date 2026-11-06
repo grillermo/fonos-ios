@@ -6,6 +6,7 @@ import os.log
 extension DictationViewModel {
     @MainActor
     func startRecording() {
+        PendingRecordingPlayer.shared.stop()
         dictationLog.info("▶️ startRecording() called, isRecording=\(self.isRecording)")
         guard !isRunBusy else {
             dictationLog.warning("⚠️ A capture or processing run is active, ignoring start")

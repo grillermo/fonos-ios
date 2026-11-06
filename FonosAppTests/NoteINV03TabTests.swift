@@ -11,10 +11,10 @@ import Testing
 
 struct NoteINV03TabTests {
 
-    @Test("ContentView exposes the four production tabs in display order")
-    func contentViewHasFourTabs() {
+    @Test("ContentView exposes the five production tabs in display order")
+    func contentViewHasFiveTabs() {
         #expect(ContentView.AppTab.allCases == [
-            .dictate, .history, .notes, .settings
+            .dictate, .history, .notes, .pending, .settings
         ])
     }
 }

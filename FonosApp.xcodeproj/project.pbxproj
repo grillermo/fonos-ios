@@ -13,6 +13,7 @@
 		663C34A9CC884E40AD59B703 /* DictationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663C34A9CC884E40AD59B713 /* DictationView.swift */; };
 		A30000000000000000000002 /* WorkflowProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* WorkflowProgressView.swift */; };
 		663C34A9CC884E40AD59B704 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A1 /* HistoryView.swift */; };
+		FB4AB0934D874B7487EC3B90 /* PendingRecordingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6DDEA9D62FB4BBDBF863976 /* PendingRecordingsView.swift */; };
 		663C34A9CC884E40AD59B705 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A2 /* SettingsView.swift */; };
 		663C34A9CC884E40AD59B706 /* Color+Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A3 /* Color+Hex.swift */; };
 		663C34A9CC884E40AD59B707 /* DictationSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50BA9D99CDBC44ABA7E645A4 /* DictationSession.swift */; };
@@ -126,6 +127,7 @@
 		WP03004AA003004AA003004B /* QD02STTParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03004AA003004AA003004A /* QD02STTParsingTests.swift */; };
 		WP03VON001AA001AA001001B /* NoteViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON001AA001AA001001A /* NoteViewModel.swift */; };
 		DD4A4E53943289228BF64FAF /* PendingRecordingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6FA4D32FA97C9F6E7ECCF6A /* PendingRecordingStore.swift */; };
+		88484A6FD6224BBF97572360 /* PendingRecordingPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CD9760FBAC468B90E5CDB9 /* PendingRecordingPlayer.swift */; };
 		D991C580F57340F3BE3BDBE2 /* PendingRecordingAutoRetrier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 950B266CD0474539B8B1A319 /* PendingRecordingAutoRetrier.swift */; };
 		B22F2AD39A1A486C9BAC072E /* PendingRecordingFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF2A3732A4D34FF984F51714 /* PendingRecordingFailure.swift */; };
 		WP03VON002AA002AA002001B /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON002AA002AA002001A /* NotesView.swift */; };
@@ -136,6 +138,7 @@
 		B29DE04DCF67304B5EEAF1BF /* PendingRecordingNoteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CCA148CC58B495C02637561 /* PendingRecordingNoteTests.swift */; };
 		8E6CA7582C85C5232A76B07A /* PendingRecordingDictationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A62124A17A0B1A2E6761AC1C /* PendingRecordingDictationTests.swift */; };
 		F8BD18081AC5EEF4280044D9 /* PendingRecordingStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AEE44FD0FD7CB450C2E3FA7 /* PendingRecordingStoreTests.swift */; };
+		E2891AEEBDB14793AB866B10 /* PendingRecordingPlayerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CACF7FD84D584310BF7664A5 /* PendingRecordingPlayerTests.swift */; };
 		C8F48C772D9C484F909E12DB /* PendingRecordingAutoRetrierTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C5442DA54546EA83F0E79B /* PendingRecordingAutoRetrierTests.swift */; };
 		33A217A7FD2F4CA099F7DCD7 /* PendingRecordingFailureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4CA0BA4451347BD93413B9A /* PendingRecordingFailureTests.swift */; };
 		WP03VON007AA007AA007001B /* NoteINV11NoAudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON007AA007AA007001A /* NoteINV11NoAudioTests.swift */; };
@@ -223,6 +226,7 @@
 
 /* Begin PBXFileReference section */
 		50BA9D99CDBC44ABA7E645A1 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		F6DDEA9D62FB4BBDBF863976 /* PendingRecordingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingsView.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A3 /* Color+Hex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Hex.swift"; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A4 /* DictationSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationSession.swift; sourceTree = "<group>"; };
@@ -347,6 +351,7 @@
 		WP03004AA003004AA003004A /* QD02STTParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QD02STTParsingTests.swift; sourceTree = "<group>"; };
 		WP03VON001AA001AA001001A /* NoteViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteViewModel.swift; sourceTree = "<group>"; };
 		D6FA4D32FA97C9F6E7ECCF6A /* PendingRecordingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingStore.swift; sourceTree = "<group>"; };
+		B2CD9760FBAC468B90E5CDB9 /* PendingRecordingPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingPlayer.swift; sourceTree = "<group>"; };
 		950B266CD0474539B8B1A319 /* PendingRecordingAutoRetrier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingAutoRetrier.swift; sourceTree = "<group>"; };
 		DF2A3732A4D34FF984F51714 /* PendingRecordingFailure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingFailure.swift; sourceTree = "<group>"; };
 		WP03VON002AA002AA002001A /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
@@ -357,6 +362,7 @@
 		6CCA148CC58B495C02637561 /* PendingRecordingNoteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingNoteTests.swift; sourceTree = "<group>"; };
 		A62124A17A0B1A2E6761AC1C /* PendingRecordingDictationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingDictationTests.swift; sourceTree = "<group>"; };
 		2AEE44FD0FD7CB450C2E3FA7 /* PendingRecordingStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingStoreTests.swift; sourceTree = "<group>"; };
+		CACF7FD84D584310BF7664A5 /* PendingRecordingPlayerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingPlayerTests.swift; sourceTree = "<group>"; };
 		B7C5442DA54546EA83F0E79B /* PendingRecordingAutoRetrierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingAutoRetrierTests.swift; sourceTree = "<group>"; };
 		E4CA0BA4451347BD93413B9A /* PendingRecordingFailureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingFailureTests.swift; sourceTree = "<group>"; };
 		WP03VON007AA007AA007001A /* NoteINV11NoAudioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV11NoAudioTests.swift; sourceTree = "<group>"; };
@@ -444,6 +450,7 @@
 				663C34A9CC884E40AD59B713 /* DictationView.swift */,
 				A30000000000000000000001 /* WorkflowProgressView.swift */,
 				50BA9D99CDBC44ABA7E645A1 /* HistoryView.swift */,
+				F6DDEA9D62FB4BBDBF863976 /* PendingRecordingsView.swift */,
 				FE0025AA0025AA0025AA0001 /* SetupDoctorView.swift */,
 				FE0034AA0034AA0034AA01A /* ConfigSharingViews.swift */,
 				VR0100000000000000000001 /* VoiceRecipeEditor.swift */,
@@ -520,6 +527,7 @@
 				6CCA148CC58B495C02637561 /* PendingRecordingNoteTests.swift */,
 				A62124A17A0B1A2E6761AC1C /* PendingRecordingDictationTests.swift */,
 				2AEE44FD0FD7CB450C2E3FA7 /* PendingRecordingStoreTests.swift */,
+				CACF7FD84D584310BF7664A5 /* PendingRecordingPlayerTests.swift */,
 				B7C5442DA54546EA83F0E79B /* PendingRecordingAutoRetrierTests.swift */,
 				E4CA0BA4451347BD93413B9A /* PendingRecordingFailureTests.swift */,
 				WP03VON007AA007AA007001A /* NoteINV11NoAudioTests.swift */,
@@ -636,6 +644,7 @@
 				RSR001AA001AA001AA001A /* RecordingStopRouter.swift */,
 				WP03VON001AA001AA001001A /* NoteViewModel.swift */,
 				D6FA4D32FA97C9F6E7ECCF6A /* PendingRecordingStore.swift */,
+				B2CD9760FBAC468B90E5CDB9 /* PendingRecordingPlayer.swift */,
 				950B266CD0474539B8B1A319 /* PendingRecordingAutoRetrier.swift */,
 				DF2A3732A4D34FF984F51714 /* PendingRecordingFailure.swift */,
 				FE0002AA0002AA0002AA0001 /* NotebookPipeline.swift */,
@@ -932,6 +941,7 @@
 				B29DE04DCF67304B5EEAF1BF /* PendingRecordingNoteTests.swift in Sources */,
 				8E6CA7582C85C5232A76B07A /* PendingRecordingDictationTests.swift in Sources */,
 				F8BD18081AC5EEF4280044D9 /* PendingRecordingStoreTests.swift in Sources */,
+				E2891AEEBDB14793AB866B10 /* PendingRecordingPlayerTests.swift in Sources */,
 				C8F48C772D9C484F909E12DB /* PendingRecordingAutoRetrierTests.swift in Sources */,
 				33A217A7FD2F4CA099F7DCD7 /* PendingRecordingFailureTests.swift in Sources */,
 				WP03VON007AA007AA007001B /* NoteINV11NoAudioTests.swift in Sources */,
@@ -965,6 +975,7 @@
 				663C34A9CC884E40AD59B703 /* DictationView.swift in Sources */,
 				A30000000000000000000002 /* WorkflowProgressView.swift in Sources */,
 				663C34A9CC884E40AD59B704 /* HistoryView.swift in Sources */,
+				FB4AB0934D874B7487EC3B90 /* PendingRecordingsView.swift in Sources */,
 				663C34A9CC884E40AD59B705 /* SettingsView.swift in Sources */,
 				663C34A9CC884E40AD59B706 /* Color+Hex.swift in Sources */,
 				663C34A9CC884E40AD59B707 /* DictationSession.swift in Sources */,
@@ -1046,6 +1057,7 @@
 				RSR001AA001AA001AA001B /* RecordingStopRouter.swift in Sources */,
 				WP03VON001AA001AA001001B /* NoteViewModel.swift in Sources */,
 				DD4A4E53943289228BF64FAF /* PendingRecordingStore.swift in Sources */,
+				88484A6FD6224BBF97572360 /* PendingRecordingPlayer.swift in Sources */,
 				D991C580F57340F3BE3BDBE2 /* PendingRecordingAutoRetrier.swift in Sources */,
 				B22F2AD39A1A486C9BAC072E /* PendingRecordingFailure.swift in Sources */,
 				WP03VON002AA002AA002001B /* NotesView.swift in Sources */,

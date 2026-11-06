@@ -109,6 +109,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         appendingTo entryID: UUID? = nil,
         onTranscribed: (@MainActor (String) -> Void)? = nil
     ) {
+        PendingRecordingPlayer.shared.stop()
         guard activeContainerID == nil,
               (recordingState == .idle || {
             if case .done = recordingState { return true }

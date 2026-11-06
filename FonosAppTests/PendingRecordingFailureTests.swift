@@ -70,3 +70,36 @@ struct PendingRecordingFailureTests {
         ) == .permanent)
     }
 }
+
+struct PendingRecordingTitleTests {
+    private func recording(
+        surface: PendingRecording.Surface,
+        noteEntryID: UUID? = nil
+    ) -> PendingRecording {
+        PendingRecording(
+            id: UUID(), surface: surface, workflowID: nil, notebookID: nil,
+            createdAt: Date(), lastError: "e", attempts: 0, durationSeconds: 1,
+            noteEntryID: noteEntryID
+        )
+    }
+
+    @Test("titles say what each recording is")
+    @MainActor
+    func titles() {
+        #expect(PendingRecordingsView.title(
+            for: recording(surface: .dictate), recipeName: "Polish", notebookName: nil
+        ) == "Polish")
+        #expect(PendingRecordingsView.title(
+            for: recording(surface: .dictate), recipeName: nil, notebookName: nil
+        ) == "Dictation")
+        #expect(PendingRecordingsView.title(
+            for: recording(surface: .note), recipeName: nil, notebookName: "Work"
+        ) == "Voice note · Work")
+        #expect(PendingRecordingsView.title(
+            for: recording(surface: .note, noteEntryID: UUID()), recipeName: nil, notebookName: "Ideas"
+        ) == "Addition · Ideas")
+        #expect(PendingRecordingsView.title(
+            for: recording(surface: .note), recipeName: nil, notebookName: nil
+        ) == "Voice note")
+    }
+}
