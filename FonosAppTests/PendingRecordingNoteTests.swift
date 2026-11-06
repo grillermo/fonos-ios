@@ -95,6 +95,35 @@ private func makeNotes(_ stt: any STTProvider) throws
 @MainActor
 struct PendingRecordingNoteTests {
 
+    @Test("a retry with copy off saves the text and leaves the clipboard alone")
+    func retryWithoutCopy() async throws {
+        let stt = SwitchableNoteSTT(error: nil)
+        let (vm, service, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        var copied: [String] = []
+        vm.copyText = { copied.append($0) }
+        let saved = try store.save(
+            wav: Data(count: 44), surface: .note, notebookID: notebook.id, error: "e"
+        )
+
+        try await vm.retryPendingRecording(saved.id, copy: false)
+
+        #expect(copied.isEmpty)
+        #expect(store.all().isEmpty)
+        #expect(service.entriesForNotebook(notebook.id).count == 1)
+    }
+
+    @Test("a permanent failure saved from a note stops auto-retry")
+    func permanentFailureStartsStopped() async throws {
+        let stt = SwitchableNoteSTT(error: .http(status: 415, body: ""))
+        let (vm, _, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+
+        await vm.recordAndStore(to: notebook.id, audioData: Data(count: 44))
+
+        #expect(try #require(store.all().first).autoRetryStoppedAt != nil)
+    }
+
     @Test("an STT failure keeps the audio for that notebook")
     func failureKeepsAudio() async throws {
         let (vm, _, notebook, store) = try makeNotes(SwitchableNoteSTT())

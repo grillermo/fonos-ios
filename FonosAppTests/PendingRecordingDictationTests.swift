@@ -287,6 +287,37 @@ struct PendingRecordingDictationTests {
         #expect(store.recording(id: saved.id)?.attempts == 0)
     }
 
+    @Test("a quiet retry with copy off leaves the clipboard alone")
+    @MainActor
+    func quietRetryWithoutCopy() async throws {
+        let (vm, store) = makeViewModel(SwitchableSTT(error: nil))
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let container = try makeContainer()
+        vm.modelContext = container.mainContext
+        var copied: [String] = []
+        vm.copyText = { copied.append($0) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
+
+        _ = try await vm.retryPendingRecordingQuietly(saved.id, copy: false)
+
+        #expect(copied.isEmpty)
+        #expect(store.all().isEmpty)
+    }
+
+    @Test("a quiet retry that hits a permanent failure stops auto-retry")
+    @MainActor
+    func quietRetryPermanentFailure() async throws {
+        let (vm, store) = makeViewModel(SwitchableSTT(error: .http(status: 415, body: "")))
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: dummyWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
+
+        await #expect(throws: STTError.http(status: 415, body: "")) {
+            try await vm.retryPendingRecordingQuietly(saved.id)
+        }
+
+        #expect(store.recording(id: saved.id)?.autoRetryStoppedAt != nil)
+    }
+
     @Test("quiet retry saves to History, copies, discards, and leaves the Dictate state alone")
     @MainActor
     func quietRetry() async throws {

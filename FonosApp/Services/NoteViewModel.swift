@@ -245,6 +245,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             if PendingRecordingStore.shouldKeep(error: error, audio: audioData) {
                 let store = pendingStore
                 let message = error.localizedDescription
+                let permanent = PendingRecordingFailure.classify(error) == .permanent
                 do {
                     // Encoding a five-minute clip must not block the main actor.
                     let saved = try await Task.detached(priority: .userInitiated) {
@@ -253,7 +254,8 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                             surface: .note,
                             notebookID: containerId,
                             noteEntryID: entryID,
-                            error: message
+                            error: message,
+                            autoRetryStopped: permanent
                         )
                     }.value
                     lastFailurePendingID = saved.id
@@ -266,11 +268,16 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// True while a recording or its transcription is in progress.
+    var isRunBusy: Bool {
+        recordingState == .recording || recordingState == .processing
+    }
+
     /// Retry from the notebook, compiled from its current settings: the text
     /// goes to the end of the note it was recorded for, or into a new note
     /// when it had none or that note is gone. Either way it is then copied.
     @discardableResult
-    func retryPendingRecording(_ id: UUID) async throws -> String {
+    func retryPendingRecording(_ id: UUID, copy: Bool = true) async throws -> String {
         guard !retryingPendingIDs.contains(id) else { throw PendingRecordingError.alreadyRetrying }
         guard let pending = pendingStore.recording(id: id) else { throw PendingRecordingError.notFound }
         retryingPendingIDs.insert(id)
@@ -289,12 +296,12 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             )
             pendingStore.discard(id: id)
             clearSavedForRetryFlag(for: id)
-            copyText(text)
+            if copy { copyText(text) }
             return text
         } catch {
             // A cancelled retry is not a failed attempt.
             if !(error is CancellationError) {
-                pendingStore.recordAttempt(id: id, error: error.localizedDescription)
+                pendingStore.recordAttempt(id: id, failure: error)
             }
             throw error
         }

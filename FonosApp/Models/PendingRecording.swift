@@ -27,6 +27,10 @@ struct PendingRecording: Codable, Identifiable, Equatable, Sendable {
     /// The note this recording was being added to. Nil for a new note, and
     /// for items saved before this field existed.
     var noteEntryID: UUID? = nil
+    /// Set when a failure can't be fixed by trying again. Auto-retry skips the
+    /// item; a manual Retry still runs it. Optional so metadata from earlier
+    /// builds still decodes.
+    var autoRetryStoppedAt: Date? = nil
 }
 
 enum PendingRecordingError: LocalizedError, Equatable {

@@ -87,6 +87,76 @@ final class PendingRecordingStoreTests {
         #expect(store.all().map(\.id) == [new.id, old.id])
     }
 
+    @Test("metadata from earlier builds decodes without autoRetryStoppedAt")
+    func decodesOldMetadata() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","surface":"note","createdAt":0,
+         "lastError":"e","attempts":1,"durationSeconds":2}
+        """
+        let recording = try JSONDecoder().decode(PendingRecording.self, from: Data(json.utf8))
+        #expect(recording.autoRetryStoppedAt == nil)
+    }
+
+    @Test("a permanent failure stops auto-retry and a temporary one restores it")
+    func attemptSetsAndClearsStop() throws {
+        let store = makeTempStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: oneSecondWAV(), surface: .dictate, error: "e")
+        #expect(saved.autoRetryStoppedAt == nil)
+
+        store.recordAttempt(id: saved.id, failure: STTError.http(status: 415, body: ""))
+        #expect(store.recording(id: saved.id)?.autoRetryStoppedAt != nil)
+
+        store.recordAttempt(id: saved.id, failure: STTError.timeout)
+        #expect(store.recording(id: saved.id)?.autoRetryStoppedAt == nil)
+        #expect(store.recording(id: saved.id)?.attempts == 2)
+    }
+
+    @Test("a recording first saved with a permanent failure starts stopped")
+    func saveWithPermanentFailure() throws {
+        let store = makeTempStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(
+            wav: oneSecondWAV(), surface: .dictate, error: "e", autoRetryStopped: true
+        )
+        #expect(store.recording(id: saved.id)?.autoRetryStoppedAt != nil)
+    }
+
+    @Test("a failed keyboard run keeps its audio as a dictation")
+    func keyboardFailureKeepsAudio() throws {
+        let store = makeTempStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+
+        BackgroundRecordingService.keepFailedRecording(
+            STTError.networkUnavailable,
+            wavData: oneSecondWAV(),
+            workflowID: "wf.keyboard",
+            textSaved: false,
+            store: store
+        )
+
+        let pending = try #require(store.all().first)
+        #expect(pending.surface == .dictate)
+        #expect(pending.workflowID == "wf.keyboard")
+    }
+
+    @Test("a keyboard run keeps nothing when cancelled or already in History")
+    func keyboardFailureKeepsNothing() {
+        let store = makeTempStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+
+        BackgroundRecordingService.keepFailedRecording(
+            CancellationError(), wavData: oneSecondWAV(), workflowID: "w",
+            textSaved: false, store: store
+        )
+        BackgroundRecordingService.keepFailedRecording(
+            STTError.timeout, wavData: oneSecondWAV(), workflowID: "w",
+            textSaved: true, store: store
+        )
+
+        #expect(store.all().isEmpty)
+    }
+
     @Test("recordAttempt increments attempts and replaces the error")
     func recordAttempt() throws {
         let store = makeTempStore()

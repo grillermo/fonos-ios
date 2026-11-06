@@ -340,7 +340,7 @@ extension DictationViewModel {
                 pendingStore.discard(id: retryingPendingID)
                 lastPendingRecordingID = nil
             } else {
-                pendingStore.recordAttempt(id: retryingPendingID, error: error.localizedDescription)
+                pendingStore.recordAttempt(id: retryingPendingID, failure: error)
                 lastPendingRecordingID = pendingStore.recording(id: retryingPendingID) != nil
                     ? retryingPendingID
                     : nil
@@ -354,7 +354,8 @@ extension DictationViewModel {
                 wav: wavData,
                 surface: .dictate,
                 workflowID: workflowID,
-                error: error.localizedDescription
+                error: error.localizedDescription,
+                autoRetryStopped: PendingRecordingFailure.classify(error) == .permanent
             ).id
         } catch let saveError {
             dictationLog.error("❌ Could not keep the recording for retry: \(saveError.localizedDescription)")
@@ -485,7 +486,7 @@ extension DictationViewModel {
             runMainWorkflow(prepared, wavData: wavData, retryingPendingID: id)
         } catch {
             dictationLog.error("❌ Retry could not start: \(error.localizedDescription)")
-            pendingStore.recordAttempt(id: id, error: error.localizedDescription)
+            pendingStore.recordAttempt(id: id, failure: error)
             // Point the card at the item only while it still exists.
             lastPendingRecordingID = pendingStore.recording(id: id) != nil ? id : nil
             recordingState = .error(message: error.localizedDescription)
@@ -497,13 +498,13 @@ extension DictationViewModel {
     /// discarded once the text is safely in History.
     @MainActor
     @discardableResult
-    func retryPendingRecordingQuietly(_ id: UUID) async throws -> String {
+    func retryPendingRecordingQuietly(_ id: UUID, copy: Bool = true) async throws -> String {
         guard !isRunBusy else { throw PendingRecordingError.dictationBusy }
         guard !retryingPendingIDs.contains(id) else { throw PendingRecordingError.alreadyRetrying }
         retryingPendingIDs.insert(id)
         defer { retryingPendingIDs.remove(id) }
 
-        let saved = QuietRetrySaveFlag()
+        let saved = RunSaveFlag()
         do {
             let pending = try retryableRecording(id)
             let wavData = try pendingStore.audio(id: id)
@@ -527,7 +528,7 @@ extension DictationViewModel {
                 forgetCardItem(id)
             }
             try Task.checkCancellation()
-            copyText(result.finalText)
+            if copy { copyText(result.finalText) }
             return result.finalText
         } catch {
             handleQuietRetryFailure(error, id: id, textSaved: saved.value)
@@ -543,7 +544,7 @@ extension DictationViewModel {
             pendingStore.discard(id: id)
             forgetCardItem(id)
         } else if !(error is CancellationError) {
-            pendingStore.recordAttempt(id: id, error: error.localizedDescription)
+            pendingStore.recordAttempt(id: id, failure: error)
         }
     }
 
@@ -622,7 +623,7 @@ extension DictationViewModel {
 }
 
 /// Carries "the text reached History" out of the engine's `@Sendable` recorder.
-private final class QuietRetrySaveFlag: @unchecked Sendable {
+final class RunSaveFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var stored = false
     var value: Bool { lock.withLock { stored } }

@@ -75,6 +75,7 @@ final class PendingRecordingStore: @unchecked Sendable {
         notebookID: UUID? = nil,
         noteEntryID: UUID? = nil,
         error: String,
+        autoRetryStopped: Bool = false,
         now: Date = Date()
     ) throws -> PendingRecording {
         let recording = PendingRecording(
@@ -86,7 +87,8 @@ final class PendingRecordingStore: @unchecked Sendable {
             lastError: error,
             attempts: 0,
             durationSeconds: Self.duration(ofWAV: wav),
-            noteEntryID: noteEntryID
+            noteEntryID: noteEntryID,
+            autoRetryStoppedAt: autoRetryStopped ? now : nil
         )
         let m4a = surface == .note ? encodedForStorage(wav) : nil
         let audioFile = audioURL(recording.id, fileExtension: m4a == nil ? "wav" : "m4a")
@@ -177,11 +179,12 @@ final class PendingRecordingStore: @unchecked Sendable {
         postChange()
     }
 
-    func recordAttempt(id: UUID, error: String) {
+    func recordAttempt(id: UUID, error: String, permanent: Bool = false, now: Date = Date()) {
         let updated: Bool = lock.withLock {
             guard var recording = readMetadata(at: metadataURL(id)) else { return false }
             recording.attempts += 1
             recording.lastError = error
+            recording.autoRetryStoppedAt = permanent ? now : nil
             do {
                 try writeMetadata(recording)
                 return true
@@ -191,6 +194,15 @@ final class PendingRecordingStore: @unchecked Sendable {
             }
         }
         if updated { postChange() }
+    }
+
+    /// Records a failed retry, stopping auto-retry when the failure is permanent.
+    func recordAttempt(id: UUID, failure: any Error) {
+        recordAttempt(
+            id: id,
+            error: failure.localizedDescription,
+            permanent: PendingRecordingFailure.classify(failure) == .permanent
+        )
     }
 
     /// nil keeps the WAV: a failed encode must not lose the recording.
