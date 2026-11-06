@@ -4,6 +4,29 @@ import SwiftData
 import os.log
 
 extension BackgroundRecordingService {
+    /// A failed keyboard run keeps its audio like the Dictate tab, unless its
+    /// text already reached History.
+    nonisolated static func keepFailedRecording(
+        _ error: any Error,
+        wavData: Data,
+        workflowID: String,
+        textSaved: Bool,
+        store: PendingRecordingStore = .shared
+    ) {
+        guard !textSaved, PendingRecordingStore.shouldKeep(error: error, audio: wavData) else { return }
+        do {
+            try store.save(
+                wav: wavData,
+                surface: .dictate,
+                workflowID: workflowID,
+                error: error.localizedDescription,
+                autoRetryStopped: PendingRecordingFailure.classify(error) == .permanent
+            )
+        } catch let saveError {
+            backgroundRecordingLog.error("🎙 BG: could not keep the recording: \(saveError.localizedDescription)")
+        }
+    }
+
     func transcribeAndProcess(
         wavData: Data,
         sessionID: String?,
@@ -20,6 +43,7 @@ extension BackgroundRecordingService {
 
         let processingRunID = UUID()
         self.processingRunID = processingRunID
+        let textSaved = RunSaveFlag()
         processingTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -38,6 +62,7 @@ extension BackgroundRecordingService {
                             definition: prepared.definition,
                             destinationSummary: prepared.destinationSummary
                         )
+                        textSaved.set(true)
                     }
                 )
                 try Task.checkCancellation()
@@ -66,6 +91,12 @@ extension BackgroundRecordingService {
                 }
             } catch {
                 backgroundRecordingLog.error("🎙 BG: ❌ recipe failed: \(error.localizedDescription)")
+                Self.keepFailedRecording(
+                    error,
+                    wavData: wavData,
+                    workflowID: prepared.definition.id,
+                    textSaved: textSaved.value
+                )
                 await MainActor.run {
                     _ = self.writeError(
                         "Recipe: \(error.localizedDescription)",
