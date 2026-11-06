@@ -302,6 +302,54 @@ struct EndpointRouterTests {
         #expect(fallbackCalls.count == 2)
     }
 
+    @Test("when both routes fail the error names both")
+    func failoverReportsBothErrors() async throws {
+        let router = makeRouter(interfaces: MutableBox([homeWiFi]), reachable: true, probes: ProbeCounter())
+        let stt = FailoverSTT(
+            primary: StubSTT(result: .failure(.timeout), calls: ProbeCounter()),
+            fallback: StubSTT(result: .failure(.http(status: 415, body: "x")), calls: ProbeCounter()),
+            primaryBaseURL: lan,
+            router: router
+        )
+        do {
+            _ = try await stt.transcribe(audioData: Data(), language: nil)
+            Issue.record("expected a failure")
+        } catch let error as EndpointFailoverError {
+            #expect(error.primary as? STTError == .timeout)
+            #expect(error.fallback as? STTError == .http(status: 415, body: "x"))
+            #expect(error.localizedDescription.hasPrefix("LAN: "))
+            #expect(error.localizedDescription.contains(" · Tunnel: "))
+        }
+    }
+
+    @Test("a fallback that finds no speech stays a no-speech result")
+    func failoverKeepsNoTranscript() async throws {
+        let router = makeRouter(interfaces: MutableBox([homeWiFi]), reachable: true, probes: ProbeCounter())
+        let stt = FailoverSTT(
+            primary: StubSTT(result: .failure(.timeout), calls: ProbeCounter()),
+            fallback: StubSTT(result: .failure(.noTranscript), calls: ProbeCounter()),
+            primaryBaseURL: lan,
+            router: router
+        )
+        await #expect(throws: STTError.noTranscript) {
+            _ = try await stt.transcribe(audioData: Data(), language: nil)
+        }
+    }
+
+    @Test("a run that only tried the fallback throws its error unchanged")
+    func failoverFallbackOnlyError() async throws {
+        let router = makeRouter(interfaces: MutableBox([cafeWiFi]), reachable: true, probes: ProbeCounter())
+        let stt = FailoverSTT(
+            primary: StubSTT(result: .success("unused"), calls: ProbeCounter()),
+            fallback: StubSTT(result: .failure(.timeout), calls: ProbeCounter()),
+            primaryBaseURL: lan,
+            router: router
+        )
+        await #expect(throws: STTError.timeout) {
+            _ = try await stt.transcribe(audioData: Data(), language: nil)
+        }
+    }
+
     @Test("profile with a fallback resolves to FailoverSTT; without one, unchanged")
     func resolverWrapsOnlyWithFallback() {
         let withFallback = ModelProfile(

@@ -255,6 +255,17 @@ enum TCPReachability {
 
 // MARK: - Failover providers
 
+/// Both routes of a profile failed. Keeps both errors: the fallback's alone
+/// can hide the real cause.
+struct EndpointFailoverError: LocalizedError {
+    let primary: any Error
+    let fallback: any Error
+
+    var errorDescription: String? {
+        "LAN: \(primary.localizedDescription) · Tunnel: \(fallback.localizedDescription)"
+    }
+}
+
 /// Runs an operation against the primary endpoint when the router prefers
 /// it, and against the fallback otherwise or after a primary failure.
 struct EndpointFailover: Sendable {
@@ -266,6 +277,7 @@ struct EndpointFailover: Sendable {
         fallback: Provider,
         _ operation: (Provider) async throws -> String
     ) async throws -> String {
+        var primaryError: (any Error)?
         if await router.prefersPrimary(primaryBaseURL) {
             do {
                 return try await operation(primary)
@@ -273,10 +285,20 @@ struct EndpointFailover: Sendable {
                 if error is CancellationError || Task.isCancelled { throw error }
                 routeLog.info("🧭 primary failed (\(error.localizedDescription, privacy: .public)); retrying via fallback")
                 await router.reportFailure(primaryBaseURL)
+                primaryError = error
             }
         }
         try Task.checkCancellation()
-        return try await operation(fallback)
+        do {
+            return try await operation(fallback)
+        } catch {
+            // "No speech" came from a server that heard the audio: not a route failure.
+            guard let primaryError,
+                  !(error is CancellationError),
+                  !Task.isCancelled,
+                  error as? STTError != .noTranscript else { throw error }
+            throw EndpointFailoverError(primary: primaryError, fallback: error)
+        }
     }
 }
 
