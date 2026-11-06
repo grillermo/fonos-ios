@@ -238,6 +238,218 @@ final class FonosAppUITests: XCTestCase {
         )
     }
 
+    // MARK: - "Record a Note" must reach the recorder from any state
+
+    @MainActor
+    func testNoteLinkRecordsFromAnotherTab() throws {
+        let app = launchApp(screenshotMode: true)
+        tapTab("Settings", in: app)
+        XCUIDevice.shared.press(.home)
+
+        openNoteLink(in: app)
+
+        assertRecordSheetOpens(in: app, "from the Settings tab")
+    }
+
+    @MainActor
+    func testNoteLinkRecordsOverAnOpenNotebook() throws {
+        let app = launchApp(screenshotMode: true)
+        tapTab("Notes", in: app)
+        let notebook = app.staticTexts["Ideas"]
+        XCTAssertTrue(notebook.waitForExistence(timeout: 5), "Expected the seeded notebook")
+        notebook.tap()
+        XCTAssertTrue(app.buttons["noteRecordButton"].waitForExistence(timeout: 5))
+        XCUIDevice.shared.press(.home)
+
+        openNoteLink(in: app)
+
+        assertRecordSheetOpens(in: app, "over a notebook opened by hand")
+    }
+
+    @MainActor
+    func testNoteLinkRecordsOverAnOpenNoteEditor() throws {
+        let app = launchApp(screenshotMode: true)
+        tapTab("Notes", in: app)
+        let notebook = app.staticTexts["Ideas"]
+        XCTAssertTrue(notebook.waitForExistence(timeout: 5), "Expected the seeded notebook")
+        notebook.tap()
+        let note = app.buttons.containing(
+            NSPredicate(format: "label CONTAINS %@", "quick mode switch")
+        ).firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 5), "Expected the seeded note")
+        note.tap()
+        XCTAssertTrue(app.navigationBars["Edit Note"].waitForExistence(timeout: 5))
+        XCUIDevice.shared.press(.home)
+
+        openNoteLink(in: app)
+
+        assertRecordSheetOpens(in: app, "over an open note editor")
+    }
+
+    @MainActor
+    func testNoteLinkRecordsEveryTime() throws {
+        let app = launchApp(screenshotMode: true)
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+
+        openNoteLink(in: app)
+        assertRecordSheetOpens(in: app, "on the first run")
+        dismissRecordSheet(in: app)
+        XCUIDevice.shared.press(.home)
+
+        openNoteLink(in: app)
+        assertRecordSheetOpens(in: app, "on the second run")
+    }
+
+    @MainActor
+    func testNoteLinkDoesNotReplayWhenLeavingTheNotebook() throws {
+        let app = launchApp(screenshotMode: true)
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+        openNoteLink(in: app)
+        assertRecordSheetOpens(in: app, "on the first run")
+        dismissRecordSheet(in: app)
+
+        let back = app.navigationBars.buttons.firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 5))
+        back.tap()
+
+        XCTAssertTrue(app.staticTexts["New Notebook"].waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            app.staticTexts["Recording to"].waitForExistence(timeout: 2),
+            "Going back must not start another recording"
+        )
+        XCTAssertTrue(app.staticTexts["New Notebook"].isHittable, "Expected to stay on the notebook grid")
+    }
+
+    @MainActor
+    func testNoteLinkDoesNotReplayWhenSwitchingTabs() throws {
+        let app = launchApp(screenshotMode: true)
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+        openNoteLink(in: app)
+        assertRecordSheetOpens(in: app, "on the first run")
+        dismissRecordSheet(in: app)
+
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["New Notebook"].waitForExistence(timeout: 5))
+        tapTab("Settings", in: app)
+        tapTab("Notes", in: app)
+
+        XCTAssertFalse(
+            app.staticTexts["Recording to"].waitForExistence(timeout: 2),
+            "Returning to the Notes tab must not start another recording"
+        )
+    }
+
+    // MARK: - The real App Intent, run from the Shortcuts app
+
+    @MainActor
+    func testRecordNoteShortcutFromColdStart() throws {
+        let app = XCUIApplication()
+        app.terminate()
+
+        runRecordNoteShortcut()
+
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        assertRecordSheetOpens(in: app, "from a cold start")
+    }
+
+    @MainActor
+    func testRecordNoteShortcutFromAnotherTab() throws {
+        let app = launchApp(screenshotMode: true)
+        tapTab("Settings", in: app)
+
+        runRecordNoteShortcut()
+
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        assertRecordSheetOpens(in: app, "from the Settings tab")
+    }
+
+    @MainActor
+    func testRecordNoteShortcutOverAnOpenNotebook() throws {
+        let app = launchApp(screenshotMode: true)
+        tapTab("Notes", in: app)
+        let notebook = app.staticTexts["Ideas"]
+        XCTAssertTrue(notebook.waitForExistence(timeout: 5), "Expected the seeded notebook")
+        notebook.tap()
+        XCTAssertTrue(app.buttons["noteRecordButton"].waitForExistence(timeout: 5))
+
+        runRecordNoteShortcut()
+
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        assertRecordSheetOpens(in: app, "over a notebook opened by hand")
+    }
+
+    @MainActor
+    func testRecordNoteShortcutOverAnOpenNoteEditor() throws {
+        let app = launchApp(screenshotMode: true)
+        tapTab("Notes", in: app)
+        let notebook = app.staticTexts["Ideas"]
+        XCTAssertTrue(notebook.waitForExistence(timeout: 5), "Expected the seeded notebook")
+        notebook.tap()
+        let note = app.buttons.containing(
+            NSPredicate(format: "label CONTAINS %@", "quick mode switch")
+        ).firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 5), "Expected the seeded note")
+        note.tap()
+        XCTAssertTrue(app.navigationBars["Edit Note"].waitForExistence(timeout: 5))
+
+        runRecordNoteShortcut()
+
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        assertRecordSheetOpens(in: app, "over an open note editor")
+    }
+
+    @MainActor
+    func testRecordNoteShortcutRecordsEveryTime() throws {
+        let app = launchApp(screenshotMode: true)
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+
+        runRecordNoteShortcut()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        assertRecordSheetOpens(in: app, "on the first run")
+        dismissRecordSheet(in: app)
+
+        runRecordNoteShortcut()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
+        assertRecordSheetOpens(in: app, "on the second run")
+    }
+
+    @MainActor
+    private func runRecordNoteShortcut() {
+        let shortcuts = XCUIApplication(bundleIdentifier: "com.apple.shortcuts")
+        shortcuts.activate()
+        let tile = shortcuts.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "Record Note")
+        ).firstMatch
+        XCTAssertTrue(tile.waitForExistence(timeout: 10), "Expected Fonos's Record Note tile in Shortcuts")
+        tile.tap()
+    }
+
+    @MainActor
+    private func openNoteLink(in app: XCUIApplication) {
+        app.open(URL(string: "fonos://note")!)
+        let open = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Open"]
+        if open.waitForExistence(timeout: 2) {
+            open.tap()
+        }
+    }
+
+    @MainActor
+    private func assertRecordSheetOpens(in app: XCUIApplication, _ situation: String) {
+        XCTAssertTrue(
+            app.staticTexts["Recording to"].waitForExistence(timeout: 5),
+            "Expected the record sheet \(situation)"
+        )
+    }
+
+    /// The simulator has no microphone, so capture ends on the error state.
+    @MainActor
+    private func dismissRecordSheet(in app: XCUIApplication) {
+        let dismiss = app.buttons["Dismiss"]
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 5), "Expected the sheet's Dismiss button")
+        dismiss.tap()
+        XCTAssertTrue(app.buttons["noteRecordButton"].waitForExistence(timeout: 5))
+    }
+
     @MainActor
     private func launchApp(screenshotMode: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()

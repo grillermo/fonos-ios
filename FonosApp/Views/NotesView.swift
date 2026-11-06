@@ -1,6 +1,14 @@
 import SwiftUI
 import SwiftData
 
+/// A notebook opened to record into. The notebook and its request travel as one
+/// value because the navigation destination can be built from a body older than
+/// a separately stored request ID, which opened the notebook without recording.
+private struct NotebookRecordingRoute: Hashable {
+    let notebook: NoteContainer
+    let requestID: UUID
+}
+
 /// Notebook grid view — the main Notes tab content.
 struct NotesView: View {
 
@@ -11,8 +19,8 @@ struct NotesView: View {
     @State private var notebooks: [NoteContainer] = []
     @State private var showNewNotebookSheet = false
     @State private var newNotebookTitle = ""
-    @State private var selectedNotebook: NoteContainer?
-    @State private var automaticRecordingRequestID: UUID?
+    @State private var recordingRoute: NotebookRecordingRoute?
+    @State private var handledRecordingRequestID: UUID?
     @State private var routeError: String?
 
     // MARK: - Init
@@ -75,17 +83,13 @@ struct NotesView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .onAppear { reloadNotebooks() }
-            .navigationDestination(item: $selectedNotebook) { notebook in
+            .navigationDestination(item: $recordingRoute) { route in
                 NotebookDetailView(
-                    notebook: notebook,
+                    notebook: route.notebook,
                     noteService: noteService,
                     noteViewModel: noteViewModel,
-                    autoRecordRequestID: automaticRecordingRequestID
+                    autoRecordRequestID: route.requestID
                 )
-            }
-            .task(id: recordingRequest?.id) {
-                guard let recordingRequest else { return }
-                openAndRecord(request: recordingRequest)
             }
             .sheet(isPresented: $showNewNotebookSheet, onDismiss: reloadNotebooks) {
                 NewNotebookSheet(
@@ -114,6 +118,14 @@ struct NotesView: View {
             }
         }
         .preferredColorScheme(.dark)
+        // Outside the stack, and not `.task`: the grid is off screen under an
+        // open notebook, and a `.task` would rerun each time the grid reappears.
+        .onChange(of: recordingRequest?.id, initial: true) {
+            guard let recordingRequest,
+                  handledRecordingRequestID != recordingRequest.id else { return }
+            handledRecordingRequestID = recordingRequest.id
+            openAndRecord(request: recordingRequest)
+        }
     }
 
     // MARK: - New Notebook Card
@@ -182,8 +194,7 @@ struct NotesView: View {
                 return
             }
         }
-        automaticRecordingRequestID = request.id
-        selectedNotebook = target
+        recordingRoute = NotebookRecordingRoute(notebook: target, requestID: request.id)
     }
 }
 
