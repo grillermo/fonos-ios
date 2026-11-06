@@ -185,6 +185,37 @@ final class FonosAppUITests: XCTestCase {
         XCTAssertTrue(updated.waitForExistence(timeout: 5), "Expected the row to show the appended text")
     }
 
+    @MainActor
+    func testOpenNoteOffersTheMicrophone() throws {
+        let app = launchApp(screenshotMode: true)
+        tapTab("Notes", in: app)
+
+        let notebook = app.staticTexts["Ideas"]
+        XCTAssertTrue(notebook.waitForExistence(timeout: 5), "Expected the seeded notebook")
+        notebook.tap()
+
+        let note = app.buttons.containing(
+            NSPredicate(format: "label CONTAINS %@", "quick mode switch")
+        ).firstMatch
+        XCTAssertTrue(note.waitForExistence(timeout: 5), "Expected the seeded note")
+        note.tap()
+
+        XCTAssertTrue(app.navigationBars["Edit Note"].waitForExistence(timeout: 5))
+        // The notebook's own microphone stays in the tree behind the sheet.
+        let mics = app.buttons.matching(identifier: "noteRecordButton")
+        XCTAssertTrue(mics.firstMatch.waitForExistence(timeout: 5), "Expected the microphone in the open note")
+        let mic = try XCTUnwrap(
+            mics.allElementsBoundByIndex.last(where: \.isHittable),
+            "Expected a reachable microphone in the open note"
+        )
+        mic.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["Recording to"].waitForExistence(timeout: 5),
+            "Expected the record sheet over the open note"
+        )
+    }
+
     /// The Install Latest scene delegate must leave `fonos://` links reaching
     /// SwiftUI's `onOpenURL`, which the widget and Siri depend on.
     @MainActor

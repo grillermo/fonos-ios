@@ -4,6 +4,8 @@ import SwiftUI
 struct RecordNoteSheet: View {
     let notebook: NoteContainer
     @ObservedObject var noteViewModel: NoteViewModel
+    /// When set, the transcription goes here instead of into a new note.
+    var onTranscribed: (@MainActor (String) -> Void)?
     let onDismiss: () -> Void
 
     @State private var elapsedSeconds: Int = 0
@@ -66,6 +68,9 @@ struct RecordNoteSheet: View {
                     .onAppear {
                         Task {
                             try? await Task.sleep(nanoseconds: 800_000_000)
+                            // `.done` outlives the sheet, so a new recording
+                            // opens on it for a moment and must not be closed.
+                            guard noteViewModel.recordingState == .done else { return }
                             onDismiss()
                         }
                     }
@@ -97,7 +102,7 @@ struct RecordNoteSheet: View {
             }
         }
         .onAppear {
-            noteViewModel.startRecording(to: notebook.id)
+            noteViewModel.startRecording(to: notebook.id, onTranscribed: onTranscribed)
             startTimer()
         }
         .onDisappear {

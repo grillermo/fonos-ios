@@ -41,20 +41,8 @@ struct NotebookDetailView: View {
             }
 
             // Floating action button
-            Button {
-                showRecordSheet = true
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color(hex: "#fbbf24"))
-                        .frame(width: 60, height: 60)
-                        .shadow(color: Color(hex: "#fbbf24").opacity(0.4), radius: 10, x: 0, y: 4)
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(Color(hex: "#1a1917"))
-                }
-            }
-            .padding(24)
+            MicActionButton { showRecordSheet = true }
+                .padding(24)
         }
         .navigationTitle(notebook.title)
         .navigationBarTitleDisplayMode(.large)
@@ -113,7 +101,7 @@ struct NotebookDetailView: View {
             )
         }
         .sheet(item: $editingEntry, onDismiss: reloadEntries) { entry in
-            EditNoteSheet(entry: entry) { text in
+            EditNoteSheet(entry: entry, notebook: notebook, noteViewModel: noteViewModel) { text in
                 try noteService.updateEntry(entry.id, text: text)
             }
         }

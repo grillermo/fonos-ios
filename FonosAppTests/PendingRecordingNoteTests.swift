@@ -102,6 +102,42 @@ struct PendingRecordingNoteTests {
         #expect(store.all().isEmpty)
     }
 
+    @Test("an open note receives the transcription and no new note is added")
+    func transcriptGoesToOpenNote() async throws {
+        let stt = SwitchableNoteSTT(error: nil)
+        stt.transcript = "added by voice"
+        let (vm, service, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+
+        var received: String?
+        await vm.recordAndStore(to: notebook.id, audioData: Data(count: 44)) { received = $0 }
+
+        #expect(received == "added by voice")
+        #expect(vm.recordingState == .done)
+        #expect(service.entriesForNotebook(notebook.id).isEmpty)
+    }
+
+    @Test("a failed recording for an open note keeps the audio and adds no text")
+    func failedTranscriptForOpenNoteKeepsAudio() async throws {
+        let (vm, _, notebook, store) = try makeNotes(SwitchableNoteSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+
+        var received: String?
+        await vm.recordAndStore(to: notebook.id, audioData: Data(count: 44)) { received = $0 }
+
+        #expect(received == nil)
+        #expect(store.all().count == 1)
+        #expect(vm.lastFailureSavedForRetry)
+    }
+
+    @Test("dictated text joins the note with one space")
+    func appendingJoinsText() {
+        #expect(NoteViewModel.appending("two", to: "one") == "one two")
+        #expect(NoteViewModel.appending("two", to: "one\n") == "one\ntwo")
+        #expect(NoteViewModel.appending("two", to: "") == "two")
+        #expect(NoteViewModel.appending("", to: "one") == "one")
+    }
+
     @Test("quiet retry adds the note, copies it and discards the item")
     func quietRetry() async throws {
         let stt = SwitchableNoteSTT()

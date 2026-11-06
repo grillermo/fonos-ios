@@ -35,6 +35,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     private let audioCapture: any AudioCapturing
     private var levelPollTimer: Timer?
     private var activeContainerID: UUID?
+    private var transcriptHandler: (@MainActor (String) -> Void)?
 
     // MARK: - Injected providers (for tests)
 
@@ -87,7 +88,12 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
 
     // MARK: - Recording Control
 
-    func startRecording(to containerId: UUID) {
+    /// With `onTranscribed`, the recording's text goes to that closure instead
+    /// of into a new note, which is how an open note takes dictated text.
+    func startRecording(
+        to containerId: UUID,
+        onTranscribed: (@MainActor (String) -> Void)? = nil
+    ) {
         guard activeContainerID == nil,
               (recordingState == .idle || {
             if case .done = recordingState { return true }
@@ -95,6 +101,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             return false
         }()) else { return }
         activeContainerID = containerId
+        transcriptHandler = onTranscribed
         clearSavedForRetryFlag()
 
         let permission = audioCapture.micPermissionStatus()
@@ -149,7 +156,11 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                         return
                     }
                     self.recordingState = .processing
-                    await self.recordAndStore(to: containerId, audioData: wavData)
+                    await self.recordAndStore(
+                        to: containerId,
+                        audioData: wavData,
+                        onTranscribed: self.transcriptHandler
+                    )
                 }
             },
             completion: { [weak self] error in
@@ -174,8 +185,9 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         let wavData = audioCapture.stopCapture() ?? Data()
         recordingState = .processing
 
+        let onTranscribed = transcriptHandler
         Task {
-            await recordAndStore(to: containerId, audioData: wavData)
+            await recordAndStore(to: containerId, audioData: wavData, onTranscribed: onTranscribed)
         }
     }
 
@@ -185,7 +197,11 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     /// then adapt the result into a NoteEntry. Dictate, keyboard and Notes now
     /// share provider resolution, vocabulary, correction, fallback and tracing.
     /// A failure keeps the audio so the notebook can retry it.
-    func recordAndStore(to containerId: UUID, audioData: Data) async {
+    func recordAndStore(
+        to containerId: UUID,
+        audioData: Data,
+        onTranscribed: (@MainActor (String) -> Void)? = nil
+    ) async {
         clearSavedForRetryFlag()
         guard noteService.notebook(id: containerId) != nil else {
             recordingState = .error(message: "Notebook not found.")
@@ -193,7 +209,12 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         }
 
         do {
-            _ = try await transcribeAndStore(to: containerId, audioData: audioData)
+            if let onTranscribed {
+                let run = try await runRecipe(in: containerId, audioData: audioData)
+                onTranscribed(Self.noteText(from: run.result, recipe: run.recipe))
+            } else {
+                _ = try await transcribeAndStore(to: containerId, audioData: audioData)
+            }
             recordingState = .done
         } catch {
             noteVMLog.error("Notebook workflow failed: \(error.localizedDescription)")
@@ -269,6 +290,15 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
 
     /// Runs the notebook recipe and stores the note. Returns the note's text.
     private func transcribeAndStore(to containerId: UUID, audioData: Data) async throws -> String {
+        let run = try await runRecipe(in: containerId, audioData: audioData)
+        let entry = try persist(run.result, recipe: run.recipe, to: containerId)
+        return entry.processedText ?? entry.rawText
+    }
+
+    private func runRecipe(
+        in containerId: UUID,
+        audioData: Data
+    ) async throws -> (result: VoiceWorkflowResult, recipe: NotebookPipeline.WorkflowRecipe) {
         guard let notebook = noteService.notebook(id: containerId) else {
             throw PendingRecordingError.notebookUnavailable
         }
@@ -291,8 +321,23 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             VoiceWorkflowRunInput(audioData: audioData),
             using: compilation.plan
         )
-        let entry = try persist(result, recipe: recipe, to: containerId)
-        return entry.processedText ?? entry.rawText
+        return (result, recipe)
+    }
+
+    /// The LLM text when the recipe's LLM step succeeded, otherwise the
+    /// transcript, which is what a stored note would show.
+    private static func noteText(
+        from result: VoiceWorkflowResult,
+        recipe: NotebookPipeline.WorkflowRecipe
+    ) -> String {
+        recipe.hasLLM && result.degradations.isEmpty ? result.finalText : result.rawText
+    }
+
+    /// Adds dictated text to the end of a note, separated by one space unless
+    /// the note is empty or already ends in whitespace.
+    static func appending(_ addition: String, to text: String) -> String {
+        guard !text.isEmpty, text.last?.isWhitespace == false else { return text + addition }
+        return addition.isEmpty ? text : text + " " + addition
     }
 
     private func persist(
