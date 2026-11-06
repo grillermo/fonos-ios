@@ -21,7 +21,9 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         case error(message: String)
     }
 
-    @Published var recordingState: RecordingState = .idle
+    @Published var recordingState: RecordingState = .idle {
+        didSet { updateRecordingStopRoute() }
+    }
     @Published var audioLevel: Float = 0
 
     /// True while permission is pending or capture owns a frozen notebook.
@@ -87,6 +89,16 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     }
 
     // MARK: - Recording Control
+
+    private func updateRecordingStopRoute() {
+        if recordingState == .recording, let containerId = activeContainerID {
+            RecordingStopRouter.shared.register(self) { [weak self] in
+                self?.stopRecording(to: containerId)
+            }
+        } else {
+            RecordingStopRouter.shared.unregister(self)
+        }
+    }
 
     /// With `onTranscribed`, the recording's text goes to that closure instead
     /// of into a new note, which is how an open note takes dictated text.

@@ -118,6 +118,29 @@ struct NoteINV06RecordFlowTests {
 
     // MARK: - Happy path: raw mode
 
+    @Test("Return stops a note recording and transcribes the audio so far")
+    func routerStopsNoteRecording() async throws {
+        let modelContainer = try makeRecordFlowContainer()
+        let noteService = NoteService(modelContainer: modelContainer)
+        let notebook = try noteService.createNotebook(title: "Test Notebook")
+        let capture = NoteCaptureDouble()
+        let viewModel = NoteViewModel(
+            noteService: noteService,
+            sttProvider: MockSTTProvider(transcript: "stopped by return"),
+            llmProvider: nil,
+            audioCapture: capture
+        )
+
+        viewModel.startRecording(to: notebook.id)
+        #expect(RecordingStopRouter.shared.isRegistered(viewModel))
+
+        RecordingStopRouter.shared.stop(viewModel)
+
+        #expect(!RecordingStopRouter.shared.isRegistered(viewModel))
+        #expect(!capture.isRecording)
+        #expect(viewModel.recordingState == .processing)
+    }
+
     @Test("Record flow with raw mode creates NoteEntry with STT transcript as rawText")
     func recordFlowRawMode() async throws {
         let modelContainer = try makeRecordFlowContainer()

@@ -65,6 +65,7 @@ final class KeyboardViewController: UIInputViewController {
     private let keyboardWorkflowManifestKey = KeyboardIPC.DefaultsKey.workflowManifest
     private var currentWorkflowID = "wf.dictation"
     private var hasRunnableWorkflow = true
+    private var textBeforeCursor: String?
 
     // MARK: - Services
 
@@ -110,6 +111,19 @@ final class KeyboardViewController: UIInputViewController {
         // dismiss button. Cleanup sends a session-scoped producer cancel while
         // recording/processing is still outstanding.
         audioService.cleanup()
+    }
+
+    /// Stops on Return from a hardware keyboard, wherever the host inserts a
+    /// newline. A host that uses Return for something else, like sending a
+    /// message, leaves no newline and so can't be detected.
+    override func textDidChange(_ textInput: UITextInput?) {
+        super.textDidChange(textInput)
+        guard case .recording = keyboardState else { return }
+        let context = textDocumentProxy.documentContextBeforeInput
+        defer { textBeforeCursor = context }
+        guard KeyboardIPC.isReturnKeyEdit(before: textBeforeCursor, after: context) else { return }
+        textDocumentProxy.deleteBackward()
+        stopAndTranscribe()
     }
 
     // MARK: - UI Setup
@@ -334,6 +348,7 @@ final class KeyboardViewController: UIInputViewController {
 
         statusLabel.text = "Starting..."
         statusLabel.textColor = .secondaryLabel
+        textBeforeCursor = textDocumentProxy.documentContextBeforeInput
 
         audioService.startRecording(
             onPartial: { [weak self] text in

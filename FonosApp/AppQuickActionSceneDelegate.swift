@@ -7,6 +7,7 @@ final class FonosAppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        ReturnKeyRecordingStop.install()
         application.shortcutItems = AppQuickAction.available(infoDictionary: Bundle.main.infoDictionary).map {
             UIApplicationShortcutItem(
                 type: $0.rawValue,

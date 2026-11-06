@@ -98,11 +98,11 @@ struct DictationView: View {
         }
     }
 
-    /// Return on a hardware keyboard starts or stops a recording, like a tap
-    /// on the record button. The button is invisible; it exists only to carry
-    /// the shortcut.
+    /// Return on a hardware keyboard starts a recording, like a tap on the
+    /// record button. `ReturnKeyRecordingStop` handles stopping, from any screen.
+    /// The button is invisible; it exists only to carry the shortcut.
     private var recordShortcut: some View {
-        Button("Toggle Recording") { handleRecordTap() }
+        Button("Start Recording") { handleRecordTap() }
             .keyboardShortcut(.return, modifiers: [])
             .disabled(viewModel.recordingState == .processing || isEditingResult)
             .opacity(0)

@@ -387,7 +387,9 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         case error(message: String)
     }
 
-    @Published var recordingState: RecordingState = .idle
+    @Published var recordingState: RecordingState = .idle {
+        didSet { updateRecordingStopRoute() }
+    }
     @Published var audioLevel: Float = 0
     @Published var sttLatency: TimeInterval = 0
     @Published var llmLatency: TimeInterval = 0
@@ -549,6 +551,14 @@ final class DictationViewModel: ObservableObject, @unchecked Sendable {
         switch recordingState {
         case .starting, .recording: true
         case .idle, .processing, .result, .error: false
+        }
+    }
+
+    private func updateRecordingStopRoute() {
+        if isCaptureActive {
+            RecordingStopRouter.shared.register(self) { [weak self] in self?.stopRecording() }
+        } else {
+            RecordingStopRouter.shared.unregister(self)
         }
     }
 

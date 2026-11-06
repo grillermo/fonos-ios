@@ -1,6 +1,14 @@
 import Foundation
 
 enum KeyboardIPC {
+    /// Hardware keys go to the host app, never to a keyboard extension. All
+    /// it can see is the newline Return leaves in the text before the cursor.
+    /// `before` and `after` are windows, so the text may have scrolled out.
+    static func isReturnKeyEdit(before: String?, after: String?) -> Bool {
+        guard let after, after.hasSuffix("\n") else { return false }
+        return (before ?? "").hasSuffix(after.dropLast())
+    }
+
     static let appGroupID = "group.me.chiq.fonos"
 
     enum DefaultsKey {

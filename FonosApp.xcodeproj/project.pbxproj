@@ -109,6 +109,8 @@
 		NT0700000000000000000002 /* NoteINV07QuickNoteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NT0700000000000000000001 /* NoteINV07QuickNoteTests.swift */; };
 		FE0006AA0006AA0006AA0002 /* NoteINV14BackfillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0006AA0006AA0006AA0001 /* NoteINV14BackfillTests.swift */; };
 		FE0012AA0012AA0012AA0002 /* NoteINV12ExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0012AA0012AA0012AA0001 /* NoteINV12ExportTests.swift */; };
+		RSR001AA001AA001AA001B /* RecordingStopRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = RSR001AA001AA001AA001A /* RecordingStopRouter.swift */; };
+		RSR002AA002AA002AA002B /* RecordingStopRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RSR002AA002AA002AA002A /* RecordingStopRouterTests.swift */; };
 		FE0016AA0016AA0016AA0002 /* RecordGestureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0016AA0016AA0016AA0001 /* RecordGestureTests.swift */; };
 		FE0017AA0017AA0017AA0002 /* VocabTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0017AA0017AA0017AA0001 /* VocabTests.swift */; };
 		FE0021AA0021AA0021AA0002 /* ScenarioImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */; };
@@ -324,6 +326,8 @@
 		NT0700000000000000000001 /* NoteINV07QuickNoteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV07QuickNoteTests.swift; sourceTree = "<group>"; };
 		FE0006AA0006AA0006AA0001 /* NoteINV14BackfillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV14BackfillTests.swift; sourceTree = "<group>"; };
 		FE0012AA0012AA0012AA0001 /* NoteINV12ExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV12ExportTests.swift; sourceTree = "<group>"; };
+		RSR001AA001AA001AA001A /* RecordingStopRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStopRouter.swift; sourceTree = "<group>"; };
+		RSR002AA002AA002AA002A /* RecordingStopRouterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStopRouterTests.swift; sourceTree = "<group>"; };
 		FE0016AA0016AA0016AA0001 /* RecordGestureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordGestureTests.swift; sourceTree = "<group>"; };
 		FE0017AA0017AA0017AA0001 /* VocabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabTests.swift; sourceTree = "<group>"; };
 		FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenarioImportTests.swift; sourceTree = "<group>"; };
@@ -514,6 +518,7 @@
 				WP04VON006AA006AA006001A /* NoteINV10DeepLinkTests.swift */,
 				FE0006AA0006AA0006AA0001 /* NoteINV14BackfillTests.swift */,
 				FE0012AA0012AA0012AA0001 /* NoteINV12ExportTests.swift */,
+				RSR002AA002AA002AA002A /* RecordingStopRouterTests.swift */,
 				FE0016AA0016AA0016AA0001 /* RecordGestureTests.swift */,
 				FE0017AA0017AA0017AA0001 /* VocabTests.swift */,
 				FE0021AA0021AA0021AA0001 /* ScenarioImportTests.swift */,
@@ -618,6 +623,7 @@
 				FE0035AA0035AA0035AA01A /* WAVSegment.swift */,
 				FE0024AA0024AA0024AA0001 /* SetupDoctor.swift */,
 				PRV001000000000000000001 /* RemoteAIConsentStore.swift */,
+				RSR001AA001AA001AA001A /* RecordingStopRouter.swift */,
 				WP03VON001AA001AA001001A /* NoteViewModel.swift */,
 				D6FA4D32FA97C9F6E7ECCF6A /* PendingRecordingStore.swift */,
 				FE0002AA0002AA0002AA0001 /* NotebookPipeline.swift */,
@@ -920,6 +926,7 @@
 				WP04VON006AA006AA006001B /* NoteINV10DeepLinkTests.swift in Sources */,
 				FE0006AA0006AA0006AA0002 /* NoteINV14BackfillTests.swift in Sources */,
 				FE0012AA0012AA0012AA0002 /* NoteINV12ExportTests.swift in Sources */,
+				RSR002AA002AA002AA002B /* RecordingStopRouterTests.swift in Sources */,
 				FE0016AA0016AA0016AA0002 /* RecordGestureTests.swift in Sources */,
 				FE0017AA0017AA0017AA0002 /* VocabTests.swift in Sources */,
 				FE0021AA0021AA0021AA0002 /* ScenarioImportTests.swift in Sources */,
@@ -1022,6 +1029,7 @@
 				WP01VON003AA003AA003001B /* NoteService.swift in Sources */,
 				B1B2C3D4E5F6A7B8C9D0E101 /* AppQuickAction.swift in Sources */,
 				KBIPC001AA001AA001AA02B /* KeyboardIPC.swift in Sources */,
+				RSR001AA001AA001AA001B /* RecordingStopRouter.swift in Sources */,
 				WP03VON001AA001AA001001B /* NoteViewModel.swift in Sources */,
 				DD4A4E53943289228BF64FAF /* PendingRecordingStore.swift in Sources */,
 				WP03VON002AA002AA002001B /* NotesView.swift in Sources */,
