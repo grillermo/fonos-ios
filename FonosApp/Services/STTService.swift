@@ -313,6 +313,7 @@ enum STTError: LocalizedError, Equatable {
     case consentRequired(String)
     case insecureEndpoint
     case m4aUnsupported
+    case http(status: Int, body: String)
 
     var errorDescription: String? {
         switch self {
@@ -332,6 +333,10 @@ enum STTError: LocalizedError, Equatable {
             "Public speech endpoints must use HTTPS. HTTP is allowed only for a local server on this device or LAN."
         case .m4aUnsupported:
             "This speech model can't read saved M4A recordings. Retry with a Whisper-compatible model such as mema."
+        case .http(let status, let body):
+            status == 400
+                ? "Recognizer error: Bad request: \(body)"
+                : "Recognizer error: Server returned HTTP \(status): \(body)"
         }
     }
 }

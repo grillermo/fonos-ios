@@ -225,14 +225,10 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
             break
         case 401:
             throw STTError.authenticationFailed
-        case 400:
-            let body = String(data: data, encoding: .utf8) ?? ""
-            sttLog.error("🌐 400 Bad Request: \(body)")
-            throw STTError.recognizerError("Bad request: \(body.prefix(200))")
         default:
             let body = String(data: data, encoding: .utf8) ?? ""
             sttLog.error("🌐 HTTP \(httpResponse.statusCode): \(body)")
-            throw STTError.recognizerError("Server returned HTTP \(httpResponse.statusCode): \(body.prefix(200))")
+            throw STTError.http(status: httpResponse.statusCode, body: String(body.prefix(200)))
         }
     }
 

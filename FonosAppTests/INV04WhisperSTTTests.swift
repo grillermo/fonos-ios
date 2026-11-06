@@ -232,10 +232,18 @@ struct INV04WhisperSTTTests {
             return errorResponse(for: kOpenAITranscriptURL, statusCode: 500)
         }
         let stt = makeWhisperSTT(session: makeSession())
-        await #expect(throws: STTError.recognizerError("Server returned HTTP 500: ")) {
+        await #expect(throws: STTError.http(status: 500, body: "")) {
             _ = try await stt.transcribe(audioData: try toneWAVData(), language: "en")
         }
         #expect(filenames == ["audio.m4a", "audio.wav"])
+    }
+
+    @Test("HTTP failures keep their status and their wording")
+    func httpFailureIsTyped() {
+        #expect(STTError.http(status: 415, body: "x").errorDescription
+            == "Recognizer error: Server returned HTTP 415: x")
+        #expect(STTError.http(status: 400, body: "x").errorDescription
+            == "Recognizer error: Bad request: x")
     }
 
     @Test("WhisperSTT sends WAV when m4a would not be smaller (short clip)")
