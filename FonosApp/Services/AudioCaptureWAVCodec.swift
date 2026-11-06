@@ -116,11 +116,13 @@ extension AudioCaptureService {
         return outputBuffer
     }
 
-    /// AAC bit rate for STT uploads and kept recordings. 32 kbps mono speech transcribed
-    /// word-for-word the same as WAV on mema (qwen, parakeet). Output is
-    /// ~8x smaller than WAV for clips over ~10 s, but AVAudioFile adds a
-    /// fixed ~24 KB, so clips under ~1 s come out larger than the WAV.
-    static let m4aUploadBitRate = 32_000
+    /// AAC bit rate for STT uploads and kept recordings. 48 kbps is the
+    /// highest the encoder accepts for 16 kHz mono (50 kbps is rejected). On
+    /// mema it matched WAV within a word in every test, where 32 kbps nearly
+    /// doubled Qwen's errors on Spanish in loud noise. Output is ~5x smaller
+    /// than WAV for clips over ~10 s, but AVAudioFile adds a fixed ~24 KB, so
+    /// clips under ~1 s come out larger than the WAV.
+    static let m4aBitRate = 48_000
 
     /// Re-encode capture WAV as AAC in an MP4 (.m4a) container.
     /// Throws for WAV it cannot decode, including one with no samples.
@@ -134,7 +136,7 @@ extension AudioCaptureService {
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
             AVSampleRateKey: pcm.format.sampleRate,
             AVNumberOfChannelsKey: Int(pcm.format.channelCount),
-            AVEncoderBitRateKey: m4aUploadBitRate,
+            AVEncoderBitRateKey: m4aBitRate,
         ]
         // AVAudioFile finalizes the MP4 container when it is released, so it
         // must go out of scope before the file is read back.
@@ -150,28 +152,9 @@ extension AudioCaptureService {
         return try Data(contentsOf: url)
     }
 
-    /// Decode an .m4a from `encodeToM4A` back to WAV, the format every STT
-    /// provider takes. Throws for data AVAudioFile cannot read.
-    nonisolated static func decodeM4A(data: Data) throws -> Data {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("fonos-decode-\(UUID().uuidString).m4a")
-        try data.write(to: url)
-        defer { try? FileManager.default.removeItem(at: url) }
-
-        let file = try AVAudioFile(
-            forReading: url,
-            commonFormat: .pcmFormatInt16,
-            interleaved: false
-        )
-        guard file.length > 0 else { throw WAVError.invalidData }
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: file.processingFormat,
-            frameCapacity: AVAudioFrameCount(file.length)
-        ) else {
-            throw WAVError.bufferCreationFailed
-        }
-        try file.read(into: buffer)
-        return try encodeToWAV(buffer: buffer)
+    /// True for an MP4-family container, whose bytes 4..<8 are `ftyp`.
+    nonisolated static func isM4A(_ data: Data) -> Bool {
+        data.dropFirst(4).prefix(4).elementsEqual("ftyp".utf8)
     }
 
     private nonisolated static func findDataChunk(in data: Data) -> (offset: Int, size: UInt32) {

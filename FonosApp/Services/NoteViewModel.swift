@@ -267,10 +267,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                   noteService.notebook(id: notebookID) != nil else {
                 throw PendingRecordingError.notebookUnavailable
             }
-            let store = pendingStore
-            let audioData = try await Task.detached(priority: .userInitiated) {
-                try store.audio(id: id)
-            }.value
+            let audioData = try pendingStore.audio(id: id)
             let text = try await transcribeAndStore(to: notebookID, audioData: audioData)
             pendingStore.discard(id: id)
             clearSavedForRetryFlag(for: id)

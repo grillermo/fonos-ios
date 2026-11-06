@@ -312,6 +312,7 @@ enum STTError: LocalizedError, Equatable {
     case profileUnavailable(String)
     case consentRequired(String)
     case insecureEndpoint
+    case m4aUnsupported
 
     var errorDescription: String? {
         switch self {
@@ -329,6 +330,8 @@ enum STTError: LocalizedError, Equatable {
             "Permission is required before sending audio to \(destination). Review this model under Settings → Models."
         case .insecureEndpoint:
             "Public speech endpoints must use HTTPS. HTTP is allowed only for a local server on this device or LAN."
+        case .m4aUnsupported:
+            "This speech model can't read saved M4A recordings. Retry with a Whisper-compatible model such as mema."
         }
     }
 }
@@ -439,6 +442,7 @@ final class AppleSTT: STTProvider, @unchecked Sendable {
     /// languages (e.g. notebook configured for zh-CN on an en-US device) are
     /// actually recognized — not just recorded as "intended".
     func transcribe(buffer audioData: Data, language: String?, vocabulary: [String] = []) async throws -> String {
+        guard !AudioCaptureService.isM4A(audioData) else { throw STTError.m4aUnsupported }
         try Task.checkCancellation()
         let targetLocale = STTLanguageCode.appleLocaleIdentifier(language)
             .map { Locale(identifier: $0) } ?? .current

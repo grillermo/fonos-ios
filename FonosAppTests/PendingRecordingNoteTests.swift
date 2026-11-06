@@ -132,7 +132,7 @@ struct PendingRecordingNoteTests {
         #expect(vm.lastFailureSavedForRetry)
     }
 
-    @Test("an offline append saves M4A, and its retry hands the provider WAV")
+    @Test("an offline append saves M4A, and its retry hands the provider that M4A")
     func offlineAppendSavesM4A() async throws {
         let stt = SwitchableNoteSTT()
         let (vm, service, notebook, store) = try makeNotes(stt)
@@ -145,14 +145,32 @@ struct PendingRecordingNoteTests {
         let pending = try #require(store.all().first)
         #expect(store.audioURL(pending.id).pathExtension == "m4a")
         #expect(vm.lastFailureSavedForRetry)
+        let stored = try store.audio(id: pending.id)
+        #expect(AudioCaptureService.isM4A(stored))
 
         stt.error = nil
         try await vm.retryPendingRecording(pending.id)
 
-        let retried = try #require(stt.receivedAudio)
-        #expect(String(bytes: retried[0..<4], encoding: .ascii) == "RIFF")
+        #expect(stt.receivedAudio == stored)
         #expect(store.all().isEmpty)
         #expect(service.entriesForNotebook(notebook.id).map(\.rawText) == ["note text"])
+    }
+
+    @Test("a retry on a model that cannot read M4A fails and keeps the audio")
+    func retryOnWAVOnlyProviderKeepsAudio() async throws {
+        let (vm, service, notebook, store) = try makeNotes(SwitchableNoteSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let saved = try store.save(wav: pendingToneWAV(), surface: .note, notebookID: notebook.id, error: "e")
+        let wavOnly = NoteViewModel(
+            noteService: service, sttProvider: AppleSTT(), llmProvider: nil
+        )
+        wavOnly.pendingStore = store
+
+        await #expect(throws: STTError.m4aUnsupported) {
+            try await wavOnly.retryPendingRecording(saved.id)
+        }
+        #expect(store.recording(id: saved.id)?.attempts == 1)
+        #expect(service.entriesForNotebook(notebook.id).isEmpty)
     }
 
     @Test("repeated offline appends keep every recording")

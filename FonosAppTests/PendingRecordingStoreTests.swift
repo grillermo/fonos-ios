@@ -120,7 +120,7 @@ final class PendingRecordingStoreTests {
         #expect(!FileManager.default.fileExists(atPath: store.audioURL(id).path))
     }
 
-    @Test("note audio is stored as M4A, and reads back as WAV of the same length")
+    @Test("note audio is stored as M4A and read back unchanged")
     func noteAudioIsM4A() throws {
         let store = makeTempStore()
         let wav = try pendingToneWAV()
@@ -129,16 +129,10 @@ final class PendingRecordingStoreTests {
         let url = store.audioURL(saved.id)
         #expect(url.pathExtension == "m4a")
         let stored = try Data(contentsOf: url)
-        #expect(String(bytes: stored[4..<8], encoding: .ascii) == "ftyp")
+        #expect(AudioCaptureService.isM4A(stored))
         #expect(stored.count < wav.count)
         #expect(saved.durationSeconds == 2)
-
-        let decoded = try store.audio(id: saved.id)
-        #expect(String(bytes: decoded[0..<4], encoding: .ascii) == "RIFF")
-        #expect(abs(PendingRecordingStore.duration(ofWAV: decoded) - 2) < 0.1)
-        let buffer = try AudioCaptureService.decodeWAV(data: decoded)
-        let samples = try #require(buffer.int16ChannelData)
-        #expect((0..<Int(buffer.frameLength)).contains { samples[0][$0] != 0 })
+        #expect(try store.audio(id: saved.id) == stored)
     }
 
     @Test("dictation audio stays WAV")

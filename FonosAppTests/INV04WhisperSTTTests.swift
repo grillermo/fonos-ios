@@ -263,6 +263,38 @@ struct INV04WhisperSTTTests {
         #expect(filenames == ["audio.wav"])
     }
 
+    @Test("WhisperSTT uploads a saved M4A as stored")
+    func uploadsSavedM4AUnchanged() async throws {
+        let m4a = try AudioCaptureService.encodeToM4A(wavData: toneWAVData(frames: 48_000))
+        var filenames: [String?] = []
+        var body: Data?
+        MockURLProtocol.requestHandler = { req in
+            filenames.append(uploadedFilename(req))
+            body = req.httpBody
+            return okResponse(for: kOpenAITranscriptURL, body: #"{"text":"hello"}"#)
+        }
+        let stt = makeWhisperSTT(session: makeSession())
+        _ = try await stt.transcribe(audioData: m4a, language: "en")
+
+        #expect(filenames == ["audio.m4a"])
+        #expect(try #require(body).range(of: m4a) != nil)
+    }
+
+    @Test("WhisperSTT does not relabel a saved M4A as WAV when the server rejects it")
+    func savedM4ARejectionIsAnError() async throws {
+        let m4a = try AudioCaptureService.encodeToM4A(wavData: toneWAVData(frames: 48_000))
+        var filenames: [String?] = []
+        MockURLProtocol.requestHandler = { req in
+            filenames.append(uploadedFilename(req))
+            return (HTTPURLResponse(url: kOpenAITranscriptURL, statusCode: 415, httpVersion: nil, headerFields: nil)!, Data())
+        }
+        let stt = makeWhisperSTT(session: makeSession())
+        await #expect(throws: (any Error).self) {
+            _ = try await stt.transcribe(audioData: m4a, language: "en")
+        }
+        #expect(filenames == ["audio.m4a"])
+    }
+
     @Test("WhisperSTT normalizes root, v1, trailing slash, and complete endpoint URLs")
     func normalizesTranscriptionBaseURL() async throws {
         let cases = [

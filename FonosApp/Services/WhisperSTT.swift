@@ -62,20 +62,24 @@ final class WhisperSTT: STTProvider, @unchecked Sendable {
         try validateRemoteAccess()
         let (urlString, url) = try transcriptionEndpoint()
         let wav = UploadFile.wav(audioData)
-        var upload = wav
-        do {
-            let m4a = try AudioCaptureService.encodeToM4A(wavData: audioData)
-            // Short clips come out larger as m4a (container overhead).
-            if m4a.count < audioData.count { upload = .m4a(m4a) }
-        } catch {
-            sttLog.error("m4a encode failed: \(error)")
+        // A kept recording is already M4A, so it goes up as stored.
+        let isStoredM4A = AudioCaptureService.isM4A(audioData)
+        var upload = isStoredM4A ? UploadFile.m4a(audioData) : wav
+        if !isStoredM4A {
+            do {
+                let m4a = try AudioCaptureService.encodeToM4A(wavData: audioData)
+                // Short clips come out larger as m4a (container overhead).
+                if m4a.count < audioData.count { upload = .m4a(m4a) }
+            } catch {
+                sttLog.error("m4a encode failed: \(error)")
+            }
         }
         sttLog.info("🌐 WhisperSTT POST \(urlString), model=\(self.modelID), \(upload.filename)=\(upload.data.count) bytes (wav \(audioData.count))")
         var (data, response) = try await send(
             makeRequest(url: url, file: upload, language: language, prompt: prompt, temperature: temperature),
             urlString: urlString
         )
-        if upload.isM4A,
+        if upload.isM4A, !isStoredM4A,
            let status = (response as? HTTPURLResponse)?.statusCode,
            status == 400 || status == 415 {
             // Servers without an AAC decoder (e.g. whisper.cpp built without

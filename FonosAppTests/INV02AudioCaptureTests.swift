@@ -191,6 +191,27 @@ struct INV02AudioCaptureTests {
         #expect(file.fileFormat.channelCount == 1)
     }
 
+    @Test("M4A encoder really runs at 48 kbps")
+    func m4aEncoderUsesConfiguredBitRate() throws {
+        #expect(AudioCaptureService.m4aBitRate == 48_000)
+        let format = try #require(AVAudioFormat(
+            commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false
+        ))
+        let frames: AVAudioFrameCount = 320_000 // 20 s of noise, which AAC cannot coast on.
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        let samples = try #require(buffer.int16ChannelData)
+        for frame in 0..<Int(frames) { samples[0][frame] = Int16.random(in: -12_000...12_000) }
+        let wav = try AudioCaptureService.encodeToWAV(buffer: buffer)
+
+        let m4a = try AudioCaptureService.encodeToM4A(wavData: wav)
+
+        // 20 s at 48 kbps is 120 KB of audio; 32 kbps would be 80 KB. Both add ~24 KB.
+        #expect(m4a.count > 125_000)
+        #expect(AudioCaptureService.isM4A(m4a))
+        #expect(!AudioCaptureService.isM4A(wav))
+    }
+
     @Test("M4A encoder rejects a WAV with no samples")
     func m4aEncoderRejectsEmptyWAV() throws {
         // Header only: the samples the header promises are missing.

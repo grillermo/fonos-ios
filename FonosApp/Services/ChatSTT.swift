@@ -63,6 +63,7 @@ final class ChatSTT: STTProvider, @unchecked Sendable {
     }
 
     private func makeRequest(audioData: Data, language: String?, vocabulary: [String]) throws -> URLRequest {
+        guard !AudioCaptureService.isM4A(audioData) else { throw STTError.m4aUnsupported }
         let url = try endpointURL()
         let body = requestBody(audioData: audioData, language: language, vocabulary: vocabulary)
 

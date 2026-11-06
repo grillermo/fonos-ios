@@ -26,6 +26,7 @@ final class FonosSTT: STTProvider, @unchecked Sendable {
     // MARK: - STTProvider
 
     func transcribe(audioData: Data, language: String?) async throws -> String {
+        guard !AudioCaptureService.isM4A(audioData) else { throw STTError.m4aUnsupported }
         try Task.checkCancellation()
         guard RemoteAITransportPolicy.allows(serverURL.absoluteString) else {
             throw STTError.insecureEndpoint

@@ -155,17 +155,15 @@ final class PendingRecordingStore: @unchecked Sendable {
         }
     }
 
-    /// The recording as WAV, whichever format it is stored in.
+    /// The recording's stored bytes, M4A or WAV.
     func audio(id: UUID) throws -> Data {
-        let url = audioURL(id)
-        let stored = try lock.withLock {
+        try lock.withLock {
             do {
-                return try Data(contentsOf: url)
+                return try Data(contentsOf: audioURL(id))
             } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
                 throw PendingRecordingError.notFound
             }
         }
-        return url.pathExtension == "m4a" ? try AudioCaptureService.decodeM4A(data: stored) : stored
     }
 
     func discard(id: UUID) {
