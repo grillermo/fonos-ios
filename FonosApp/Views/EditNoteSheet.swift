@@ -7,6 +7,7 @@ struct EditNoteSheet: View {
     @ObservedObject var noteViewModel: NoteViewModel
     let onSave: (String) throws -> Void
 
+    private let entryID: UUID
     private let originalText: String
     @State private var text: String
     @State private var saveError: String?
@@ -24,6 +25,7 @@ struct EditNoteSheet: View {
         self.notebook = notebook
         self.noteViewModel = noteViewModel
         self.onSave = onSave
+        self.entryID = entry.id
         self.originalText = shownText
         self._text = State(initialValue: shownText)
     }
@@ -68,6 +70,7 @@ struct EditNoteSheet: View {
             RecordNoteSheet(
                 notebook: notebook,
                 noteViewModel: noteViewModel,
+                appendingTo: entryID,
                 onTranscribed: { text = NoteViewModel.appending($0, to: text) },
                 onDismiss: { showRecordSheet = false }
             )

@@ -24,6 +24,9 @@ struct PendingRecording: Codable, Identifiable, Equatable, Sendable {
     var lastError: String
     var attempts: Int
     let durationSeconds: TimeInterval
+    /// The note this recording was being added to. Nil for a new note, and
+    /// for items saved before this field existed.
+    var noteEntryID: UUID? = nil
 }
 
 enum PendingRecordingError: LocalizedError, Equatable {

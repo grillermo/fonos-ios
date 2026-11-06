@@ -329,6 +329,16 @@ final class NoteService {
         try persist(context)
     }
 
+    /// Adds text to the end of what an entry shows. Returns false, changing
+    /// nothing, when the entry no longer exists.
+    func appendToEntry(_ id: UUID, text: String) throws -> Bool {
+        let context = modelContainer.mainContext
+        let descriptor = FetchDescriptor<NoteEntry>(predicate: #Predicate { $0.id == id })
+        guard let entry = try fetch(descriptor, in: context).first else { return false }
+        try updateEntry(id, text: NoteViewModel.appending(text, to: entry.processedText ?? entry.rawText))
+        return true
+    }
+
     /// Deletes an entry.
     func deleteEntry(_ id: UUID) throws {
         try deleteEntries([id])

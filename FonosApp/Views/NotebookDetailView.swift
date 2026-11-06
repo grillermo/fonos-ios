@@ -73,7 +73,7 @@ struct NotebookDetailView: View {
         }
         .onAppear { reloadEntries() }
         .onReceive(NotificationCenter.default.publisher(for: .pendingRecordingsChanged)) { _ in
-            // A successful retry discards the item and adds a note.
+            // A successful retry discards the item and changes a note.
             reloadEntries()
         }
         .alert(
@@ -143,7 +143,9 @@ struct NotebookDetailView: View {
             ForEach(pendingRecordings) { recording in
                 PendingRecordingRow(
                     recording: recording,
-                    title: String(localized: "Voice note"),
+                    title: recording.noteEntryID == nil
+                        ? String(localized: "Voice note")
+                        : String(localized: "Addition to a note"),
                     isRetrying: noteViewModel.retryingPendingIDs.contains(recording.id),
                     onRetry: { retry(recording.id) },
                     onDiscard: { noteViewModel.discardPendingRecording(recording.id) }

@@ -73,6 +73,7 @@ final class PendingRecordingStore: @unchecked Sendable {
         surface: PendingRecording.Surface,
         workflowID: String? = nil,
         notebookID: UUID? = nil,
+        noteEntryID: UUID? = nil,
         error: String,
         now: Date = Date()
     ) throws -> PendingRecording {
@@ -84,7 +85,8 @@ final class PendingRecordingStore: @unchecked Sendable {
             createdAt: now,
             lastError: error,
             attempts: 0,
-            durationSeconds: Self.duration(ofWAV: wav)
+            durationSeconds: Self.duration(ofWAV: wav),
+            noteEntryID: noteEntryID
         )
         let m4a = surface == .note ? encodedForStorage(wav) : nil
         let audioFile = audioURL(recording.id, fileExtension: m4a == nil ? "wav" : "m4a")

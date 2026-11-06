@@ -4,6 +4,8 @@ import SwiftUI
 struct RecordNoteSheet: View {
     let notebook: NoteContainer
     @ObservedObject var noteViewModel: NoteViewModel
+    /// The note being added to, so a failed recording can retry into it.
+    var appendingTo: UUID?
     /// When set, the transcription goes here instead of into a new note.
     var onTranscribed: (@MainActor (String) -> Void)?
     let onDismiss: () -> Void
@@ -102,7 +104,11 @@ struct RecordNoteSheet: View {
             }
         }
         .onAppear {
-            noteViewModel.startRecording(to: notebook.id, onTranscribed: onTranscribed)
+            noteViewModel.startRecording(
+                to: notebook.id,
+                appendingTo: appendingTo,
+                onTranscribed: onTranscribed
+            )
             startTimer()
         }
         .onDisappear {

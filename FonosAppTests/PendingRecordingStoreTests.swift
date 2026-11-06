@@ -174,6 +174,22 @@ final class PendingRecordingStoreTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: store.directory.path).isEmpty)
     }
 
+    @Test("the note being appended to survives a save, and old items have none")
+    func noteEntryIDRoundTrip() throws {
+        let store = makeTempStore()
+        let note = UUID()
+        let saved = try store.save(
+            wav: oneSecondWAV(), surface: .note, notebookID: UUID(), noteEntryID: note, error: "e"
+        )
+        #expect(store.recording(id: saved.id)?.noteEntryID == note)
+
+        store.recordAttempt(id: saved.id, error: "again")
+        #expect(store.recording(id: saved.id)?.noteEntryID == note)
+
+        let old = Data(#"{"id":"\#(UUID().uuidString)","surface":"note","createdAt":0,"lastError":"e","attempts":0,"durationSeconds":1}"#.utf8)
+        #expect(try JSONDecoder().decode(PendingRecording.self, from: old).noteEntryID == nil)
+    }
+
     @Test("discard removes the M4A and its JSON")
     func discardRemovesM4A() throws {
         let store = makeTempStore()

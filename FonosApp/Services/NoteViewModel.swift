@@ -38,6 +38,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     private var levelPollTimer: Timer?
     private var activeContainerID: UUID?
     private var transcriptHandler: (@MainActor (String) -> Void)?
+    private var appendTargetID: UUID?
 
     // MARK: - Injected providers (for tests)
 
@@ -102,8 +103,10 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
 
     /// With `onTranscribed`, the recording's text goes to that closure instead
     /// of into a new note, which is how an open note takes dictated text.
+    /// `appendingTo` names that note, so a failed run can retry into it.
     func startRecording(
         to containerId: UUID,
+        appendingTo entryID: UUID? = nil,
         onTranscribed: (@MainActor (String) -> Void)? = nil
     ) {
         guard activeContainerID == nil,
@@ -114,6 +117,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         }()) else { return }
         activeContainerID = containerId
         transcriptHandler = onTranscribed
+        appendTargetID = entryID
         clearSavedForRetryFlag()
 
         let permission = audioCapture.micPermissionStatus()
@@ -171,6 +175,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                     await self.recordAndStore(
                         to: containerId,
                         audioData: wavData,
+                        appendingTo: self.appendTargetID,
                         onTranscribed: self.transcriptHandler
                     )
                 }
@@ -198,8 +203,14 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         recordingState = .processing
 
         let onTranscribed = transcriptHandler
+        let entryID = appendTargetID
         Task {
-            await recordAndStore(to: containerId, audioData: wavData, onTranscribed: onTranscribed)
+            await recordAndStore(
+                to: containerId,
+                audioData: wavData,
+                appendingTo: entryID,
+                onTranscribed: onTranscribed
+            )
         }
     }
 
@@ -212,6 +223,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     func recordAndStore(
         to containerId: UUID,
         audioData: Data,
+        appendingTo entryID: UUID? = nil,
         onTranscribed: (@MainActor (String) -> Void)? = nil
     ) async {
         clearSavedForRetryFlag()
@@ -240,6 +252,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                             wav: audioData,
                             surface: .note,
                             notebookID: containerId,
+                            noteEntryID: entryID,
                             error: message
                         )
                     }.value
@@ -253,8 +266,9 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Retry from the notebook: a new note from the saved audio, compiled
-    /// from the notebook's current settings, then copied.
+    /// Retry from the notebook, compiled from its current settings: the text
+    /// goes to the end of the note it was recorded for, or into a new note
+    /// when it had none or that note is gone. Either way it is then copied.
     @discardableResult
     func retryPendingRecording(_ id: UUID) async throws -> String {
         guard !retryingPendingIDs.contains(id) else { throw PendingRecordingError.alreadyRetrying }
@@ -268,7 +282,11 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                 throw PendingRecordingError.notebookUnavailable
             }
             let audioData = try pendingStore.audio(id: id)
-            let text = try await transcribeAndStore(to: notebookID, audioData: audioData)
+            let text = try await transcribeAndStore(
+                to: notebookID,
+                audioData: audioData,
+                appendingTo: pending.noteEntryID
+            )
             pendingStore.discard(id: id)
             clearSavedForRetryFlag(for: id)
             copyText(text)
@@ -305,9 +323,18 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Runs the notebook recipe and stores the note. Returns the note's text.
-    private func transcribeAndStore(to containerId: UUID, audioData: Data) async throws -> String {
+    /// Runs the notebook recipe and stores the text, at the end of `entryID`
+    /// if that note still exists, otherwise as a new note. Returns the text.
+    private func transcribeAndStore(
+        to containerId: UUID,
+        audioData: Data,
+        appendingTo entryID: UUID? = nil
+    ) async throws -> String {
         let run = try await runRecipe(in: containerId, audioData: audioData)
+        if let entryID {
+            let text = Self.noteText(from: run.result, recipe: run.recipe)
+            if try noteService.appendToEntry(entryID, text: text) { return text }
+        }
         let entry = try persist(run.result, recipe: run.recipe, to: containerId)
         return entry.processedText ?? entry.rawText
     }

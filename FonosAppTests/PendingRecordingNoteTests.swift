@@ -1,5 +1,6 @@
 // Notes keep the audio of a failed notebook run; the notebook's pending row
-// retries it quietly (new note + copy).
+// retries it quietly: into the note it was recorded for, or a new note, then
+// copied.
 //
 // Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/PendingRecordingNoteTests
 
@@ -37,6 +38,23 @@ private final class DeniedCapture: AudioCapturing, @unchecked Sendable {
         completion: @escaping @Sendable (Error?) -> Void
     ) -> AudioCaptureStartToken { AudioCaptureStartToken() }
     @MainActor func stopCapture() -> Data? { nil }
+}
+
+/// Grants the mic and hands back fixed audio when stopped.
+private final class FixedAudioCapture: AudioCapturing, @unchecked Sendable {
+    var currentAudioLevel: Float = 0
+    var isRecording = false
+    var isStarting = false
+    let audio: Data
+    init(audio: Data) { self.audio = audio }
+    func micPermissionStatus() -> AVAudioSession.RecordPermission { .granted }
+    func requestMicPermission() async -> Bool { true }
+    func startCapture(
+        onInterruption: @escaping @Sendable () -> Void,
+        onMaximumDurationReached: @escaping @Sendable (Data?) -> Void,
+        completion: @escaping @Sendable (Error?) -> Void
+    ) -> AudioCaptureStartToken { AudioCaptureStartToken() }
+    @MainActor func stopCapture() -> Data? { audio }
 }
 
 private func makeTempStore() -> PendingRecordingStore {
@@ -154,6 +172,101 @@ struct PendingRecordingNoteTests {
         #expect(stt.receivedAudio == stored)
         #expect(store.all().isEmpty)
         #expect(service.entriesForNotebook(notebook.id).map(\.rawText) == ["note text"])
+    }
+
+    @Test("retrying a failed append adds to the original note, not a new one")
+    func retryAppendsToOriginalNote() async throws {
+        let stt = SwitchableNoteSTT()
+        stt.transcript = "added later"
+        let (vm, service, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        var copied: [String] = []
+        vm.copyText = { copied.append($0) }
+        let note = try service.addEntry(to: notebook.id, rawText: "original", mode: "raw")
+
+        await vm.recordAndStore(to: notebook.id, audioData: Data(count: 44), appendingTo: note.id) { _ in }
+        let pending = try #require(store.all().first)
+        #expect(pending.noteEntryID == note.id)
+
+        stt.error = nil
+        let text = try await vm.retryPendingRecording(pending.id)
+
+        #expect(text == "added later")
+        #expect(service.entriesForNotebook(notebook.id).map(\.rawText) == ["original added later"])
+        #expect(copied == ["added later"])
+        #expect(store.all().isEmpty)
+    }
+
+    @Test("a retried append goes after the processed text a note shows")
+    func retryAppendsToShownText() async throws {
+        let stt = SwitchableNoteSTT(error: nil)
+        stt.transcript = "added"
+        let (vm, service, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let note = try service.addEntry(
+            to: notebook.id, rawText: "raw", processedText: "polished", mode: "llm"
+        )
+        let saved = try store.save(
+            wav: Data(count: 44), surface: .note, notebookID: notebook.id, noteEntryID: note.id, error: "e"
+        )
+
+        try await vm.retryPendingRecording(saved.id)
+
+        let entry = try #require(service.entriesForNotebook(notebook.id).first)
+        #expect(entry.processedText == "polished added")
+        #expect(entry.rawText == "raw")
+    }
+
+    @Test("a recording stopped while appending remembers its note")
+    func stoppedAppendRemembersNote() async throws {
+        let stt = SwitchableNoteSTT()
+        let (_, service, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let vm = NoteViewModel(
+            noteService: service, sttProvider: stt, llmProvider: nil,
+            audioCapture: FixedAudioCapture(audio: Data(count: 44))
+        )
+        vm.pendingStore = store
+        let note = try service.addEntry(to: notebook.id, rawText: "original", mode: "raw")
+
+        vm.startRecording(to: notebook.id, appendingTo: note.id) { _ in }
+        vm.stopRecording(to: notebook.id)
+        while vm.recordingState == .processing { await Task.yield() }
+
+        #expect(store.all().first?.noteEntryID == note.id)
+    }
+
+    @Test("a retried append whose note was deleted becomes a new note")
+    func retryWithDeletedNote() async throws {
+        let (vm, service, notebook, store) = try makeNotes(SwitchableNoteSTT(error: nil))
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let note = try service.addEntry(to: notebook.id, rawText: "original", mode: "raw")
+        let saved = try store.save(
+            wav: Data(count: 44), surface: .note, notebookID: notebook.id, noteEntryID: note.id, error: "e"
+        )
+        try service.deleteEntry(note.id)
+
+        try await vm.retryPendingRecording(saved.id)
+
+        #expect(service.entriesForNotebook(notebook.id).map(\.rawText) == ["note text"])
+        #expect(store.all().isEmpty)
+    }
+
+    @Test("a retried append that fails again leaves the note alone")
+    func failedRetryLeavesNote() async throws {
+        let (vm, service, notebook, store) = try makeNotes(SwitchableNoteSTT())
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let note = try service.addEntry(to: notebook.id, rawText: "original", mode: "raw")
+        let saved = try store.save(
+            wav: Data(count: 44), surface: .note, notebookID: notebook.id, noteEntryID: note.id, error: "e"
+        )
+
+        await #expect(throws: STTError.networkUnavailable) {
+            try await vm.retryPendingRecording(saved.id)
+        }
+
+        #expect(service.entriesForNotebook(notebook.id).map(\.rawText) == ["original"])
+        #expect(store.recording(id: saved.id)?.noteEntryID == note.id)
     }
 
     @Test("a retry on a model that cannot read M4A fails and keeps the audio")
