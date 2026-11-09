@@ -1,19 +1,23 @@
 import SwiftUI
 
 /// Opens a note's text for editing, with the cursor at the end so new text
-/// can be appended straight away, by typing or with the microphone.
+/// can be appended straight away, by typing or with the microphone. The text
+/// is saved every second, so closing the app loses at most the last second.
 struct EditNoteSheet: View {
     let notebook: NoteContainer
     @ObservedObject var noteViewModel: NoteViewModel
     let onSave: (String) throws -> Void
 
     private let entryID: UUID
-    private let originalText: String
+    // In @State because this view is rebuilt from the note, which the
+    // autosaves change: the first autosaver has to outlive those rebuilds.
+    @State private var autosaver: NoteAutosaver
     @State private var text: String
     @State private var saveError: String?
     @State private var showRecordSheet = false
     @FocusState private var isEditing: Bool
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     init(
         entry: NoteEntry,
@@ -26,11 +30,11 @@ struct EditNoteSheet: View {
         self.noteViewModel = noteViewModel
         self.onSave = onSave
         self.entryID = entry.id
-        self.originalText = shownText
+        self._autosaver = State(initialValue: NoteAutosaver(originalText: shownText, save: onSave))
         self._text = State(initialValue: shownText)
     }
 
-    private var hasChanges: Bool { text != originalText }
+    private var hasChanges: Bool { text != autosaver.originalText }
     private var isBlank: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
@@ -54,7 +58,7 @@ struct EditNoteSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel", action: cancel)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", action: save)
@@ -63,6 +67,16 @@ struct EditNoteSheet: View {
             }
         }
         .onAppear { isEditing = true }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                autosaver.autosave(text)
+            }
+        }
+        // The tick stops while the app is suspended, so save on the way out.
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { autosaver.autosave(text) }
+        }
         // A stray swipe must not discard what was typed.
         .interactiveDismissDisabled(hasChanges)
         .preferredColorScheme(.dark)
@@ -89,12 +103,16 @@ struct EditNoteSheet: View {
     }
 
     private func save() {
-        guard hasChanges else {
-            dismiss()
-            return
-        }
+        finish { try autosaver.commit(text) }
+    }
+
+    private func cancel() {
+        finish { try autosaver.revert() }
+    }
+
+    private func finish(_ write: () throws -> Void) {
         do {
-            try onSave(text)
+            try write()
             dismiss()
         } catch {
             saveError = error.localizedDescription
