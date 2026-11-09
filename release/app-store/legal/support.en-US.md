@@ -19,7 +19,7 @@ A private support email must be added here before App Review so users can contac
 
 ## Keyboard Dictation
 
-The Fonos keyboard extension communicates with the main Fonos app through an App Group. If keyboard dictation does not start, open Fonos → Settings → General, start Keyboard Ready, then return to the app where you want to type and switch to the Fonos keyboard. The orange iOS microphone indicator remains visible while the time-limited Ready session is active; idle audio is discarded until you tap the keyboard microphone.
+The Fonos keyboard extension communicates with the main Fonos app through an App Group. If keyboard dictation does not start, open Fonos, start Keyboard Ready at the top of the Dictate tab, then return to the app where you want to type and switch to the Fonos keyboard. The orange iOS microphone indicator remains visible while the time-limited Ready session is active; idle audio is discarded until you tap the keyboard microphone.
 
 ## Model Configuration
 
