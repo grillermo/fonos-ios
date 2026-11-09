@@ -116,7 +116,6 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         List {
-            keyboardReadySection
             privacySection
             doctorSection
             dictationSection
@@ -126,27 +125,6 @@ struct SettingsView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-    }
-
-    // MARK: - Keyboard Ready Section
-
-    private var keyboardReadySection: some View {
-        Section {
-            KeyboardReadyControl()
-                .listRowBackground(cardBg)
-        } header: {
-            sectionHeader("Keyboard Dictation")
-        } footer: {
-            Text(
-                """
-                A custom iOS keyboard cannot open the microphone itself. \
-                During a Keyboard Ready session, Fonos keeps microphone input active in the background but discards idle audio; \
-                it retains audio only after you tap the Fonos keyboard microphone.
-                """
-            )
-                .font(.system(size: 12))
-                .foregroundColor(textDim)
-        }
     }
 
     // MARK: - Privacy Section

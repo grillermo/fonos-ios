@@ -132,6 +132,7 @@ final class FonosAppUITests: XCTestCase {
         dismissSystemAlertIfPresent(for: app)
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Demo Whisper STT"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Start Keyboard Ready"].waitForExistence(timeout: 3))
 
         capture("01-dictate", app: app, outputDir: outputDir)
 
@@ -151,7 +152,6 @@ final class FonosAppUITests: XCTestCase {
         let generalButton = app.buttons["General"]
         XCTAssertTrue(generalButton.waitForExistence(timeout: 3))
         generalButton.tap()
-        XCTAssertTrue(app.staticTexts["Start Keyboard Ready"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Privacy & Data Sharing"].waitForExistence(timeout: 3))
         capture("04-settings", app: app, outputDir: outputDir)
     }

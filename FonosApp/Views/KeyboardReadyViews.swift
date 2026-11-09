@@ -185,6 +185,7 @@ struct KeyboardReadyControl: View {
                                 .foregroundStyle(.tertiary)
                         }
                     }
+                    .contentShape(Rectangle())
                 }
                 .disabled(isStarting)
             }

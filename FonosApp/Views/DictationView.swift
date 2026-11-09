@@ -34,6 +34,17 @@ struct DictationView: View {
                     .padding(.top, 8)
                     .padding(.horizontal, 20)
 
+                // MARK: - Keyboard Ready
+                KeyboardReadyControl()
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(hex: "#fafaf9").opacity(0.08))
+                    )
+                    .padding(.top, 12)
+                    .padding(.horizontal, 20)
+
                 // MARK: - Mode Picker Strip
                 // Nothing to choose between with a single mode.
                 if voiceWorkflows.count > 1 {
