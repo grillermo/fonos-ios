@@ -73,10 +73,11 @@ final class PendingRecordingStoreTests {
         let notebookA = UUID()
         let dictate = try store.save(wav: oneSecondWAV(), surface: .dictate, workflowID: "wf.dictation", error: "e")
         let noteA = try store.save(wav: oneSecondWAV(), surface: .note, notebookID: notebookA, error: "e")
-        _ = try store.save(wav: oneSecondWAV(), surface: .note, notebookID: UUID(), error: "e")
+        let noteB = try store.save(wav: oneSecondWAV(), surface: .note, notebookID: UUID(), error: "e")
 
         #expect(store.pending(for: .history) == [dictate])
         #expect(store.pending(for: .notebook(notebookA)) == [noteA])
+        #expect(Set(store.pending(for: .notes).map(\.id)) == [noteA.id, noteB.id])
     }
 
     @Test("all() is newest first")

@@ -149,6 +149,8 @@ final class PendingRecordingStore: @unchecked Sendable {
             switch scope {
             case .history:
                 recording.surface == .dictate
+            case .notes:
+                recording.surface == .note
             case .notebook(let id):
                 recording.surface == .note && recording.notebookID == id
             }

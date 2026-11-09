@@ -1,27 +1,26 @@
 import SwiftUI
 import SwiftData
 
-/// A notebook opened to record into. The notebook and its request travel as one
-/// value because the navigation destination can be built from a body older than
-/// a separately stored request ID, which opened the notebook without recording.
-private struct NotebookRecordingRoute: Hashable {
-    let notebook: NoteContainer
-    let requestID: UUID
-}
-
-/// Notebook grid view — the main Notes tab content.
+/// The Notes tab: one list of every note, newest first. Notebooks still exist
+/// as storage (each carries its own pipeline settings and Siri target), but
+/// the tab no longer shows them; new notes go to the Quick Note notebook.
 struct NotesView: View {
 
     @StateObject private var noteViewModel: NoteViewModel
     private let noteService: NoteService
     private let recordingRequest: NoteRecordingDeepLinkRequest?
 
-    @State private var notebooks: [NoteContainer] = []
-    @State private var showNewNotebookSheet = false
-    @State private var newNotebookTitle = ""
-    @State private var recordingRoute: NotebookRecordingRoute?
+    @State private var entries: [NoteEntry] = []
+    @State private var notebooksByID: [UUID: NoteContainer] = [:]
+    @State private var pendingRecordings: [PendingRecording] = []
+    /// The notebook the mic records into: Quick Note, or a deep link's target.
+    @State private var recordingNotebook: NoteContainer?
+    @State private var settingsNotebook: NoteContainer?
+    @State private var editingEntry: NoteEntry?
     @State private var handledRecordingRequestID: UUID?
     @State private var routeError: String?
+    @State private var persistenceError: String?
+    @State private var retryError: String?
 
     // MARK: - Init
 
@@ -53,60 +52,77 @@ struct NotesView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .bottomTrailing) {
                 Color(hex: "#1a1917")
                     .ignoresSafeArea()
 
-                ScrollView {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 160), spacing: 12)],
-                        spacing: 12
-                    ) {
-                        ForEach(notebooks, id: \.id) { notebook in
-                            NavigationLink(destination: NotebookDetailView(
-                                notebook: notebook,
-                                noteService: noteService,
-                                noteViewModel: noteViewModel
-                            )) {
-                                NotebookCard(notebook: notebook, entryCount: noteService.entryCount(for: notebook.id))
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-
-                        // New Notebook button
-                        newNotebookCard
+                Group {
+                    if entries.isEmpty && pendingRecordings.isEmpty {
+                        emptyState
+                    } else {
+                        entriesList
                     }
-                    .padding(16)
                 }
+
+                MicActionButton { startRecording(into: nil) }
+                    .padding(24)
             }
             .navigationTitle("Notes")
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .onAppear { reloadNotebooks() }
-            .navigationDestination(item: $recordingRoute) { route in
-                NotebookDetailView(
-                    notebook: route.notebook,
-                    noteService: noteService,
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button {
+                            shareExport(format: .markdown)
+                        } label: {
+                            Label("Export as Markdown", systemImage: "doc.text")
+                        }
+                        Button {
+                            shareExport(format: .json)
+                        } label: {
+                            Label("Export as JSON", systemImage: "curlybraces")
+                        }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundColor(Color(hex: "#fafaf9").opacity(0.7))
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        do {
+                            settingsNotebook = try noteService.quickNoteNotebook()
+                        } catch {
+                            routeError = error.localizedDescription
+                        }
+                    } label: {
+                        Image(systemName: "gear")
+                            .foregroundColor(Color(hex: "#fafaf9").opacity(0.7))
+                    }
+                }
+            }
+            .navigationDestination(item: $settingsNotebook) { notebook in
+                NotebookSettingsView(notebook: notebook, noteService: noteService)
+            }
+            .onAppear { reloadEntries() }
+            .onReceive(NotificationCenter.default.publisher(for: .pendingRecordingsChanged)) { _ in
+                // A successful retry discards the item and changes a note.
+                reloadEntries()
+            }
+            .sheet(item: $recordingNotebook, onDismiss: reloadEntries) { notebook in
+                RecordNoteSheet(
+                    notebook: notebook,
                     noteViewModel: noteViewModel,
-                    autoRecordRequestID: route.requestID
+                    onDismiss: { recordingNotebook = nil }
                 )
             }
-            .sheet(isPresented: $showNewNotebookSheet, onDismiss: reloadNotebooks) {
-                NewNotebookSheet(
-                    title: $newNotebookTitle,
-                    onCreate: { title, template in
-                        _ = try noteService.createNotebook(
-                            title: title,
-                            systemPrompt: template.systemPromptSeed
-                        )
-                        showNewNotebookSheet = false
-                        reloadNotebooks()
-                    },
-                    onCancel: { showNewNotebookSheet = false }
-                )
+            .sheet(item: $editingEntry, onDismiss: reloadEntries) { entry in
+                EditNoteSheet(entry: entry, notebook: notebook(for: entry), noteViewModel: noteViewModel) { text in
+                    try noteService.updateEntry(entry.id, text: text)
+                }
             }
             .alert(
-                "Notebook Unavailable",
+                "Notes Unavailable",
                 isPresented: Binding(
                     get: { routeError != nil },
                     set: { if !$0 { routeError = nil } }
@@ -116,10 +132,31 @@ struct NotesView: View {
             } message: {
                 Text(routeError ?? "")
             }
+            .alert(
+                "Entry Could Not Be Deleted",
+                isPresented: Binding(
+                    get: { persistenceError != nil },
+                    set: { if !$0 { persistenceError = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { persistenceError = nil }
+            } message: {
+                Text(persistenceError ?? "")
+            }
+            .alert(
+                "Retry Failed",
+                isPresented: Binding(
+                    get: { retryError != nil },
+                    set: { if !$0 { retryError = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { retryError = nil }
+            } message: {
+                Text(retryError ?? "")
+            }
         }
         .preferredColorScheme(.dark)
-        // Outside the stack, and not `.task`: the grid is off screen under an
-        // open notebook, and a `.task` would rerun each time the grid reappears.
+        // Not `.task`: it would rerun each time the list reappears.
         .onChange(of: recordingRequest?.id, initial: true) {
             guard let recordingRequest,
                   handledRecordingRequestID != recordingRequest.id else { return }
@@ -128,41 +165,141 @@ struct NotesView: View {
         }
     }
 
-    // MARK: - New Notebook Card
+    // MARK: - Empty State
 
-    private var newNotebookCard: some View {
-        Button {
-            newNotebookTitle = ""
-            showNewNotebookSheet = true
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                Image(systemName: "plus")
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundColor(Color(hex: "#fafaf9").opacity(0.4))
-                Text("New Notebook")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Color(hex: "#fafaf9").opacity(0.4))
-            }
-            .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
-            .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(
-                        Color(hex: "#fafaf9").opacity(0.15),
-                        style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
-                    )
-            )
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "mic.circle")
+                .font(.system(size: 56, weight: .light))
+                .foregroundColor(Color(hex: "#fafaf9").opacity(0.2))
+            Text("No entries yet")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundColor(Color(hex: "#fafaf9").opacity(0.4))
+            Text("Tap the mic button to record your first note")
+                .font(.system(size: 14))
+                .foregroundColor(Color(hex: "#fafaf9").opacity(0.3))
+                .multilineTextAlignment(.center)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Entries List
+
+    private var entriesList: some View {
+        List {
+            ForEach(pendingRecordings) { recording in
+                PendingRecordingRow(
+                    recording: recording,
+                    title: recording.noteEntryID == nil
+                        ? String(localized: "Voice note")
+                        : String(localized: "Addition to a note"),
+                    isRetrying: noteViewModel.retryingPendingIDs.contains(recording.id),
+                    onRetry: { retry(recording.id) },
+                    onDiscard: { noteViewModel.discardPendingRecording(recording.id) }
+                )
+                .listRowBackground(Color(hex: "#1a1917"))
+                .listRowSeparator(.hidden)
+            }
+            ForEach(entries, id: \.id) { entry in
+                Button {
+                    editingEntry = entry
+                } label: {
+                    EntryRow(
+                        entry: entry,
+                        showRawInline: notebooksByID[entry.containerId]?.showRawInline ?? true
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color(hex: "#1a1917"))
+                .listRowSeparatorTint(Color(hex: "#fafaf9").opacity(0.08))
+            }
+            .onDelete { indexSet in
+                let ids = indexSet.map { entries[$0].id }
+                do {
+                    try noteService.deleteEntries(ids)
+                    reloadEntries()
+                } catch {
+                    persistenceError = error.localizedDescription
+                }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
 
     // MARK: - Helpers
 
-    private func reloadNotebooks() {
-        notebooks = noteService.allNotebooks()
+    private func reloadEntries() {
+        entries = noteService.allEntries()
+        notebooksByID = Dictionary(
+            noteService.allNotebooks().map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        pendingRecordings = noteViewModel.pendingStore.pending(for: .notes)
     }
 
-    /// Resolves the requested notebook before navigating. An invalid explicit
-    /// target is reported instead of silently recording into another notebook;
-    /// an omitted target intentionally means Quick Note.
+    /// The notebook an entry was recorded into, whose settings an edit's
+    /// dictated additions use. Falls back to Quick Note for orphaned entries.
+    private func notebook(for entry: NoteEntry) -> NoteContainer {
+        if let notebook = notebooksByID[entry.containerId] ?? noteService.notebook(id: entry.containerId) {
+            return notebook
+        }
+        return (try? noteService.quickNoteNotebook()) ?? NoteContainer(title: "Notes")
+    }
+
+    /// Opens the recorder on `notebook`, or on Quick Note when nil.
+    private func startRecording(into notebook: NoteContainer?) {
+        if let notebook {
+            recordingNotebook = notebook
+            return
+        }
+        do {
+            recordingNotebook = try noteService.quickNoteNotebook()
+        } catch {
+            routeError = error.localizedDescription
+        }
+    }
+
+    private func retry(_ id: UUID) {
+        Task {
+            do {
+                try await noteViewModel.retryPendingRecording(id)
+            } catch is CancellationError {
+                // Cancelled, not failed: nothing to report.
+            } catch {
+                retryError = error.localizedDescription
+            }
+            reloadEntries()
+        }
+    }
+
+    /// Exports every note (chronological order) and presents the share sheet.
+    private func shareExport(format: NoteExportFormat) {
+        let chronological = Array(noteService.allEntries().reversed())
+        // Unsaved stand-in, only so the export carries the "Notes" title.
+        let allNotes = NoteContainer(title: String(localized: "Notes"), containerType: "all_notes")
+        guard let url = try? noteService.exportFileURL(
+            notebook: allNotes,
+            entries: chronological,
+            format: format
+        ) else { return }
+
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController else {
+            return
+        }
+        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        var presenter = rootVC
+        while let presented = presenter.presentedViewController {
+            presenter = presented
+        }
+        presenter.present(activityVC, animated: true)
+    }
+
+    /// Resolves a deep link's notebook before recording. An invalid explicit
+    /// target (e.g. a Siri shortcut set up for an old notebook) is reported
+    /// instead of silently recording elsewhere; an omitted one means Quick Note.
     private func openAndRecord(request: NoteRecordingDeepLinkRequest) {
         guard !noteViewModel.isCapturePendingOrActive else {
             routeError = "A voice note is already starting or recording. Finish it before starting another."
@@ -176,194 +313,77 @@ struct NotesView: View {
             break
         }
 
-        reloadNotebooks()
-        let target: NoteContainer
         if let value = request.notebookID {
-            if let id = UUID(uuidString: value),
-               let requested = noteService.notebook(id: id) {
-                target = requested
-            } else {
+            guard let id = UUID(uuidString: value),
+                  let requested = noteService.notebook(id: id) else {
                 routeError = "The requested notebook could not be found. No recording was started."
                 return
             }
+            startRecording(into: requested)
         } else {
-            do {
-                target = try noteService.quickNoteNotebook()
-            } catch {
-                routeError = error.localizedDescription
-                return
-            }
+            startRecording(into: nil)
         }
-        recordingRoute = NotebookRecordingRoute(notebook: target, requestID: request.id)
     }
 }
 
-// MARK: - NotebookCard
+// MARK: - EntryRow
 
-private struct NotebookCard: View {
-    let notebook: NoteContainer
-    let entryCount: Int
+private struct EntryRow: View {
+    let entry: NoteEntry
+    let showRawInline: Bool
 
-    private var isQuickNote: Bool { NoteService.isQuickNote(notebook) }
+    private var hasDistinctRaw: Bool {
+        guard let processed = entry.processedText else { return false }
+        return processed != entry.rawText
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Image(systemName: "book.closed.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(isQuickNote ? Color(hex: "#fbbf24") : Color(hex: "#fafaf9").opacity(0.6))
-                Spacer()
-            }
-
-            Spacer(minLength: 4)
-
-            Text(notebook.title)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(Color(hex: "#fafaf9"))
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-
-            HStack {
-                Text(String(localized: "\(entryCount) entries"))
-                    .font(.system(size: 11))
+                Text(entry.createdAt, style: .time)
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(Color(hex: "#fafaf9").opacity(0.4))
                 Spacer()
                 modeBadge
             }
+
+            Text(entry.processedText ?? entry.rawText)
+                .font(.system(size: 15))
+                .foregroundColor(Color(hex: "#fafaf9"))
+                .lineLimit(4)
+                .multilineTextAlignment(.leading)
+
+            if showRawInline && hasDistinctRaw {
+                Text(entry.rawText)
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(hex: "#fafaf9").opacity(0.35))
+                    .lineLimit(4)
+            }
         }
-        .padding(14)
-        .frame(minHeight: 120, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color(hex: "#fafaf9").opacity(0.04))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .strokeBorder(
-                            isQuickNote ? Color(hex: "#fbbf24").opacity(0.5) : Color(hex: "#fafaf9").opacity(0.08),
-                            lineWidth: isQuickNote ? 1.5 : 1
-                        )
-                )
-        )
+        .padding(.vertical, 8)
+        .contextMenu {
+            if hasDistinctRaw {
+                Button {
+                    UIPasteboard.general.string = entry.rawText
+                } label: {
+                    Label("Copy raw transcript", systemImage: "doc.on.doc")
+                }
+            }
+            Button {
+                UIPasteboard.general.string = entry.processedText ?? entry.rawText
+            } label: {
+                Label("Copy text", systemImage: "doc.on.doc.fill")
+            }
+        }
     }
 
-    @ViewBuilder
     private var modeBadge: some View {
-        Text(NotebookPipeline.displayLabel(for: notebook))
+        Text(entry.mode)
             .font(.system(size: 9, weight: .semibold, design: .monospaced))
             .foregroundColor(Color(hex: "#fbbf24").opacity(0.8))
             .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(
-                Capsule()
-                    .fill(Color(hex: "#fbbf24").opacity(0.1))
-            )
-    }
-}
-
-// MARK: - NewNotebookSheet
-
-private struct NewNotebookSheet: View {
-    @Binding var title: String
-    let onCreate: (String, NotebookTemplate) throws -> Void
-    let onCancel: () -> Void
-
-    @State private var selectedTemplate: NotebookTemplate = .raw
-    @State private var creationError: String?
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(hex: "#1a1917").ignoresSafeArea()
-                VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Notebook Name")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(hex: "#fafaf9").opacity(0.5))
-                            .textCase(.uppercase)
-                        TextField("Notebook name", text: $title)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Starting Template")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(hex: "#fafaf9").opacity(0.5))
-                            .textCase(.uppercase)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(NotebookTemplate.allCases) { tpl in
-                                    templateChip(tpl)
-                                }
-                            }
-                        }
-                        Text(selectedTemplate.systemPromptSeed.isEmpty
-                             ? "No LLM processing (raw transcripts only)."
-                             : selectedTemplate.systemPromptSeed)
-                            .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "#fafaf9").opacity(0.5))
-                            .padding(.top, 4)
-                    }
-
-                    Spacer()
-                }
-                .padding(20)
-            }
-            .navigationTitle("New Notebook")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { onCancel() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        do {
-                            try onCreate(title, selectedTemplate)
-                        } catch {
-                            creationError = error.localizedDescription
-                        }
-                    }
-                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-        }
-        .alert(
-            "Notebook Could Not Be Created",
-            isPresented: Binding(
-                get: { creationError != nil },
-                set: { if !$0 { creationError = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) { creationError = nil }
-        } message: {
-            Text(creationError ?? "")
-        }
-        .preferredColorScheme(.dark)
-    }
-
-    private func templateChip(_ tpl: NotebookTemplate) -> some View {
-        let isSelected = tpl == selectedTemplate
-        return Button {
-            selectedTemplate = tpl
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: tpl.symbolName)
-                    .font(.system(size: 12, weight: .medium))
-                Text(tpl.displayName)
-                    .font(.system(size: 13, weight: .medium))
-            }
-            .foregroundColor(isSelected ? Color(hex: "#1a1917") : Color(hex: "#fafaf9"))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color(hex: "#fbbf24") : Color.white.opacity(0.05))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSelected ? Color.clear : Color.white.opacity(0.1), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color(hex: "#fbbf24").opacity(0.1)))
     }
 }
 

@@ -10,9 +10,11 @@ struct PendingRecording: Codable, Identifiable, Equatable, Sendable {
     }
 
     /// Which list shows an item: History shows Dictate recordings, a
-    /// notebook shows the notes recorded into it.
+    /// notebook shows the notes recorded into it, and Notes shows them all.
     enum Scope: Equatable, Sendable {
         case history
+        /// Every note recording, whatever notebook it was recorded into.
+        case notes
         case notebook(UUID)
     }
 

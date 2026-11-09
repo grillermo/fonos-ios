@@ -215,7 +215,7 @@ struct NoteINV12ExportTests {
 }
 
 // MARK: - P0-4 (docs/ROADMAP.md): share-sheet export needs a temp file with a
-// sanitized filename; NotebookDetailView shares this URL.
+// sanitized filename; NotesView shares this URL.
 
 @MainActor
 struct NoteExportFileTests {

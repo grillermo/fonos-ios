@@ -27,6 +27,22 @@ private enum NoteServiceInjectedSaveFailure: Error {
 @MainActor
 struct NoteINV02ServiceTests {
 
+    // MARK: - All entries
+
+    @Test("NoteService.allEntries returns entries from every notebook, newest first")
+    func allEntriesAcrossNotebooks() throws {
+        let modelContainer = try makeNoteServiceContainer()
+        let service = NoteService(modelContainer: modelContainer)
+        let first = try service.createNotebook(title: "A")
+        let second = try service.createNotebook(title: "B")
+
+        let older = try service.addEntry(to: first.id, rawText: "older")
+        older.createdAt = Date(timeIntervalSinceNow: -60)
+        let newer = try service.addEntry(to: second.id, rawText: "newer")
+
+        #expect(service.allEntries().map(\.id) == [newer.id, older.id])
+    }
+
     // MARK: - Notebook create
 
     @Test("NoteService.createNotebook returns a NoteContainer with correct title")

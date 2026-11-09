@@ -368,6 +368,15 @@ final class NoteService {
         return (try? context.fetch(descriptor)) ?? []
     }
 
+    /// Returns every entry across all notebooks, newest first.
+    func allEntries() -> [NoteEntry] {
+        let context = modelContainer.mainContext
+        let descriptor = FetchDescriptor<NoteEntry>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
     /// Returns the count of entries for a given notebook.
     func entryCount(for containerId: UUID) -> Int {
         entriesForNotebook(containerId).count

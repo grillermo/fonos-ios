@@ -103,12 +103,16 @@ struct NotebookSettingsView: View {
                 vocabSection
                 displaySection
                 shortcutSection
-                dangerZoneSection
+                // Quick Note is the only notebook the Notes tab exposes, and it
+                // cannot be deleted, so the section would be a dead button.
+                if !isQuickNote {
+                    dangerZoneSection
+                }
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Notebook Settings")
+        .navigationTitle("Note Settings")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {

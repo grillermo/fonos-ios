@@ -132,7 +132,6 @@
 		D991C580F57340F3BE3BDBE2 /* PendingRecordingAutoRetrier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 950B266CD0474539B8B1A319 /* PendingRecordingAutoRetrier.swift */; };
 		B22F2AD39A1A486C9BAC072E /* PendingRecordingFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF2A3732A4D34FF984F51714 /* PendingRecordingFailure.swift */; };
 		WP03VON002AA002AA002001B /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON002AA002AA002001A /* NotesView.swift */; };
-		WP03VON003AA003AA003001B /* NotebookDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON003AA003AA003001A /* NotebookDetailView.swift */; };
 		WP03VON004AA004AA004001B /* RecordNoteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON004AA004AA004001A /* RecordNoteSheet.swift */; };
 		WP03VON005AA005AA005001B /* NoteINV03TabTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON005AA005AA005001A /* NoteINV03TabTests.swift */; };
 		WP03VON006AA006AA006001B /* NoteINV06RecordFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON006AA006AA006001A /* NoteINV06RecordFlowTests.swift */; };
@@ -358,7 +357,6 @@
 		950B266CD0474539B8B1A319 /* PendingRecordingAutoRetrier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingAutoRetrier.swift; sourceTree = "<group>"; };
 		DF2A3732A4D34FF984F51714 /* PendingRecordingFailure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingFailure.swift; sourceTree = "<group>"; };
 		WP03VON002AA002AA002001A /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
-		WP03VON003AA003AA003001A /* NotebookDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookDetailView.swift; sourceTree = "<group>"; };
 		WP03VON004AA004AA004001A /* RecordNoteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordNoteSheet.swift; sourceTree = "<group>"; };
 		WP03VON005AA005AA005001A /* NoteINV03TabTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV03TabTests.swift; sourceTree = "<group>"; };
 		WP03VON006AA006AA006001A /* NoteINV06RecordFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteINV06RecordFlowTests.swift; sourceTree = "<group>"; };
@@ -464,7 +462,6 @@
 				VR0500000000000000000001 /* VoiceRecipeDefaults.swift */,
 				50BA9D99CDBC44ABA7E645A2 /* SettingsView.swift */,
 				WP03VON002AA002AA002001A /* NotesView.swift */,
-				WP03VON003AA003AA003001A /* NotebookDetailView.swift */,
 				WP04VON003AA003AA003001A /* NotebookSettingsView.swift */,
 				WP03VON004AA004AA004001A /* RecordNoteSheet.swift */,
 				A1B2C3D4E5F6A7B8C9D0E104 /* EditNoteSheet.swift */,
@@ -1069,7 +1066,6 @@
 				D991C580F57340F3BE3BDBE2 /* PendingRecordingAutoRetrier.swift in Sources */,
 				B22F2AD39A1A486C9BAC072E /* PendingRecordingFailure.swift in Sources */,
 				WP03VON002AA002AA002001B /* NotesView.swift in Sources */,
-				WP03VON003AA003AA003001B /* NotebookDetailView.swift in Sources */,
 				WP03VON004AA004AA004001B /* RecordNoteSheet.swift in Sources */,
 				WP04VON001AA001AA001001B /* RecordNoteIntent.swift in Sources */,
 				WP04VON002AA002AA002001B /* DeepLinkRouter.swift in Sources */,
