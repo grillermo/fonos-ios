@@ -27,6 +27,29 @@ extension BackgroundRecordingService {
         }
     }
 
+    /// A keyboard capture too short to send never reaches the server. It goes
+    /// in the queue anyway, so what was (or wasn't) recorded can be checked.
+    nonisolated static func keepUnsentCapture(
+        wavData: Data,
+        workflowID: String,
+        store: PendingRecordingStore = .shared
+    ) {
+        let duration = PendingRecordingStore.duration(ofWAV: wavData)
+        do {
+            try store.save(
+                wav: wavData,
+                surface: .dictate,
+                workflowID: workflowID,
+                error: duration > 0
+                    ? String(format: "Too short to send (%.1fs).", duration)
+                    : PendingRecordingStore.noAudioMessage,
+                autoRetryStopped: true
+            )
+        } catch {
+            backgroundRecordingLog.error("🎙 BG: could not queue the capture: \(error.localizedDescription)")
+        }
+    }
+
     func transcribeAndProcess(
         wavData: Data,
         sessionID: String?,

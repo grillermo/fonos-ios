@@ -88,6 +88,38 @@ struct PendingRecordingDictationTests {
         #expect(try store.audio(id: pending.id) == dummyWAV())
     }
 
+    @Test("a 415 keeps the audio")
+    @MainActor
+    func unsupportedAudioKeepsAudio() async throws {
+        let (vm, store) = makeViewModel(SwitchableSTT(error: .http(status: 415, body: "x")))
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        vm.finishRecording(wavData: dummyWAV())
+        try await waitUntil(vm, isError)
+
+        let pending = try #require(store.all().first)
+        #expect(pending.lastError.contains("415"))
+        #expect(pending.autoRetryStoppedAt != nil)
+        #expect(try store.audio(id: pending.id) == dummyWAV())
+    }
+
+    /// The STT would succeed, so reaching the error state proves no upload.
+    @Test("an empty capture is queued as a 0:00 row without calling the server")
+    @MainActor
+    func emptyCaptureIsQueued() async throws {
+        let (vm, store) = makeViewModel(SwitchableSTT(error: nil))
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        vm.finishRecording(wavData: Data())
+        try await waitUntil(vm, isError)
+
+        let pending = try #require(store.all().first)
+        #expect(pending.surface == .dictate)
+        #expect(pending.workflowID == "wf.dictation")
+        #expect(pending.durationSeconds == 0)
+        #expect(pending.lastError == PendingRecordingStore.noAudioMessage)
+        #expect(pending.autoRetryStoppedAt != nil)
+        #expect(vm.lastPendingRecordingID == pending.id)
+    }
+
     @Test("no speech keeps nothing")
     @MainActor
     func noSpeechKeepsNothing() async throws {

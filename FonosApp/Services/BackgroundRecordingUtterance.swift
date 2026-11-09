@@ -202,6 +202,7 @@ extension BackgroundRecordingService {
             sampleRate: AudioCapturePolicy.sampleRate
         )
         guard capturedDuration >= 0.4, wavData.count > 100 else {
+            Self.keepUnsentCapture(wavData: wavData, workflowID: prepared.definition.id)
             writeError("No audio captured. Try again.", sessionID: sessionID)
             finishExpiredReadySessionIfPossible()
             return

@@ -140,6 +140,57 @@ final class PendingRecordingStoreTests {
         #expect(pending.workflowID == "wf.keyboard")
     }
 
+    @Test("a keyboard 415 keeps its audio and stops auto-retry")
+    func keyboardUnsupportedAudioKeepsAudio() throws {
+        let store = makeTempStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+
+        BackgroundRecordingService.keepFailedRecording(
+            STTError.http(status: 415, body: "x"),
+            wavData: oneSecondWAV(),
+            workflowID: "wf.keyboard",
+            textSaved: false,
+            store: store
+        )
+
+        let pending = try #require(store.all().first)
+        #expect(pending.lastError.contains("415"))
+        #expect(pending.autoRetryStoppedAt != nil)
+        #expect(try store.audio(id: pending.id) == oneSecondWAV())
+    }
+
+    @Test("a keyboard capture with no samples is queued as a 0:00 row")
+    func keyboardEmptyCaptureIsQueued() throws {
+        let store = makeTempStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+
+        BackgroundRecordingService.keepUnsentCapture(
+            wavData: Data(count: 44), workflowID: "wf.keyboard", store: store
+        )
+
+        let pending = try #require(store.all().first)
+        #expect(pending.surface == .dictate)
+        #expect(pending.workflowID == "wf.keyboard")
+        #expect(pending.durationSeconds == 0)
+        #expect(pending.lastError == PendingRecordingStore.noAudioMessage)
+        #expect(pending.autoRetryStoppedAt != nil)
+    }
+
+    @Test("a keyboard capture with some audio keeps it")
+    func keyboardShortCaptureKeepsAudio() throws {
+        let store = makeTempStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+
+        BackgroundRecordingService.keepUnsentCapture(
+            wavData: oneSecondWAV(), workflowID: "wf.keyboard", store: store
+        )
+
+        let pending = try #require(store.all().first)
+        #expect(pending.durationSeconds > 0)
+        #expect(pending.lastError.hasPrefix("Too short to send"))
+        #expect(try store.audio(id: pending.id) == oneSecondWAV())
+    }
+
     @Test("a keyboard run keeps nothing when cancelled or already in History")
     func keyboardFailureKeepsNothing() {
         let store = makeTempStore()

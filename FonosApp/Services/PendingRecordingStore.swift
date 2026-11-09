@@ -19,6 +19,9 @@ final class PendingRecordingStore: @unchecked Sendable {
     /// Audio this old with no JSON was abandoned mid-save.
     private static let orphanAudioAge: TimeInterval = 3_600
 
+    /// What a capture with no samples reports, on screen and in its 0:00 row.
+    static let noAudioMessage = "No audio was captured (0 bytes)."
+
     let directory: URL
     private let fileManager = FileManager.default
     private let lock = NSLock()

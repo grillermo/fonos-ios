@@ -209,7 +209,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
             recordingState = .processing
             let entryID = appendTargetID
             Task {
-                let message = "No audio was captured (0 bytes)."
+                let message = PendingRecordingStore.noAudioMessage
                 await keepForRetry(
                     audio: Data(),
                     in: containerId,

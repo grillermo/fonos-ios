@@ -205,7 +205,32 @@ extension DictationViewModel {
             return
         }
         preparedMainWorkflow = nil
+        guard !wavData.isEmpty else {
+            keepEmptyCapture(workflowID: prepared.persistedDefinition.id)
+            return
+        }
         runMainWorkflow(prepared, wavData: wavData, retryingPendingID: nil)
+    }
+
+    /// An empty capture must not be uploaded: the server cannot probe a
+    /// zero-byte file and answers HTTP 415. It still goes in the queue, as a
+    /// 0:00 row, so it can be told apart from a 415 on real audio.
+    @MainActor
+    private func keepEmptyCapture(workflowID: String) {
+        resetFlowUI()
+        let message = PendingRecordingStore.noAudioMessage
+        do {
+            lastPendingRecordingID = try pendingStore.save(
+                wav: Data(),
+                surface: .dictate,
+                workflowID: workflowID,
+                error: message,
+                autoRetryStopped: true
+            ).id
+        } catch {
+            dictationLog.error("❌ Could not queue the empty capture: \(error.localizedDescription)")
+        }
+        recordingState = .error(message: message)
     }
 
     /// Runs a prepared plan on captured or saved audio. A failure before any
