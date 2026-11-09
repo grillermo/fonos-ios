@@ -265,6 +265,53 @@ struct PendingRecordingNoteTests {
         #expect(store.all().first?.noteEntryID == note.id)
     }
 
+    @Test("an empty capture is queued as a 0:00 row without calling the server")
+    func emptyCaptureIsQueued() async throws {
+        let stt = SwitchableNoteSTT(error: nil)
+        let (_, service, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let vm = NoteViewModel(
+            noteService: service, sttProvider: stt, llmProvider: nil,
+            audioCapture: FixedAudioCapture(audio: Data())
+        )
+        vm.pendingStore = store
+
+        vm.startRecording(to: notebook.id)
+        vm.stopRecording(to: notebook.id)
+        while vm.recordingState == .processing { await Task.yield() }
+
+        let pending = try #require(store.all().first)
+        #expect(pending.notebookID == notebook.id)
+        #expect(pending.durationSeconds == 0)
+        #expect(pending.lastError == "No audio was captured (0 bytes).")
+        #expect(pending.autoRetryStoppedAt != nil)
+        #expect(vm.lastFailureSavedForRetry)
+        #expect(stt.receivedAudio == nil)
+        #expect(vm.recordingState == .error(message: "No audio was captured (0 bytes)."))
+    }
+
+    @Test("a 415 on real audio keeps playable audio in the queue")
+    func unsupportedAudioKeepsTheClip() async throws {
+        let stt = SwitchableNoteSTT(error: .http(status: 415, body: "{\"detail\":\"Unsupported audio\"}"))
+        let (_, service, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let vm = NoteViewModel(
+            noteService: service, sttProvider: stt, llmProvider: nil,
+            audioCapture: FixedAudioCapture(audio: try pendingToneWAV())
+        )
+        vm.pendingStore = store
+
+        vm.startRecording(to: notebook.id)
+        vm.stopRecording(to: notebook.id)
+        while vm.recordingState == .processing { await Task.yield() }
+
+        let pending = try #require(store.all().first)
+        #expect(pending.durationSeconds > 0)
+        #expect(pending.lastError.contains("415"))
+        #expect(try !store.audio(id: pending.id).isEmpty)
+        #expect(vm.lastFailureSavedForRetry)
+    }
+
     @Test("a retried append whose note was deleted becomes a new note")
     func retryWithDeletedNote() async throws {
         let (vm, service, notebook, store) = try makeNotes(SwitchableNoteSTT(error: nil))

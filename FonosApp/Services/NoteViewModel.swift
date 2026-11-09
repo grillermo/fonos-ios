@@ -200,7 +200,27 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         stopLevelPolling()
         activeContainerID = nil
 
-        let wavData = audioCapture.stopCapture() ?? Data()
+        // An empty capture must not be uploaded: the server cannot probe a
+        // zero-byte file and answers HTTP 415 "Unsupported audio". It still
+        // goes in the queue, as a 0:00 row, so the failure can be told apart
+        // from a 415 on real audio.
+        guard let wavData = audioCapture.stopCapture(), !wavData.isEmpty else {
+            clearSavedForRetryFlag()
+            recordingState = .processing
+            let entryID = appendTargetID
+            Task {
+                let message = "No audio was captured (0 bytes)."
+                await keepForRetry(
+                    audio: Data(),
+                    in: containerId,
+                    appendingTo: entryID,
+                    error: message,
+                    permanent: true
+                )
+                recordingState = .error(message: message)
+            }
+            return
+        }
         recordingState = .processing
 
         let onTranscribed = transcriptHandler
@@ -244,28 +264,43 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         } catch {
             noteVMLog.error("Notebook workflow failed: \(error.localizedDescription)")
             if PendingRecordingStore.shouldKeep(error: error, audio: audioData) {
-                let store = pendingStore
-                let message = error.localizedDescription
-                let permanent = PendingRecordingFailure.classify(error) == .permanent
-                do {
-                    // Encoding a five-minute clip must not block the main actor.
-                    let saved = try await Task.detached(priority: .userInitiated) {
-                        try store.save(
-                            wav: audioData,
-                            surface: .note,
-                            notebookID: containerId,
-                            noteEntryID: entryID,
-                            error: message,
-                            autoRetryStopped: permanent
-                        )
-                    }.value
-                    lastFailurePendingID = saved.id
-                    lastFailureSavedForRetry = true
-                } catch {
-                    noteVMLog.error("Could not keep the recording for retry: \(error.localizedDescription)")
-                }
+                await keepForRetry(
+                    audio: audioData,
+                    in: containerId,
+                    appendingTo: entryID,
+                    error: error.localizedDescription,
+                    permanent: PendingRecordingFailure.classify(error) == .permanent
+                )
             }
             recordingState = .error(message: error.localizedDescription)
+        }
+    }
+
+    /// Adds a failed recording to the retry queue, and flags it for the sheet.
+    private func keepForRetry(
+        audio: Data,
+        in containerId: UUID,
+        appendingTo entryID: UUID?,
+        error message: String,
+        permanent: Bool
+    ) async {
+        let store = pendingStore
+        do {
+            // Encoding a five-minute clip must not block the main actor.
+            let saved = try await Task.detached(priority: .userInitiated) {
+                try store.save(
+                    wav: audio,
+                    surface: .note,
+                    notebookID: containerId,
+                    noteEntryID: entryID,
+                    error: message,
+                    autoRetryStopped: permanent
+                )
+            }.value
+            lastFailurePendingID = saved.id
+            lastFailureSavedForRetry = true
+        } catch {
+            noteVMLog.error("Could not keep the recording for retry: \(error.localizedDescription)")
         }
     }
 
