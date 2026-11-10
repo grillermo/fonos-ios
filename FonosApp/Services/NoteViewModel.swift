@@ -26,6 +26,10 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
     }
     @Published var audioLevel: Float = 0
 
+    /// The note the last recording created, so the Notes tab can open it.
+    /// Cleared when a new recording starts.
+    @Published private(set) var lastCreatedEntryID: UUID?
+
     /// True while permission is pending or capture owns a frozen notebook.
     /// This closes the brief `.idle` window during the system permission sheet
     /// so a second deep link cannot retarget an in-flight recording.
@@ -119,6 +123,7 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
         activeContainerID = containerId
         transcriptHandler = onTranscribed
         appendTargetID = entryID
+        lastCreatedEntryID = nil
         clearSavedForRetryFlag()
 
         let permission = audioCapture.micPermissionStatus()
@@ -258,7 +263,9 @@ final class NoteViewModel: ObservableObject, @unchecked Sendable {
                 let run = try await runRecipe(in: containerId, audioData: audioData)
                 onTranscribed(Self.noteText(from: run.result, recipe: run.recipe))
             } else {
-                _ = try await transcribeAndStore(to: containerId, audioData: audioData)
+                let run = try await runRecipe(in: containerId, audioData: audioData)
+                let entry = try persist(run.result, recipe: run.recipe, to: containerId)
+                lastCreatedEntryID = entry.id
             }
             recordingState = .done
         } catch {

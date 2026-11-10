@@ -109,7 +109,7 @@ struct NotesView: View {
                 // A successful retry discards the item and changes a note.
                 reloadEntries()
             }
-            .sheet(item: $recordingNotebook, onDismiss: reloadEntries) { notebook in
+            .sheet(item: $recordingNotebook, onDismiss: openRecordedNote) { notebook in
                 RecordNoteSheet(
                     notebook: notebook,
                     noteViewModel: noteViewModel,
@@ -237,6 +237,16 @@ struct NotesView: View {
             uniquingKeysWith: { first, _ in first }
         )
         pendingRecordings = noteViewModel.pendingStore.pending(for: .notes)
+    }
+
+    /// After a recording sheet closes, opens the note it created for editing
+    /// (cursor at the end) instead of leaving the user on the list.
+    private func openRecordedNote() {
+        reloadEntries()
+        guard noteViewModel.recordingState == .done,
+              let id = noteViewModel.lastCreatedEntryID,
+              let entry = entries.first(where: { $0.id == id }) else { return }
+        editingEntry = entry
     }
 
     /// The notebook an entry was recorded into, whose settings an edit's

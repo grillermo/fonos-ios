@@ -151,6 +151,24 @@ struct PendingRecordingNoteTests {
         #expect(store.all().isEmpty)
     }
 
+    @Test("a recording that creates a note records its id so the note can be opened")
+    func newNoteIDIsRecorded() async throws {
+        let stt = SwitchableNoteSTT(error: nil)
+        stt.transcript = "fresh note"
+        let (vm, service, notebook, store) = try makeNotes(stt)
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+
+        await vm.recordAndStore(to: notebook.id, audioData: Data(count: 44))
+
+        let entry = try #require(service.entriesForNotebook(notebook.id).first)
+        #expect(vm.lastCreatedEntryID == entry.id)
+
+        var received: String?
+        await vm.recordAndStore(to: notebook.id, audioData: Data(count: 44)) { received = $0 }
+        #expect(received == "fresh note")
+        #expect(service.entriesForNotebook(notebook.id).count == 1)
+    }
+
     @Test("an open note receives the transcription and no new note is added")
     func transcriptGoesToOpenNote() async throws {
         let stt = SwitchableNoteSTT(error: nil)
