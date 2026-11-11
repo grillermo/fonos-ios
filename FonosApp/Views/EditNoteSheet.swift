@@ -60,6 +60,14 @@ struct EditNoteSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: cancel)
                 }
+                // Shares the text as shown (edits included) through the system
+                // share sheet, where Shortcuts with "Show in Share Sheet" appear.
+                ToolbarItem(placement: .primaryAction) {
+                    ShareLink(item: text) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(isBlank)
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", action: save)
                         .disabled(isBlank)
