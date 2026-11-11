@@ -51,19 +51,27 @@ struct EditNoteSheet: View {
                     showRecordSheet = true
                 }
                 .padding(24)
+
+                // Shares the text as shown (edits included) through the system
+                // share sheet, where Shortcuts with "Show in Share Sheet" appear.
+                ShareLink(item: text) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#fafaf9").opacity(0.1))
+                            .frame(width: 60, height: 60)
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundColor(Color(hex: "#fbbf24"))
+                    }
+                }
+                .accessibilityLabel("Share")
+                .disabled(isBlank)
+                .opacity(isBlank ? 0.4 : 1)
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }
             .navigationTitle("Edit Note")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // Shares the text as shown (edits included) through the system
-                // share sheet, where Shortcuts with "Show in Share Sheet" appear.
-                ToolbarItem(placement: .primaryAction) {
-                    ShareLink(item: text) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                    .disabled(isBlank)
-                }
-            }
         }
         .onAppear { isEditing = true }
         .task {
