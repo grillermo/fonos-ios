@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Opens a note's text for editing, with the cursor at the end so new text
 /// can be appended straight away, by typing or with the microphone. The text
-/// is saved every second, so closing the app loses at most the last second.
+/// is saved every second and when the sheet is swiped closed, so there is no
+/// Done or Cancel; closing the app loses at most the last second.
 struct EditNoteSheet: View {
     let notebook: NoteContainer
     @ObservedObject var noteViewModel: NoteViewModel
@@ -13,10 +14,8 @@ struct EditNoteSheet: View {
     // autosaves change: the first autosaver has to outlive those rebuilds.
     @State private var autosaver: NoteAutosaver
     @State private var text: String
-    @State private var saveError: String?
     @State private var showRecordSheet = false
     @FocusState private var isEditing: Bool
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
     init(
@@ -34,7 +33,6 @@ struct EditNoteSheet: View {
         self._text = State(initialValue: shownText)
     }
 
-    private var hasChanges: Bool { text != autosaver.originalText }
     private var isBlank: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
@@ -57,9 +55,6 @@ struct EditNoteSheet: View {
             .navigationTitle("Edit Note")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: cancel)
-                }
                 // Shares the text as shown (edits included) through the system
                 // share sheet, where Shortcuts with "Show in Share Sheet" appear.
                 ToolbarItem(placement: .primaryAction) {
@@ -67,10 +62,6 @@ struct EditNoteSheet: View {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
                     .disabled(isBlank)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done", action: save)
-                        .disabled(isBlank)
                 }
             }
         }
@@ -85,8 +76,8 @@ struct EditNoteSheet: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { autosaver.autosave(text) }
         }
-        // A stray swipe must not discard what was typed.
-        .interactiveDismissDisabled(hasChanges)
+        // Swiping the sheet down closes it; keep the last edit.
+        .onDisappear { autosaver.autosave(text) }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showRecordSheet) {
             RecordNoteSheet(
@@ -97,33 +88,6 @@ struct EditNoteSheet: View {
                 onDismiss: { showRecordSheet = false }
             )
         }
-        .alert(
-            "Note Could Not Be Saved",
-            isPresented: Binding(
-                get: { saveError != nil },
-                set: { if !$0 { saveError = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) { saveError = nil }
-        } message: {
-            Text(saveError ?? "")
-        }
     }
 
-    private func save() {
-        finish { try autosaver.commit(text) }
-    }
-
-    private func cancel() {
-        finish { try autosaver.revert() }
-    }
-
-    private func finish(_ write: () throws -> Void) {
-        do {
-            try write()
-            dismiss()
-        } catch {
-            saveError = error.localizedDescription
-        }
-    }
 }
