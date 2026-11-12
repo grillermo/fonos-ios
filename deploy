@@ -20,13 +20,15 @@
 #   ./deploy --yes            # skip the confirmation prompt
 #   ./deploy --summary "Faster search" --note "Debounced search-as-you-type"
 #
-# Optional, in the gitignored .env or the shell: FONOS_UPLOAD_BASE,
-# FONOS_PUBLISH_DIR. FONOS_UNSIGNED=1 builds an unsigned Payload/ zip and stops
-# before publishing, for when signing is broken and you still need a binary.
+# Runs on any Mac that can sign the app. Publishing copies into the macmini's
+# file_server files/ directory there, scp's to it from the home LAN, or uploads
+# through the file_server API from anywhere else (see scripts/deploy/uploader.rb).
 #
-# The file_to_s3 service behind files.chiq.me runs on this machine, so releases
-# are written into its files/ directory (default ../../file_server/files;
-# override with FONOS_PUBLISH_DIR).
+# Optional, in the gitignored dotenv file or the shell: FONOS_UPLOAD_BASE,
+# FONOS_PUBLISH_DIR (a local files/ directory; implies the local route) and the
+# other FONOS_PUBLISH_* overrides listed in uploader.rb. FONOS_UNSIGNED=1 builds
+# an unsigned Payload/ zip and stops before publishing, for when signing is
+# broken and you still need a binary.
 
 require_relative "scripts/deploy/ipa_builder"
 require_relative "scripts/deploy/uploader"
@@ -99,7 +101,7 @@ NOTES   = take_option(ARGV, "--note", "--notes", "-n")
 
 # --- preflight -----------------------------------------------------------------
 
-Uploader.check_publish_dir!
+puts "Publishing to #{Uploader.check!}" # dies now if no publish route works
 B.ensure_codesign_can_sign! # unlocks the keychain now, not after a long compile
 B.die("icon not found: #{ICON_SOURCE}") unless File.file?(ICON_SOURCE)
 
