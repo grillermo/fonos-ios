@@ -22,7 +22,10 @@
 #
 # The api route goes through the Cloudflare tunnel, where request bodies past
 # roughly 12 MB can stall and come back as 524s, and past ~25 MB are refused.
-# So it is the last resort: at home the bytes never leave the LAN.
+# So a file bigger than CHUNK_SIZE is sliced: each slice goes up on its own
+# (POST /upload/part, retried on failure), and the file_server on the macmini
+# joins them, checking the size and SHA-256 (POST /upload/assemble). It is
+# still the last resort: at home the bytes never leave the LAN.
 #
 # Every publish is *pinned*: the artifact lands at exactly the name given and
 # overwrites whatever was there. That is what gives the install page and the OTA
@@ -37,10 +40,13 @@
 #
 # Plain Ruby 2.6 (the macmini's system Ruby): no endless defs, no pattern matching.
 
+require "digest"
 require "fileutils"
 require "json"
 require "open3"
+require "securerandom"
 require "socket"
+require "tmpdir"
 require "uri"
 
 require_relative "ipa_builder"
@@ -58,8 +64,9 @@ module Uploader
   SERVER_PROBE = File.expand_path("~/c/agents-configs/lib/server-probe.sh")
   DEFAULT_TOKEN_FILE = File.expand_path("~/.config/file_server/token")
   SERVICE_ID = "chiq-file-server"
-  TUNNEL_SOFT_LIMIT = 12 * 1024 * 1024
-  TUNNEL_HARD_LIMIT = 25 * 1024 * 1024
+  # Slices stay well under the ~12 MB at which tunnel bodies start to stall.
+  CHUNK_SIZE = 8 * 1024 * 1024
+  ATTEMPTS = 3
   SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5"].freeze
 
   module_function
@@ -214,21 +221,57 @@ module Uploader
   end
 
   def post_file(path, name)
-    size = File.size(path)
-    mb = (size / 1_048_576.0).round(1)
-    if size > TUNNEL_HARD_LIMIT
-      die("#{name} is #{mb} MB, over the tunnel's ~25 MB cap; publish from the home network")
-    elsif size > TUNNEL_SOFT_LIMIT
-      warn "    warning: #{name} is #{mb} MB through the tunnel; bodies over ~12 MB can stall (524)"
+    if File.size(path) <= CHUNK_SIZE
+      api_post("upload", { name: name }, file: path, filename: name)
+    else
+      post_in_parts(path, name)
     end
+  end
 
-    url = "#{base_url}/upload?#{URI.encode_www_form(name: name)}"
-    code, body = curl(url, "-X", "POST", "-F", "file=@#{path};filename=#{name}", "--max-time", "600",
-                      headers: "Authorization: Bearer #{token}")
+  # Slices `path` into CHUNK_SIZE parts in a temp dir, sends each, then asks the
+  # server to join them under `name`.
+  def post_in_parts(path, name)
+    size = File.size(path)
+    upload_id = SecureRandom.hex(16)
+    digest = Digest::SHA256.new
+    parts = 0
+    Dir.mktmpdir("publish-parts") do |dir|
+      File.open(path, "rb") do |src|
+        while (chunk = src.read(CHUNK_SIZE))
+          digest << chunk
+          part = File.join(dir, "part")
+          File.binwrite(part, chunk)
+          api_post("upload/part", { upload_id: upload_id, part: parts }, file: part, filename: "#{name}.part#{parts}")
+          parts += 1
+        end
+      end
+    end
+    puts "    sent #{name} in #{parts} parts of up to #{CHUNK_SIZE / 1_048_576} MB"
+    # Not retried: assembling removes the parts, so a retry after a reply lost
+    # on the way back would fail on parts that are already joined.
+    api_post("upload/assemble", { upload_id: upload_id, name: name, parts: parts, size: size,
+                                  sha256: digest.hexdigest }, attempts: 1)
+  end
+
+  # POSTs to the file_server API, retrying a transient failure (a 5xx such as
+  # the tunnel's 524, or no answer) up to `attempts` times.
+  def api_post(path, params, file: nil, filename: nil, attempts: ATTEMPTS)
+    url = "#{base_url}/#{path}?#{URI.encode_www_form(params)}"
+    args = ["-X", "POST", "--max-time", "600"]
+    args += ["-F", "file=@#{file};filename=#{filename}"] if file
+    code = body = nil
+    attempts.times do |attempt|
+      sleep(2 * attempt) if attempt.positive?
+      code, body = curl(url, *args, headers: "Authorization: Bearer #{token}", die_on_error: false)
+      break unless code.nil? || code.start_with?("5") || code == "000"
+
+      warn "    #{path} answered #{code || 'nothing'}; retrying" if attempt < attempts - 1
+    end
     case code
-    when "200" then nil
+    when "200" then body
     when "401" then die("file_server rejected the token (401); log in again with the file_server MCP")
-    else die("upload of #{name} to #{base_url} failed (#{code}): #{body.to_s[0, 300]}")
+    when "404" then die("file_server at #{base_url} has no /#{path}; update ~/c/file_server on the macmini")
+    else die("POST /#{path} to #{base_url} failed (#{code || 'no answer'}): #{body.to_s[0, 300]}")
     end
   end
 
@@ -256,12 +299,17 @@ module Uploader
   # block a non-Apple Ruby (rbenv, Homebrew) with "No route to host", while curl
   # is allowed. `headers:` go in through stdin (-H @-), so the token never shows
   # up in `ps`. Returns [status, body].
-  def curl(url, *args, headers: nil)
+  # With die_on_error: false a failed transfer returns [nil, error] instead.
+  def curl(url, *args, headers: nil, die_on_error: true)
     cmd = ["curl", "-sS", "-o", "-", "-w", "\n%{http_code}", *args]
     cmd += ["-H", "@-"] if headers
     cmd << url
     out, err, status = Open3.capture3(*cmd, stdin_data: headers.to_s)
-    die("curl #{url} failed: #{err.strip}") unless status.success?
+    unless status.success?
+      return [nil, err.strip] unless die_on_error
+
+      die("curl #{url} failed: #{err.strip}")
+    end
 
     body, _, code = out.rpartition("\n")
     [code, body]
