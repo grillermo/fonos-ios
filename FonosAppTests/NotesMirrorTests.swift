@@ -1,0 +1,132 @@
+// One-way mirror of notebooks into a folder (iCloud Drive in the app):
+// one Markdown file per notebook, unchanged files untouched, and only
+// files the mirror wrote itself are ever deleted.
+//
+// Run: xcodebuild test -scheme FonosApp -only-testing:FonosAppTests/NotesMirrorTests
+
+import Testing
+import Foundation
+@testable import FonosApp
+
+@Suite("Notes mirror")
+struct NotesMirrorTests {
+    private let root: URL
+
+    init() throws {
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("NotesMirrorTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    private var mirror: NotesMirror { NotesMirror(root: root) }
+
+    private func notebook(
+        _ title: String,
+        id: UUID = UUID(),
+        created: TimeInterval = 0,
+        markdown: String? = nil
+    ) -> NotesMirror.Notebook {
+        NotesMirror.Notebook(
+            id: id,
+            baseName: title,
+            createdAt: Date(timeIntervalSince1970: created),
+            markdown: markdown ?? "# \(title)\n"
+        )
+    }
+
+    private func files() throws -> [String] {
+        try FileManager.default.contentsOfDirectory(atPath: root.path).sorted()
+    }
+
+    private func text(_ name: String) throws -> String {
+        try String(contentsOf: root.appendingPathComponent(name), encoding: .utf8)
+    }
+
+    @Test("writes one markdown file per notebook plus a manifest")
+    func createsFiles() throws {
+        let result = mirror.sync([
+            notebook("Work", markdown: "# Work\nhello"),
+            notebook("Ideas", created: 1),
+        ])
+        #expect(result == NotesMirror.Result(written: 2))
+        #expect(try files() == [".fonos-mirror.json", "Ideas.md", "Work.md"])
+        #expect(try text("Work.md") == "# Work\nhello")
+    }
+
+    @Test("an identical second run writes nothing")
+    func unchangedIsSkipped() throws {
+        let books = [notebook("Work")]
+        mirror.sync(books)
+        let result = mirror.sync(books)
+        #expect(result == NotesMirror.Result(unchanged: 1))
+    }
+
+    @Test("changed content is rewritten")
+    func changedIsRewritten() throws {
+        let id = UUID()
+        mirror.sync([notebook("Work", id: id, markdown: "one")])
+        let result = mirror.sync([notebook("Work", id: id, markdown: "two")])
+        #expect(result == NotesMirror.Result(written: 1))
+        #expect(try text("Work.md") == "two")
+    }
+
+    @Test("renaming a notebook replaces its file")
+    func renameReplacesFile() throws {
+        let id = UUID()
+        mirror.sync([notebook("Old", id: id)])
+        let result = mirror.sync([notebook("New", id: id)])
+        #expect(result == NotesMirror.Result(written: 1, deleted: 1))
+        #expect(try files() == [".fonos-mirror.json", "New.md"])
+    }
+
+    @Test("deleting a notebook removes its file")
+    func deleteRemovesFile() throws {
+        mirror.sync([notebook("Work"), notebook("Ideas", created: 1)])
+        let result = mirror.sync([notebook("Ideas", created: 1)])
+        #expect(result.deleted == 1)
+        #expect(try files() == [".fonos-mirror.json", "Ideas.md"])
+    }
+
+    @Test("same titles get numbered suffixes, stable across runs")
+    func collisionsAreNumbered() throws {
+        let first = notebook("Work", created: 0, markdown: "first")
+        let second = notebook("work", created: 1, markdown: "second")
+        mirror.sync([second, first])
+        #expect(try files() == [".fonos-mirror.json", "Work.md", "work (2).md"])
+        #expect(try text("Work.md") == "first")
+        #expect(try text("work (2).md") == "second")
+        #expect(mirror.sync([first, second]) == NotesMirror.Result(unchanged: 2))
+    }
+
+    @Test("files the mirror did not write are never touched")
+    func foreignFilesSurvive() throws {
+        try "mine".write(to: root.appendingPathComponent("Mine.md"), atomically: true, encoding: .utf8)
+        mirror.sync([notebook("Work")])
+        mirror.sync([])
+        #expect(try files() == [".fonos-mirror.json", "Mine.md"])
+        #expect(try text("Mine.md") == "mine")
+    }
+
+    @Test("a corrupt manifest is treated as empty")
+    func corruptManifest() throws {
+        try "not json".write(to: root.appendingPathComponent(".fonos-mirror.json"), atomically: true, encoding: .utf8)
+        try "mine".write(to: root.appendingPathComponent("Mine.md"), atomically: true, encoding: .utf8)
+        let result = mirror.sync([notebook("Work")])
+        #expect(result == NotesMirror.Result(written: 1))
+        #expect(try files() == [".fonos-mirror.json", "Mine.md", "Work.md"])
+    }
+
+    @Test("manifest entries pointing outside the folder are never deleted")
+    func manifestCannotEscapeRoot() throws {
+        let victimName = "victim-\(UUID().uuidString).md"
+        let victim = root.deletingLastPathComponent().appendingPathComponent(victimName)
+        try "keep".write(to: victim, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: victim) }
+        let manifest = #"{"\#(UUID().uuidString)":"../\#(victimName)"}"#
+        try manifest.write(to: root.appendingPathComponent(".fonos-mirror.json"), atomically: true, encoding: .utf8)
+
+        mirror.sync([])
+
+        #expect(FileManager.default.fileExists(atPath: victim.path))
+    }
+}
