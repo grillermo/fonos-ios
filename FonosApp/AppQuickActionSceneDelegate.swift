@@ -1,13 +1,17 @@
+import DictusModels
 import UIKit
 
 /// Registers the Home Screen quick actions and installs the scene delegate that
-/// performs them.
+/// performs them. Also the UIKit hooks SwiftUI's `App` has no equivalent for:
+/// background download events, and the lifecycle signals the termination watch
+/// records.
 final class FonosAppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         ReturnKeyRecordingStop.install()
+        startTerminationWatch(application)
         application.shortcutItems = AppQuickAction.available(infoDictionary: Bundle.main.infoDictionary).map {
             UIApplicationShortcutItem(
                 type: $0.rawValue,
@@ -17,6 +21,39 @@ final class FonosAppDelegate: NSObject, UIApplicationDelegate {
             )
         }
         return true
+    }
+
+    private func startTerminationWatch(_ application: UIApplication) {
+        let watch = TerminationWatch.shared
+        UnexpectedExitNotice.shared.pending = watch.beginLaunch()
+        watch.setInBackground(application.applicationState == .background)
+        ExitMetricsReporter.shared.start()
+
+        let center = NotificationCenter.default
+        center.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: nil) { _ in
+            watch.noteMemoryWarning()
+        }
+        center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil) { _ in
+            watch.setInBackground(true)
+        }
+        center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil) { _ in
+            watch.setInBackground(false)
+        }
+        center.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: nil) { _ in
+            watch.markCleanExit()
+        }
+    }
+
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        if !OnDeviceModels.handleBackgroundSessionEvents(
+            identifier: identifier, completionHandler: completionHandler
+        ) {
+            completionHandler()
+        }
     }
 
     func application(

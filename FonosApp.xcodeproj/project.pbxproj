@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		01B63CA9046D2011BC4E98DB /* FonosAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F107E3B55B3A5BF45E4153A /* FonosAppDelegate.swift */; };
 		0262812E0EF934A10031C804 /* PendingRecordingRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 649718444B2EE5DFEDB797A8 /* PendingRecordingRow.swift */; };
 		1C10D5000000000000000002 /* NotesMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C10D5000000000000000001 /* NotesMirror.swift */; };
 		1C10D5000000000000000004 /* ICloudNotesSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C10D5000000000000000003 /* ICloudNotesSync.swift */; };
@@ -248,7 +247,6 @@
 		2BF0DA12AFCC49DD543AE679 /* PendingRecording.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecording.swift; sourceTree = "<group>"; };
 		302F91038C33EB653543B224 /* OnDeviceSTT.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OnDeviceSTT.swift; sourceTree = "<group>"; };
 		4CFAD31DA2B4FB6014C614BD /* ProcessMemory.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProcessMemory.swift; sourceTree = "<group>"; };
-		4F107E3B55B3A5BF45E4153A /* FonosAppDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FonosAppDelegate.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A1 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A2 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		50BA9D99CDBC44ABA7E645A3 /* Color+Hex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Hex.swift"; sourceTree = "<group>"; };
@@ -621,7 +619,6 @@
 				125C680D279A4D5CB0E5B54D /* Views */,
 				915BC72CB554422381D99B83 /* Extensions */,
 				62C2153FB20345E1B143E7E4 /* Resources */,
-				4F107E3B55B3A5BF45E4153A /* FonosAppDelegate.swift */,
 			);
 			path = FonosApp;
 			sourceTree = "<group>";
@@ -1141,7 +1138,6 @@
 				41F754CBBD39765465F4D0E4 /* OnDeviceAudio.swift in Sources */,
 				79E293AB57AC12A2C518919B /* OnDeviceRunLog.swift in Sources */,
 				DF011EFDF7F0AB1BC8F720F1 /* OnDeviceSTT.swift in Sources */,
-				01B63CA9046D2011BC4E98DB /* FonosAppDelegate.swift in Sources */,
 				7C4ED86E91956E3735F00AA6 /* OnDeviceModelsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
