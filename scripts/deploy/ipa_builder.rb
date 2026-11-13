@@ -138,6 +138,12 @@ module IpaBuilder
   # it: it reads the `//` in a URL as the start of a comment.
   def build(manifest:, ota_manifest_url:)
     ENV["DEVELOPER_DIR"] = resolve_developer_dir
+    # SwiftPM clones packages and expects the remote to be called "origin"; a
+    # global clone.defaultRemoteName makes every clone fail ("repository … does
+    # not exist"). Override only that key, for this process and its children.
+    ENV["GIT_CONFIG_COUNT"] = "1"
+    ENV["GIT_CONFIG_KEY_0"] = "clone.defaultRemoteName"
+    ENV["GIT_CONFIG_VALUE_0"] = "origin"
     puts "    DEVELOPER_DIR=#{ENV['DEVELOPER_DIR']}"
 
     work    = Dir.mktmpdir("#{APP_NAME}-ipa-")
