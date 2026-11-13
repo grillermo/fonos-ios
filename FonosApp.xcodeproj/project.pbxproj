@@ -78,6 +78,7 @@
 		CLN014000000000000000002 /* ModelProbeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN014000000000000000001 /* ModelProbeSheet.swift */; };
 		CLN015000000000000000002 /* ScenarioImporter+Workflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN015000000000000000001 /* ScenarioImporter+Workflow.swift */; };
 		CLN016000000000000000002 /* ScenarioImporter+Decoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLN016000000000000000001 /* ScenarioImporter+Decoding.swift */; };
+		D2408DF2EFFA796D8214B795 /* DictusModels in Frameworks */ = {isa = PBXBuildFile; productRef = 792D0EFC3DE2408944C4BC3E /* DictusModels */; };
 		D606DE08D59E45DE56E8920A /* PendingRecording.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BF0DA12AFCC49DD543AE679 /* PendingRecording.swift */; };
 		D90100000000000000000001 /* FonosWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D90100000000000000000002 /* FonosWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		D991C580F57340F3BE3BDBE2 /* PendingRecordingAutoRetrier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 950B266CD0474539B8B1A319 /* PendingRecordingAutoRetrier.swift */; };
@@ -429,6 +430,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D2408DF2EFFA796D8214B795 /* DictusModels in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -765,6 +767,9 @@
 				D90100000000000000000009 /* PBXTargetDependency */,
 			);
 			name = FonosApp;
+			packageProductDependencies = (
+				792D0EFC3DE2408944C4BC3E /* DictusModels */,
+			);
 			productName = FonosApp;
 			productReference = BAC7AF7161324CE4AF50AD41 /* FonosApp.app */;
 			productType = "com.apple.product-type.application";
@@ -872,6 +877,9 @@
 				"zh-Hans",
 			);
 			mainGroup = EB7F26921B15416BBDBF911D;
+			packageReferences = (
+				97D2BBF1D98C75C60E24518F /* XCLocalSwiftPackageReference "Dictus" */,
+			);
 			productRefGroup = 4BD34BCD0DE7417A847A0D6B /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -1551,6 +1559,21 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		97D2BBF1D98C75C60E24518F /* XCLocalSwiftPackageReference "Dictus" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/Dictus;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		792D0EFC3DE2408944C4BC3E /* DictusModels */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 97D2BBF1D98C75C60E24518F /* XCLocalSwiftPackageReference "Dictus" */;
+			productName = DictusModels;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 11F387A36EAB42D7B29216FC /* Project object */;
 }

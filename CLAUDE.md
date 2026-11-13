@@ -8,7 +8,10 @@ Voice dictation app for iPhone. iOS companion to [fonos](https://github.com/etha
 - **Roadmap and priorities live in `docs/ROADMAP.md`** (local-only, gitignored).
   Read it before starting feature work — it records what to fix first (P0
   broken flows), what to port from desktop (P1), and standing decisions.
-- **Zero third-party dependencies.** Apple frameworks only. iOS 17+, Swift 6.
+- **Zero third-party dependencies, with one exception:** `Vendor/Dictus`
+  (vendored Dictus v2.0.0, MIT) brings WhisperKit and FluidAudio for on-device
+  speech-to-text, and only the main app links it. Everything else is Apple
+  frameworks only. iOS 17+, Swift 6 (the vendored package is Swift 5 mode).
 - **Data formats mirror fonos-core** (desktop repo): notebook export JSON,
   vocab books, scenario files. Reuse is contract-level (shared JSON shapes),
   not source-level — no UniFFI/Rust binding for now.
@@ -22,10 +25,11 @@ Voice dictation app for iPhone. iOS companion to [fonos](https://github.com/etha
 | Target | What |
 |---|---|
 | `FonosApp/` | Main SwiftUI app — Dictate / History / Notes / Settings tabs |
-| `FonosKeyboard/` | Dictation keyboard. Cannot record audio itself — talks to the main app over App Group IPC (`group.com.fonos.ios`, Darwin notifications + files); main app must be running (`BackgroundRecordingService`) |
+| `FonosKeyboard/` | Dictation keyboard. Cannot record audio itself — talks to the main app over App Group IPC (`group.me.chiq.fonos`, Darwin notifications + files); main app must be running (`BackgroundRecordingService`) |
 | `FonosWidget/` | Quick-record widget (Live Activity is a deliberate stub) |
 | `FonosIntents/` | Siri App Intents (`DictateIntent`, `RecordNoteIntent`) |
 | `FonosAppTests/` | Unit tests incl. Ratchet invariant suites |
+| `Vendor/Dictus/` | Vendored Dictus model code: downloads, Core ML engines, `OnDeviceModels` facade. See its `VENDORED.md` |
 
 Key flow: `DictationViewModel` → `AudioCaptureService` →
 `VoiceWorkflowPlanFactory` → `VoiceWorkflowEngine` → surface output adapters.
@@ -37,9 +41,14 @@ engine, then adapt the result into SwiftData.
 ## Build & test
 
 ```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+# SwiftPM clones fail under a global clone.defaultRemoteName; override it:
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=clone.defaultRemoteName GIT_CONFIG_VALUE_0=origin
+
+# ARCHS=arm64: FluidAudio's Rust library has no x86_64 Simulator slice.
 xcodebuild build -project FonosApp.xcodeproj -scheme FonosApp \
-  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
+  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 CODE_SIGNING_ALLOWED=NO
 
 xcodebuild test -project FonosApp.xcodeproj -scheme FonosApp \
-  -destination 'platform=iOS Simulator,name=iPhone 16'
+  -destination 'platform=iOS Simulator,name=iPhone 16e'
 ```
