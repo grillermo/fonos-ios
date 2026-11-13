@@ -1,0 +1,382 @@
+// DictusCore/Sources/DictusCore/AutocorrectDebugLog.swift
+// Debug-only autocorrect instrumentation.
+// The ENTIRE body of this file is wrapped in #if DEBUG — in Release builds,
+// nothing below exists in the binary. The API is also no-op by default in
+// Debug builds until the user toggles SharedKeys.autocorrectDebugLogging.
+//
+// WHY this is separate from LogEvent:
+// LogEvent is privacy-safe by design — cases like keyboardTextInserted have NO
+// content parameter. Adding events that log user-typed text would break that
+// invariant. AutocorrectDebugLog is the explicit, quarantined exception:
+// it logs user text ONLY in Debug builds ONLY when explicitly enabled.
+
+import Foundation
+
+/// Debug-only logger for autocorrect decisions. Release builds contain no code.
+///
+/// WHY #if DEBUG around the whole type:
+/// Xcode sets the DEBUG flag automatically for the Run/Debug configuration
+/// (dev builds via Run button) but NOT for Release/Archive configuration
+/// (TestFlight + App Store submissions). This guarantees zero risk of user
+/// text being logged in shipped builds — the code physically does not exist
+/// in the production binary. There is no runtime flag that can override this.
+#if DEBUG
+public enum AutocorrectDebugLog {
+
+    /// Whether debug logging is enabled at runtime.
+    /// Read from App Group so the toggle persists across keyboard/app launches.
+    /// Defaults to false — must be explicitly enabled in Settings.
+    private static var enabled: Bool {
+        AppGroup.defaults.bool(forKey: SharedKeys.autocorrectDebugLogging)
+    }
+
+    /// Reusable ISO timestamp formatter (same as PersistentLog).
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    // MARK: - Event API
+
+    /// An autocorrect decision was made on spacebar press.
+    /// - Parameters:
+    ///   - original: the word as typed by the user
+    ///   - corrected: the word inserted into the text (may equal original if no correction)
+    ///   - branch: which pipeline branch decided this ("accent", "contraction",
+    ///             "split-boundary", "split-bigram", "trie", "trie-ngram-rerank", "no-op")
+    ///   - prevWord: the previous complete word for context (or nil)
+    public static func autocorrectDecision(
+        original: String,
+        corrected: String,
+        branch: String,
+        prevWord: String?
+    ) {
+        guard enabled else { return }
+        let prev = prevWord.map { "\"\($0)\"" } ?? "nil"
+        write("AUTOCORRECT branch=\(branch) orig=\"\(original)\" corr=\"\(corrected)\" prev=\(prev)")
+    }
+
+    /// Autocorrect was skipped for a word.
+    /// - Parameters:
+    ///   - word: the word that was not corrected
+    ///   - reason: why ("already-valid", "contains-digit", "rejected-by-user",
+    ///             "disabled", "no-candidate")
+    public static func autocorrectSkipped(word: String, reason: String) {
+        guard enabled else { return }
+        write("AUTOCORRECT-SKIP word=\"\(word)\" reason=\(reason)")
+    }
+
+    /// The trySplit() method's candidate evaluation summary.
+    /// Logged once per spellCheck call that reaches the split stage.
+    public static func splitEvaluation(
+        word: String,
+        boundaryBest: String?,
+        bigramBest: String?,
+        winner: String?
+    ) {
+        guard enabled else { return }
+        let boundary = boundaryBest.map { "\"\($0)\"" } ?? "nil"
+        let bigram = bigramBest.map { "\"\($0)\"" } ?? "nil"
+        let win = winner.map { "\"\($0)\"" } ?? "nil"
+        write("SPLIT word=\"\(word)\" boundary=\(boundary) bigram=\(bigram) → \(win)")
+    }
+
+    /// N-gram rerank changed the correction.
+    /// Useful to diagnose bigram-based overrides that surprise the user.
+    ///
+    /// WHY the candidates are passed as pairs: a correction and its bigram score
+    /// are one fact, never read apart, and pairing them keeps the signature at
+    /// four parameters instead of six.
+    public static func bigramRerank(
+        word: String,
+        prevWord: String,
+        before: (correction: String, score: UInt16),
+        after: (correction: String, score: UInt16)
+    ) {
+        guard enabled else { return }
+        write("BIGRAM-RERANK word=\"\(word)\" prev=\"\(prevWord)\" "
+            + "\"\(before.correction)\"(\(before.score)) → \"\(after.correction)\"(\(after.score))")
+    }
+
+    /// Trie candidates returned by the spell check engine for a given word.
+    /// Logged when the trie produces corrections, so we can see the full candidate
+    /// list (not just the winner) and diagnose cases where the trie picks the
+    /// "wrong" candidate (e.g., ckavier → clapier when clavier exists).
+    public static func trieCandidates(word: String, correction: String,
+                                      correctionFreq: UInt16,
+                                      alternatives: [(String, UInt16)]) {
+        guard enabled else { return }
+        let alts = alternatives
+            .map { "\"\($0.0)\"(freq=\($0.1))" }
+            .joined(separator: ", ")
+        write("TRIE-CANDIDATES word=\"\(word)\" winner=\"\(correction)\"(freq=\(correctionFreq)) alts=[\(alts)]")
+    }
+
+    /// The autocorrect decision was actually applied to the text document
+    /// (user pressed space and the word was replaced). Distinct from
+    /// autocorrectDecision which also fires for suggestion-bar previews.
+    public static func autocorrectApplied(original: String, corrected: String, prevWord: String?) {
+        guard enabled else { return }
+        let prev = prevWord.map { "\"\($0)\"" } ?? "nil"
+        write("APPLIED orig=\"\(original)\" → \"\(corrected)\" prev=\(prev)")
+    }
+
+    /// The user rejected an autocorrection by tapping the "undo" slot in the
+    /// suggestion bar. Critical for discovering which corrections feel wrong
+    /// to users in real usage.
+    public static func autocorrectUndone(original: String, rejected: String) {
+        guard enabled else { return }
+        write("UNDO orig=\"\(original)\" rejected=\"\(rejected)\"")
+    }
+
+    /// The user refused an autocorrection at its position (#872): `by` is
+    /// "backspace", "undo" or "typed-word". The next word committed there is kept.
+    public static func autocorrectRefused(corrected: String, by: String) {
+        guard enabled else { return }
+        write("REFUSED corrected=\"\(corrected)\" by=\(by)")
+    }
+
+    /// A word replacement was aborted because the live context failed the
+    /// boundary-safety check (#191). This is the proxy-desync signature:
+    /// the pipeline decided on a correction but the document no longer ends
+    /// with the word it planned to replace.
+    public static func replacementAborted(word: String, reason: String, contextTail: String) {
+        guard enabled else { return }
+        write("AUTOCORRECT-ABORT word=\"\(word)\" reason=\(reason) ctx=\"\(contextTail)\"")
+    }
+
+    /// Snapshot of the live context right before an autocorrect replacement (#191).
+    public static func applyBefore(word: String, correction: String, prevWord: String?, contextTail: String) {
+        guard enabled else { return }
+        let prev = prevWord.map { "\"\($0)\"" } ?? "nil"
+        write("AUTOCORRECT-APPLY-BEFORE word=\"\(word)\" corr=\"\(correction)\" prev=\(prev) ctx=\"\(contextTail)\"")
+    }
+
+    /// Snapshot of the live context after the deletion pass of a replacement (#191).
+    public static func applyAfterDelete(contextTail: String) {
+        guard enabled else { return }
+        write("AUTOCORRECT-APPLY-AFTER-DELETE ctx=\"\(contextTail)\"")
+    }
+
+    /// Snapshot of the live context after inserting the correction + space (#191).
+    public static func applyAfterInsert(contextTail: String) {
+        guard enabled else { return }
+        write("AUTOCORRECT-APPLY-AFTER-INSERT ctx=\"\(contextTail)\"")
+    }
+
+    /// The measured cost of the arming check's proxy read (#530 criterion 6).
+    /// Two of these bracket every keyboard edit, so per-keystroke overhead is
+    /// roughly twice `meanUs` — minus the reads the handler already made.
+    public static func mirrorReadCost(samples: Int, meanMicros: Double, maxMicros: Double) {
+        guard enabled else { return }
+        write(String(
+            format: "MIRROR-READ-COST samples=%d meanUs=%.1f maxUs=%.1f",
+            samples, meanMicros, maxMicros
+        ))
+    }
+
+    // MARK: - Mirror suppression (#530 fix)
+
+    /// The mirror kept characters one of the keyboard's own edits does not account
+    /// for. Counting sites now correct their delete counts by `surplus`; only the
+    /// auto-period, which asks what a character is rather than how many there are,
+    /// refuses outright.
+    public static func mirrorSuspect(surplus: Int, before: Int, after: Int) {
+        guard enabled else { return }
+        write("MIRROR-SUSPECT surplus=+\(surplus) before=\(before) after=\(after)")
+    }
+
+    /// One automatic site refused to act. `site` is "autocorrect" or "full-stop".
+    public static func mirrorSuppressed(site: String, word: String, reason: String) {
+        guard enabled else { return }
+        write("MIRROR-SUPPRESSED site=\(site) word=\"\(word)\" reason=\(reason)")
+    }
+
+    /// A keyboard-inserted word boundary put the surplus behind it, so it can no
+    /// longer be inside anything the keyboard counts. The suspicion ends here —
+    /// this is the line that says how long it lasted and what it changed.
+    public static func mirrorSettled(reason: String, durationMs: Int) {
+        guard enabled else { return }
+        write("MIRROR-SETTLED reason=\(reason) durationMs=\(durationMs)")
+    }
+
+    /// The cursor went back past the boundary that settled a surplus, so the
+    /// phantom is inside reach again and the surplus is live once more.
+    public static func mirrorUnsettled(boundary: Int, length: Int, surplus: Int) {
+        guard enabled else { return }
+        write("MIRROR-UNSETTLED boundary=\(boundary) length=\(length) surplus=+\(surplus)")
+    }
+
+    /// The suppression ended. These are the numbers that say what the default
+    /// release cost the user, and #530 asks for them before anyone calls it right:
+    /// how long the keyboard stayed armed and how many spacebar presses it covered.
+    public static func mirrorReleased(
+        reason: String,
+        durationMs: Int,
+        spaces: Int,
+        suppressed: (corrections: Int, fullStops: Int)
+    ) {
+        guard enabled else { return }
+        write("MIRROR-RELEASED reason=\(reason) durationMs=\(durationMs) spaces=\(spaces) "
+            + "corrections=\(suppressed.corrections) fullStops=\(suppressed.fullStops)")
+    }
+
+    // MARK: - Mirror divergence probe (#530)
+    //
+    // Three events, all greppable on the "MIRROR-" prefix, all carrying `seq` so a
+    // capture orders unambiguously even if two keyboard instances interleave.
+    // `off` is the whole measurement: how many characters the proxy's mirror holds
+    // that the keyboard's own edit history does not account for. off=0 is agreement.
+
+    /// One comparison of the keyboard's predicted tail against the proxy's mirror.
+    /// `off=+N` means the mirror carries N characters the keyboard never wrote —
+    /// #530's phantom. `off=?` means no alignment within ±6: an edit the keyboard
+    /// did not make, and the last trustworthy line is the one above.
+    ///
+    /// WHY tail and length travel as pairs: each is one fact read at one instant,
+    /// never used apart, and pairing them keeps the signature at five parameters —
+    /// the same reason `bigramRerank` above pairs its candidates with their scores.
+    public static func mirrorProbe(
+        seq: Int,
+        event: String,
+        mirror: (tail: String, length: Int),
+        shadow: (tail: String, length: Int),
+        offset: Int?
+    ) {
+        guard enabled else { return }
+        let off = offset.map { $0 > 0 ? "+\($0)" : "\($0)" } ?? "?"
+        write("MIRROR-PROBE seq=\(seq) ev=\(event) off=\(off) "
+            + "mir=\"\(mirror.tail)\" mlen=\(mirror.length) "
+            + "pred=\"\(shadow.tail)\" plen=\(shadow.length)")
+    }
+
+    /// The prediction was re-baselined on the mirror. Never silent: everything
+    /// after this line is measured against a new baseline, so a divergence that
+    /// predates it is no longer visible.
+    public static func mirrorAdopted(
+        seq: Int,
+        event: String,
+        reason: String,
+        tail: String,
+        length: Int
+    ) {
+        guard enabled else { return }
+        write("MIRROR-ADOPT seq=\(seq) ev=\(event) reason=\(reason) "
+            + "tail=\"\(tail)\" len=\(length)")
+    }
+
+    /// A non-zero offset returned to zero — the mirror and the keyboard agree again.
+    /// `after` names the event that preceded the recovery, which is the answer to
+    /// "does anything ever clear the desync, and what".
+    public static func mirrorReconverged(
+        seq: Int,
+        previousOffset: Int,
+        previousEvent: String,
+        event: String
+    ) {
+        guard enabled else { return }
+        let prev = previousOffset > 0 ? "+\(previousOffset)" : "\(previousOffset)"
+        write("MIRROR-RECONVERGE seq=\(seq) was=\(prev) after=\(previousEvent) ev=\(event)")
+    }
+
+    /// The host field's input traits changed the autocorrect/suggestions policy (#200).
+    /// Logged once per policy change (not per keystroke).
+    public static func hostPolicy(
+        autocorrectAllowed: Bool,
+        suggestionsAllowed: Bool,
+        reason: String
+    ) {
+        guard enabled else { return }
+        write("HOST-TRAITS autocorrect=\(autocorrectAllowed) suggestions=\(suggestionsAllowed) reason=\(reason)")
+    }
+
+    // MARK: - User dictionary (#307)
+    //
+    // The counting half of each event below is in LogEvent and ships in every
+    // build. These add the words, which is why they are here and nowhere else.
+
+    /// A word entered the personal dictionary. `usageCount` is the count it
+    /// entered with, `learnedCount` the size of the dictionary after the write —
+    /// both repeated from the privacy-safe line so this one reads on its own.
+    public static func userDictionaryLearned(word: String, usageCount: Int, learnedCount: Int) {
+        guard enabled else { return }
+        write("USERDICT-LEARN word=\"\(word)\" count=\(usageCount) learnedCount=\(learnedCount)")
+    }
+
+    /// The cap overflowed and these words were dropped (#304).
+    public static func userDictionaryEvicted(words: [String]) {
+        guard enabled else { return }
+        write("USERDICT-EVICT words=[\(quoted(words))]")
+    }
+
+    /// The dictionary was cleared, and what it held when it was.
+    public static func userDictionaryReset(words: [String]) {
+        guard enabled else { return }
+        write("USERDICT-RESET words=[\(quoted(words))]")
+    }
+
+    /// The words a load stamped as legacy entries (#304). This is the line that
+    /// says, by name, which vocabulary an install carried across the update.
+    public static func userDictionaryMigrated(words: [String]) {
+        guard enabled else { return }
+        write("USERDICT-MIGRATE words=[\(quoted(words))]")
+    }
+
+    /// The words a load discarded for going unused too long (#287).
+    public static func userDictionaryStaleDiscarded(words: [String]) {
+        guard enabled else { return }
+        write("USERDICT-STALE words=[\(quoted(words))]")
+    }
+
+    /// The words the one-shot prune dropped for already being in the base
+    /// dictionary (#287). This is the line that tells a given user exactly what
+    /// the migration took off them.
+    public static func userDictionaryPruned(words: [String]) {
+        guard enabled else { return }
+        write("USERDICT-PRUNE words=[\(quoted(words))]")
+    }
+
+    /// Words as a sorted, quoted, comma-separated list.
+    ///
+    /// WHY sorted: dictionary iteration order is not stable across runs, so an
+    /// unsorted list makes two exports of the same dictionary look different.
+    /// Only ever called past a `guard enabled`, so the cost is a debug build's.
+    private static func quoted(_ words: [String]) -> String {
+        words.sorted().map { "\"\($0)\"" }.joined(separator: ", ")
+    }
+
+    /// Free-form note (use sparingly — prefer typed events above).
+    public static func note(_ message: String) {
+        guard enabled else { return }
+        write("NOTE \(message)")
+    }
+
+    // MARK: - Writing
+
+    private static func write(_ body: String) {
+        let timestamp = isoFormatter.string(from: Date())
+        let src = PersistentLog.source
+        let line = "[\(timestamp)] DEBUG   [keyboard] <\(src)> \(body)\n"
+        appendToLogFile(line)
+    }
+
+    /// Appends to the same file PersistentLog uses, so logs appear together in exports.
+    private static func appendToLogFile(_ line: String) {
+        guard let url = PersistentLog.fileURL else { return }
+        let coordinator = NSFileCoordinator()
+        var error: NSError?
+        coordinator.coordinate(writingItemAt: url, options: .forMerging, error: &error) { coordURL in
+            if !FileManager.default.fileExists(atPath: coordURL.path) {
+                FileManager.default.createFile(atPath: coordURL.path, contents: nil)
+            }
+            guard let handle = try? FileHandle(forWritingTo: coordURL) else { return }
+            handle.seekToEndOfFile()
+            if let data = line.data(using: .utf8) {
+                handle.write(data)
+            }
+            handle.closeFile()
+        }
+    }
+}
+#endif

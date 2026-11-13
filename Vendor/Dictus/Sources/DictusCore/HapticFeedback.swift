@@ -1,0 +1,233 @@
+// DictusCore/Sources/DictusCore/HapticFeedback.swift
+// Haptic feedback helpers for dictation recording lifecycle events.
+#if canImport(UIKit)
+import UIKit
+#endif
+
+/// Provides distinct haptic feedback for key dictation events.
+///
+/// WHY this lives in DictusCore:
+/// Both DictusApp (RecordingView) and DictusKeyboard (mic button, transcription insert)
+/// use the same haptic patterns. Centralizing them ensures consistent tactile feedback
+/// across both targets.
+///
+/// WHY #if canImport(UIKit):
+/// DictusCore is a Swift package that compiles on macOS for testing (swift test).
+/// UIKit is only available on iOS. The #if guard prevents build failures during
+/// macOS-based SPM test runs while keeping the code available on iOS targets.
+///
+/// WHY pre-allocated static generators:
+/// Creating a new UIImpactFeedbackGenerator per call adds 2-5ms latency because the
+/// Taptic Engine needs to spin up. Static instances stay warm, and calling .prepare()
+/// after each use re-primes the hardware for the next tap with zero perceptible delay.
+///
+/// WHY three distinct patterns:
+/// - recordingStarted: medium impact -- user needs to feel that recording is actively happening
+/// - recordingStopped: light impact -- subtle confirmation that recording stopped
+/// - textInserted: soft impact -- one rounded tap when transcribed text appears (#711)
+/// - keyTapped: light impact -- matches native iOS keyboard tactile feel
+/// - trackpadActivated: medium impact -- confirms spacebar trackpad mode activation
+public enum HapticFeedback {
+
+    // MARK: - Pre-allocated generators
+
+    #if canImport(UIKit) && !os(macOS)
+    /// Light impact generator for key taps and subtle feedback.
+    /// Static allocation avoids 2-5ms per-call overhead from creating new generators.
+    private static let lightGenerator = UIImpactFeedbackGenerator(style: .light)
+
+    /// Medium impact generator for recording events and trackpad activation.
+    private static let mediumGenerator = UIImpactFeedbackGenerator(style: .medium)
+
+    /// Soft impact generator for text insertion: one rounded tap, unlike any other
+    /// event's feel (#711).
+    private static let softGenerator = UIImpactFeedbackGenerator(style: .soft)
+
+    /// Notification generator for success/error feedback (purchase done, action refused).
+    private static let notificationGenerator = UINotificationFeedbackGenerator()
+
+    /// Selection feedback generator for cursor movement during trackpad drag.
+    /// UISelectionFeedbackGenerator produces the same subtle "tick" Apple uses
+    /// for pickers and the native cursor — distinct from impact feedback,
+    /// specifically designed for discrete selection changes.
+    private static let selectionGenerator = UISelectionFeedbackGenerator()
+    #endif
+
+    // MARK: - Cached enabled state
+
+    /// Cached haptic enabled state. Initialized once, refreshed on keyboard appear.
+    ///
+    /// WHY cached: Reading UserDefaults on every key tap adds ~0.5-1ms overhead.
+    /// For a 16.67ms frame budget (60fps), that's 3-6% of the budget wasted.
+    /// Caching eliminates this per-tap cost entirely.
+    ///
+    /// WHY `object(forKey:) as? Bool ?? true` instead of `bool(forKey:)`:
+    /// `bool(forKey:)` returns false when the key has never been set.
+    /// The correct default is true (haptics enabled out of the box).
+    /// `object(forKey:)` returns nil for missing keys, letting us provide the right default.
+    #if canImport(UIKit) && !os(macOS)
+    private static var _isEnabled: Bool = {
+        let defaults = UserDefaults(suiteName: AppGroup.identifier)
+        return defaults?.object(forKey: SharedKeys.hapticsEnabled) as? Bool ?? true
+    }()
+
+    /// Refresh cached enabled state from UserDefaults.
+    /// Call on keyboard appear (KeyboardRootView.onAppear) and when
+    /// settings-changed notification arrives.
+    ///
+    /// WHY not just cache forever: User may toggle haptics off in Settings.
+    /// Refreshing on keyboard appear (which fires every time the keyboard opens)
+    /// ensures staleness is at most one keyboard session.
+    public static func refreshEnabledState() {
+        let defaults = UserDefaults(suiteName: AppGroup.identifier)
+        _isEnabled = defaults?.object(forKey: SharedKeys.hapticsEnabled) as? Bool ?? true
+    }
+
+    private static func isEnabled() -> Bool {
+        return _isEnabled
+    }
+
+    /// Prime the Taptic Engine for the next tap. Call on every touchDown.
+    ///
+    /// WHY on touchDown: The Taptic Engine has a ~2ms cold-start if not primed.
+    /// Calling prepare() on every touchDown ensures the engine is ready for
+    /// the NEXT tap even during rapid typing (>6 taps/second).
+    public static func prepareForNextTap() {
+        selectionGenerator.prepare()
+    }
+    #endif
+
+    /// Prepare all generators for immediate use.
+    /// Call this once at keyboard load (e.g., in KeyboardRootView.onAppear) so the
+    /// first key tap has zero latency. Each generator's .prepare() tells the Taptic
+    /// Engine to spin up in advance.
+    public static func warmUp() {
+        #if canImport(UIKit) && !os(macOS)
+        lightGenerator.prepare()
+        mediumGenerator.prepare()
+        softGenerator.prepare()
+        notificationGenerator.prepare()
+        selectionGenerator.prepare()
+        #endif
+    }
+
+    /// Medium impact feedback when recording begins.
+    public static func recordingStarted() {
+        #if canImport(UIKit) && !os(macOS)
+        guard isEnabled() else { return }
+        mediumGenerator.impactOccurred()
+        mediumGenerator.prepare()
+        #endif
+    }
+
+    /// Light impact feedback when recording stops.
+    public static func recordingStopped() {
+        #if canImport(UIKit) && !os(macOS)
+        guard isEnabled() else { return }
+        lightGenerator.impactOccurred()
+        lightGenerator.prepare()
+        #endif
+    }
+
+    /// Soft impact feedback when transcribed text is inserted into the text field.
+    ///
+    /// WHY soft, not the success notification (#711): `.success` is a double tap, one
+    /// of the strongest patterns UIKit has, and it played on every dictation right
+    /// after the stop tap. Picked on device among all nine UIKit presets.
+    public static func textInserted() {
+        #if canImport(UIKit) && !os(macOS)
+        guard isEnabled() else { return }
+        softGenerator.impactOccurred()
+        softGenerator.prepare()
+        #endif
+    }
+
+    /// Success notification when a Pro purchase completes, as the paywall's checkmark
+    /// settles. Kept on `.success` when insertion moved to `.soft` (#711): a purchase
+    /// is rare and notable, which is what the double tap is for.
+    public static func purchaseSucceeded() {
+        #if canImport(UIKit) && !os(macOS)
+        guard isEnabled() else { return }
+        notificationGenerator.notificationOccurred(.success)
+        notificationGenerator.prepare()
+        #endif
+    }
+
+    /// Light impact when a shared voice note transcript reaches a keyboard on screen
+    /// (#637). Once per note, as the ☰ takes its halo (#639): something arrived,
+    /// nothing is asked of the user.
+    public static func voiceNoteArrived() {
+        #if canImport(UIKit) && !os(macOS)
+        guard isEnabled() else { return }
+        lightGenerator.impactOccurred()
+        lightGenerator.prepare()
+        #endif
+    }
+
+    /// Error notification feedback when an action is refused (e.g. mic tap during a model load).
+    public static func actionRefused() {
+        #if canImport(UIKit) && !os(macOS)
+        guard isEnabled() else { return }
+        notificationGenerator.notificationOccurred(.error)
+        notificationGenerator.prepare()
+        #endif
+    }
+
+    /// Selection feedback for keyboard key taps.
+    ///
+    /// WHY selectionGenerator instead of lightGenerator:
+    /// UIImpactFeedbackGenerator(.light) feels noticeably heavier than Apple's
+    /// native keyboard. UISelectionFeedbackGenerator produces the subtle "tick"
+    /// Apple uses for pickers — closer to the native keyboard feel.
+    public static func keyTapped() {
+        #if canImport(UIKit) && !os(macOS)
+        guard isEnabled() else { return }
+        selectionGenerator.selectionChanged()
+        selectionGenerator.prepare()
+        #endif
+    }
+
+    /// Light impact feedback when autocorrect changes a word.
+    /// Slightly stronger than a normal key tap to signal "something changed".
+    public static func autocorrectApplied() {
+        #if canImport(UIKit) && !os(macOS)
+        guard isEnabled() else { return }
+        lightGenerator.impactOccurred()
+        lightGenerator.prepare()
+        #endif
+    }
+
+    /// Medium impact feedback for spacebar trackpad mode activation.
+    /// Provides a stronger haptic cue when the user activates cursor movement
+    /// mode by long-pressing the spacebar (Plan 04 feature).
+    public static func trackpadActivated() {
+        #if canImport(UIKit) && !os(macOS)
+        guard isEnabled() else { return }
+        mediumGenerator.impactOccurred()
+        mediumGenerator.prepare()
+        #endif
+    }
+
+    /// Medium impact when a long press is recognised and opens something under the
+    /// finger: the Home mic's Smart Mode dial (#489). Heavier than the selection tick that
+    /// follows on each mode change, so the hand feels "it opened" and then "it moved".
+    public static func longPressRecognized() {
+        #if canImport(UIKit) && !os(macOS)
+        guard isEnabled() else { return }
+        mediumGenerator.impactOccurred()
+        mediumGenerator.prepare()
+        #endif
+    }
+
+    /// Selection tick feedback for each character of cursor movement during trackpad drag.
+    /// Uses UISelectionFeedbackGenerator — the same subtle "tick" Apple uses for pickers
+    /// and the native cursor. This is the #1 factor for perceived trackpad fluidity.
+    /// Pre-arms the generator immediately after firing for zero-latency on the next tick.
+    public static func cursorMoved() {
+        #if canImport(UIKit) && !os(macOS)
+        guard isEnabled() else { return }
+        selectionGenerator.selectionChanged()
+        selectionGenerator.prepare()
+        #endif
+    }
+}

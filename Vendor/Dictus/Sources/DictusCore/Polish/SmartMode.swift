@@ -1,0 +1,460 @@
+// DictusCore/Sources/DictusCore/Polish/SmartMode.swift
+// A Smart Mode: one record, not an enum case (issue #79).
+import Foundation
+
+/// The three strings one Smart Mode sends to the engine.
+///
+/// Split out from `SmartMode` because they are the engine's business and nothing
+/// else's, and because the user turn is not decoration: `AppleFoundationModelsPolishEngine`
+/// used to hardcode *"Polish this text. Output only the polished version, nothing
+/// else."* around every input. Asking a model to produce notes under an instruction
+/// that says "polish" is self-defeating, so the framing became per-mode (#79).
+public struct SmartModePrompt: Equatable, Sendable, Codable {
+
+    /// The system prompt. One per mode, written in English, instructing the model
+    /// to answer in the language of the input — except translation, which names its
+    /// target. This is the #239 auto-prompt pattern, applied so a mode costs one
+    /// file instead of one file per supported language.
+    public let instructions: String
+
+    /// The imperative that opens the user turn, e.g. "Turn this text into notes."
+    public let userInstruction: String
+
+    /// The trailing marker that biases the model toward continuing the transform
+    /// rather than starting a chat reply, e.g. "Notes:". Same device as the
+    /// "Polished output:" marker the polish framing has always used.
+    public let outputMarker: String
+
+    /// Below this many characters, an accepted output's blank lines become single
+    /// line breaks (#572). `nil` — every mode but `Message` — leaves the layout alone.
+    ///
+    /// ### Why it exists
+    ///
+    /// `Message`'s decision 6 asks for short blocks separated by a blank line, one per
+    /// beat. It was written from the maintainer's own hand-typed target, 184
+    /// characters in three beats, and it reads right there. On a 60-character message
+    /// to a partner the model produced three blocks and two blank lines, and the
+    /// maintainer's verdict on device (2026-09-18) was *"un peu trop d'espace"*. Asked
+    /// how he would have typed it himself, he chose the beats on separate lines with
+    /// no blank line between them.
+    ///
+    /// ### Why in code and not in the prompt
+    ///
+    /// Every prompt round on this mode moved another behaviour — round 2's short
+    /// example taught the model to echo a short input, which cost round 1's cuts — and
+    /// the prompt sits at its stated budget. A deterministic pass after acceptance
+    /// cannot move anything the model does, is tested exactly, and the guardrails have
+    /// already judged the model's own output by the time it runs.
+    ///
+    /// ### Why 100
+    ///
+    /// A judgement call between three measured points, not a measurement: the
+    /// 60-character message the maintainer wanted tighter, a 139-character one he
+    /// did not flag, and his own 184-character target, which keeps its blank lines.
+    public let shortOutputBlockLimit: Int?
+
+    /// The system prompt with its worked examples in the transcript's language, keyed
+    /// by `NLLanguage` code (`"de"`, `"ja"`, `"zh-Hant"`, or a base subtag like
+    /// `"zh"`). `nil` — every mode that has not climbed there — sends `instructions`
+    /// whatever the language.
+    ///
+    /// ### Why it exists (#587, decision 5 step 2)
+    ///
+    /// The rules stay one English text, but the model reads the worked examples as
+    /// the template, language included: `Structuré` with an English example set
+    /// translated a Danish dictation into English 3 of 3, and #571 measured `Résumé`
+    /// returning English on 28 of 40 outputs across four languages with English and
+    /// French examples, and on 0 of 40 once the two examples were in the transcript's
+    /// language. So a mode can carry one example set per language, and
+    /// `instructions(forTranscriptLanguage:)` picks the one that matches.
+    ///
+    /// ### What it costs
+    ///
+    /// The record crosses the App Group inside the per-dictation snapshot, so a mode
+    /// that fills this carries every language's prompt with it — about 16 × 3 KB for
+    /// a mode localised into every Apple FM language. That is the price of keeping
+    /// the prompt a property of the record rather than a lookup the keyboard could
+    /// resolve differently from the app, and it is paid once per dictation.
+    public let localizedInstructions: [String: String]?
+
+    public init(instructions: String, userInstruction: String, outputMarker: String,
+                shortOutputBlockLimit: Int? = nil,
+                localizedInstructions: [String: String]? = nil) {
+        self.instructions = instructions
+        self.userInstruction = userInstruction
+        self.outputMarker = outputMarker
+        self.shortOutputBlockLimit = shortOutputBlockLimit
+        self.localizedInstructions = localizedInstructions
+    }
+
+    /// The system prompt for a transcript in `code`: the exact code's entry, else its
+    /// base subtag's (`"zh-Hans"` → `"zh"`, `"pt-BR"` → `"pt"`), else `instructions`.
+    ///
+    /// `nil` — no language known, as at prewarm on the auto path — is the fallback.
+    /// So is a language the mode has no set for: the fallback is the prompt that was
+    /// measured before any set existed, never a guess at a neighbouring language.
+    public func instructions(forTranscriptLanguage code: String?) -> String {
+        guard let code, let table = localizedInstructions else { return instructions }
+        if let exact = table[code] { return exact }
+        let base = code.split(whereSeparator: { $0 == "-" || $0 == "_" }).first.map(String.init)
+        if let found = base.flatMap({ table[$0] }) { return found }
+        // Norwegian arrives under two codes: `NLLanguageRecognizer` answers `nb`, and a
+        // locale or a transcription engine can say `no`, the macrolanguage. The tables
+        // store Bokmål under `nb`, so `no` would otherwise fall back silently (found by
+        // CodeRabbit on PR #589).
+        if base == "no", let bokmal = table["nb"] { return bokmal }
+        return instructions
+    }
+
+    /// Hand-written so the layout field can be absent, for the reason
+    /// `PolishAcceptanceContract.init(from:)` is: a prompt crosses the App Group inside
+    /// the per-dictation snapshot, and an app update can land between the write and
+    /// the read. Absent means `nil`, which is exactly the layout before #572.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.instructions = try container.decode(String.self, forKey: .instructions)
+        self.userInstruction = try container.decode(String.self, forKey: .userInstruction)
+        self.outputMarker = try container.decode(String.self, forKey: .outputMarker)
+        self.shortOutputBlockLimit = try container.decodeIfPresent(
+            Int.self, forKey: .shortOutputBlockLimit
+        )
+        // Absent means `nil`: a snapshot written before #587 sends the one prompt it
+        // was written with, whatever the transcript's language.
+        self.localizedInstructions = try container.decodeIfPresent(
+            [String: String].self, forKey: .localizedInstructions
+        )
+    }
+}
+
+/// What a mode puts on the mic pill's corner badge when it is armed (#79).
+///
+/// ### Why this is not just `icon`
+///
+/// The badge is an 18 pt disc and the only thing on screen while the user types, so
+/// it has to answer "which mode" on its own — the fan and the centre label are both
+/// gone by then. A symbol answers that for Notes. It does not for Translate: the
+/// glyph is a globe, and **a globe is the same globe whatever the target language**.
+/// The moment a user pins → EN and → ES, which is the point of pinning three modes,
+/// two identical badges mean two different transformations. The target's code does
+/// not have that problem and is two characters wide.
+///
+/// It stays separate from `displayName` because the name is sized for a fan row —
+/// "→ EN" with its arrow — and the arrow is noise inside a disc that is already
+/// attached to the button it modifies.
+public enum SmartModeBadge: Equatable, Sendable, Codable {
+
+    /// An SF Symbol, for modes a glyph can name.
+    case symbol(String)
+
+    /// One or two characters, for modes that a glyph cannot tell apart.
+    case text(String)
+}
+
+/// What the user receives when a mode's transformation is refused and **nothing the
+/// engine produced can reach the document** — a context overflow (#270), a guardrail
+/// rejection, or an engine throw (#580).
+///
+/// ### Why this is not simply the fail-closed rule
+///
+/// `PolishTask.isSmart` states the rule the rest of the pipeline follows: a Smart
+/// Mode must never silently insert untransformed text, so a refusal inserts nothing.
+/// That rule exists to stop a *wrong transformation* reaching the document. Three
+/// non-successes carry no such risk, for the same reason by three different routes:
+///
+/// - `.exceededContextBudget` is decided before the engine is called, so no
+///   transformation was ever attempted.
+/// - `.rejectedGuardrail` throws the engine's output away whole. What is inserted in
+///   its place is `preprocessed` — the transcript with the verbal-punctuation
+///   pre-pass applied, a deterministic function of the user's own words. Nothing
+///   that half-happened can reach the document.
+/// - `.engineFailed` was handed nothing to throw away: the engine call is a single
+///   batch `respond()` that returns its whole content or throws, and the `catch` that
+///   produces this outcome builds its result with `engineOutput: nil`. A partial
+///   generation has no route into the pipeline, let alone into the document.
+///
+/// In all three, the risk is absent by construction and what the user loses by
+/// refusing is the same thing: the structuring, not the words. And the cost of
+/// refusing anyway is not symmetrical:
+///
+/// - **List** overflows at roughly 4,500-4,900 characters, and List is precisely
+///   the mode built for a long rambling dictation. Refusing costs the user the whole
+///   text; inserting the deterministic floor costs them the bullets. Same language,
+///   same content, just not restructured. #580 measured the guardrail half of this
+///   on `Structured`: 9 runs, 3 refused, one of them 1,337 characters of ordinary
+///   French that the user dictated for two minutes and never saw again.
+/// - **Translate → X** cannot degrade at all. The floor *is* the wrong language, so
+///   inserting it is the exact scenario #79 names as the worst available: French
+///   sent to an American client, with a transient toolbar line as the only warning.
+///
+/// Both cases show a message; neither is silent. That is what made this block B's
+/// decision rather than something block A could have inherited (#79, 2026-08-24).
+///
+/// ### What this field does NOT license
+///
+/// `.cancelled` stays closed because the user stopped the dictation themselves, and
+/// what they want in the field then is a question neither #79 nor #580 asked.
+/// `.engineUnavailable` describes a process that will not call the model again for
+/// its lifetime, which is a different conversation to have with the user (#315).
+/// `.unsupportedInputLanguage` (#490) never reached the engine either, yet stays
+/// closed too: its floor is text in a language the model cannot read, so "at least
+/// the words are there" is not the offer it is here. All three ignore this field.
+/// The gate is in `PolishPipeline.degradesToFloor`.
+///
+/// `.engineFailed` used to be listed here, excluded as a "partial generation". It
+/// never was one — see the third bullet above, which is a reading of the code rather
+/// than of the outcome's name — and the exclusion was withdrawn on 2026-09-20 after a
+/// device capture lost 107 characters of French to it under `Structured`.
+///
+/// ### Why a field rather than a derivation
+///
+/// `PolishAcceptanceContract.outputLanguage` already discriminates the two cases
+/// today — `.fixed(_)` cannot degrade, `.sameAsInput` can — and deriving it would
+/// work for this catalogue. It is a field so that a custom mode (#269) has to answer
+/// the question rather than inherit an answer from a property chosen for an
+/// unrelated reason. A mode that condenses *and* translates would break the
+/// derivation silently; it cannot break an answer someone had to write down.
+///
+/// **Named `SmartModeOverflowBehaviour` until #580**, when the guardrail and engine-
+/// throw cases joined the overflow one and the old name stopped describing the
+/// question. The raw values
+/// are unchanged, and so is the JSON key the record is written under — see
+/// `SmartMode.CodingKeys`.
+public enum SmartModeFloorBehaviour: String, Equatable, Sendable, Codable {
+
+    /// Insert the deterministic floor — the raw text with verbal punctuation
+    /// applied — and say the mode did not run.
+    case insertRawText
+
+    /// Insert nothing and say why. The floor would be wrong, not merely plainer.
+    case insertNothing
+}
+
+/// One Smart Mode.
+///
+/// ### Data, not enum cases
+///
+/// A mode is a record — identifier, prompt, acceptance contract, display name,
+/// icon, pinned flag. v1 ships built-ins only (`SmartModeCatalogue`), but they are
+/// already records, so the custom-mode editor (#269) adds a row rather than forcing
+/// a refactor, and the whole record can cross the App Group with the dictation it
+/// governs.
+///
+/// ### What is persisted, and what is not
+///
+/// The *armed selection* persists as an identifier (`SmartModeStore`); the record
+/// itself is rebuilt from the catalogue each time it is needed. That is deliberate:
+/// persisting a built-in's prompt would freeze whichever version of it was current
+/// when the user first armed the mode, and prompts are versioned with the binary.
+///
+/// The one place a whole record *is* written down is the per-dictation snapshot —
+/// taken in DictusApp at transcription start and read by the keyboard extension,
+/// which runs the engine since #361. It is a snapshot for exactly the reason
+/// `TranscriptionLanguagePolicy` is one (#226): the user must not be able to change
+/// the mode mid-transcription and have the transformation disagree with what was
+/// transcribed. Re-reading the armed mode on the far side would reintroduce that in
+/// the worst possible place, since the keyboard is where the mode is armed.
+public struct SmartMode: Equatable, Sendable, Codable, Identifiable {
+
+    /// Stable identifier. Also the session-cache key component and what the metrics
+    /// event records, so it must not change once a mode has shipped.
+    public let id: String
+
+    /// Name shown in the fan, in the recording overlay, and in the app's mode list.
+    public let displayName: String
+
+    /// SF Symbol name. Used wherever the mode appears next to its own name — the fan
+    /// row, the centre label, the recording overlay, the app's mode list.
+    public let icon: String
+
+    /// What the armed mic pill's corner badge shows. Defaults to `icon`, because for
+    /// every mode a glyph can name, that is the right answer and the one that keeps
+    /// the two surfaces saying the same thing.
+    public let badge: SmartModeBadge
+
+    /// What the engine is told to do.
+    public let prompt: SmartModePrompt
+
+    /// What the engine is allowed to hand back. Per mode, because the faithful-polish
+    /// contract rejects half the catalogue by construction — see
+    /// `PolishAcceptanceContract`.
+    public let contract: PolishAcceptanceContract
+
+    /// Whether the user put this mode in the keyboard's long-press fan.
+    ///
+    /// Part of the record because the fan is chosen per mode, but stored separately
+    /// from it — `SmartModeStore.pinnedIdentifiers` is the authority, and
+    /// `SmartModeCatalogue` stamps this field when it builds the list. A record that
+    /// travelled with a dictation carries whatever the flag was at snapshot time and
+    /// nothing reads it there.
+    public var isPinned: Bool
+
+    /// What the user gets when this mode's transformation is refused and the engine's
+    /// output cannot reach the document. See `SmartModeFloorBehaviour` for why it is
+    /// a field, and which refusals consult it.
+    public let floorBehaviour: SmartModeFloorBehaviour
+
+    /// Shortest transcript, in characters, this mode runs on. Below it the mode is
+    /// **skipped, not refused**: the dictation takes the path it would take with no
+    /// mode armed, and the keyboard says so in one sentence. `nil` — every mode but
+    /// `Structuré` — runs on any length.
+    ///
+    /// ### Why a mode can decline short input (#587, round 4)
+    ///
+    /// A mode that structures text has nothing to structure in one sentence, and on
+    /// device that is where it did damage: `Comment tu vas aujourd'hui ?` (28
+    /// characters) came back as `Comment vais-je aujourd'hui ?`, and a 90-character line
+    /// gained a leading `Voici`. See `SmartModeCatalogue.structured` for the floor and
+    /// the corpus it was read from.
+    ///
+    /// It is a property of the mode rather than a pipeline constant because it is a
+    /// product answer about the mode: `Message` exists for short text and must never
+    /// skip it, and `Traduction` of a short message is the reason to share one.
+    /// `Résumé` carries the same 200 since #650: one sentence has no gist to extract,
+    /// and the voice note path, which had its own global floor, now reads this one.
+    /// `Liste` declines short input too, but after the model has run: see
+    /// `minimumListItems`.
+    public let minimumInputCharacters: Int?
+
+    /// Fewest list items this mode's output must carry to be inserted. A one-item list
+    /// is **declined, not refused**: the dictation gets the path it would take with no
+    /// mode armed, with the same notice and export event as an input under
+    /// `minimumInputCharacters`. An output with no list at all, or from an engine that
+    /// does not generate, is not judged. `SmartModeListCheck` holds the rule. `nil`
+    /// — every mode but `Liste` — accepts any shape.
+    ///
+    /// ### Why `Liste` checks its output rather than its input (#573, decision 5 amended)
+    ///
+    /// A list of one item is a title over a lone dash-line, which is the defect the
+    /// maintainer named. The first answer was a 100-character input floor, measured on
+    /// his exports; the device round of 2026-10-01 showed its cost on the mode's most
+    /// natural use: `Liste de courses pour ce midi carottes, patates, choux et quino.`,
+    /// 64 characters and four items, was skipped. Length cannot see how many items a
+    /// sentence holds; the model's own output can. The price is one model call (about
+    /// three seconds) on a one-sentence dictation armed in `Liste`, accepted by the
+    /// maintainer.
+    public let minimumListItems: Int?
+
+    public init(id: String,
+                displayName: String,
+                icon: String,
+                badge: SmartModeBadge? = nil,
+                prompt: SmartModePrompt,
+                contract: PolishAcceptanceContract,
+                floorBehaviour: SmartModeFloorBehaviour,
+                isPinned: Bool = false,
+                minimumInputCharacters: Int? = nil,
+                minimumListItems: Int? = nil) {
+        self.id = id
+        self.displayName = displayName
+        self.icon = icon
+        self.badge = badge ?? .symbol(icon)
+        self.prompt = prompt
+        self.contract = contract
+        self.floorBehaviour = floorBehaviour
+        self.isPinned = isPinned
+        self.minimumInputCharacters = minimumInputCharacters
+        self.minimumListItems = minimumListItems
+    }
+
+    /// Whether this mode runs on a transcript of `characters` characters.
+    public func runs(onInputOfLength characters: Int) -> Bool {
+        guard let floor = minimumInputCharacters else { return true }
+        return characters >= floor
+    }
+
+    // MARK: - Decoding
+
+    /// Hand-written so `floorBehaviour` can default rather than fail the whole
+    /// record.
+    ///
+    /// A `SmartMode` is written to the App Group inside the per-dictation snapshot,
+    /// and an app update can land between the write and the read — DictusApp
+    /// snapshots the mode, the user updates, the new keyboard extension decodes it.
+    /// A synthesised decoder would throw on the missing key, and
+    /// `KeyboardPolishCoordinator.storedSmartMode()` turns a throw into "no mode
+    /// armed", which for a translation means inserting the untranslated text. The
+    /// default is `.insertNothing` because that is the safe half of the choice: it
+    /// can cost a Notes dictation its text once, across one upgrade, where the other
+    /// default could send French to an American client.
+    ///
+    /// `encode(to:)` stays synthesised — it always writes every key.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.displayName = try container.decode(String.self, forKey: .displayName)
+        self.icon = try container.decode(String.self, forKey: .icon)
+        // Same upgrade-across-a-dictation argument as `floorBehaviour` below, with
+        // a cheaper default: a record written by the previous build has no badge, and
+        // `icon` is what that build drew. The worst case is a globe on the pill for
+        // one snapshot, not a lost transformation.
+        self.badge = try container.decodeIfPresent(SmartModeBadge.self, forKey: .badge)
+            ?? .symbol(self.icon)
+        self.prompt = try container.decode(SmartModePrompt.self, forKey: .prompt)
+        self.contract = try container.decode(PolishAcceptanceContract.self, forKey: .contract)
+        self.isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        self.floorBehaviour = try container.decodeIfPresent(
+            SmartModeFloorBehaviour.self, forKey: .floorBehaviour
+        ) ?? .insertNothing
+        // Absent means no floor: a snapshot written before #587 round 4 runs the mode
+        // on any length, which is what that build did.
+        self.minimumInputCharacters = try container.decodeIfPresent(
+            Int.self, forKey: .minimumInputCharacters
+        )
+        // Absent means no check: a snapshot written before #573's amendment inserts
+        // whatever shape the mode returned, which is what that build did.
+        self.minimumListItems = try container.decodeIfPresent(Int.self, forKey: .minimumListItems)
+    }
+
+    /// Written out rather than synthesised for one key only: `floorBehaviour` is
+    /// persisted as `"overflowBehaviour"`, the name it had before #580.
+    ///
+    /// The record is written to the App Group by DictusApp at transcription start and
+    /// read by the keyboard extension, and an app update can land between the two.
+    /// A synthesised `CodingKeys` would make the renamed property a *new* key, so a
+    /// snapshot taken by the previous build would decode through the
+    /// `decodeIfPresent` default above — `.insertNothing` — and the very dictation
+    /// this issue is about would insert nothing after all. Pinning the string costs
+    /// one enum and removes the window entirely.
+    ///
+    /// The cost of writing it out: a property added to `SmartMode` has to be added
+    /// here too. `init(from:)` above is hand-written for the same reason and carries
+    /// the same obligation.
+    private enum CodingKeys: String, CodingKey {
+        case id, displayName, icon, badge, prompt, contract, isPinned, minimumInputCharacters
+        case minimumListItems
+        case floorBehaviour = "overflowBehaviour"
+    }
+
+    /// The same record, with `prompt.instructions` resolved for a transcript in
+    /// `code` (#587). See `SmartModePrompt.instructions(forTranscriptLanguage:)`.
+    ///
+    /// The pipeline calls this once, before the engine, so the engine, the context
+    /// guard and the session cache all see the one string that is actually sent. The
+    /// identifier does not change: a mode is the same mode in every language, and the
+    /// metrics event keys on it.
+    public func resolvingExamples(forTranscriptLanguage code: String?) -> SmartMode {
+        let resolved = prompt.instructions(forTranscriptLanguage: code)
+        guard resolved != prompt.instructions else { return self }
+        return SmartMode(
+            id: id, displayName: displayName, icon: icon, badge: badge,
+            prompt: SmartModePrompt(
+                instructions: resolved,
+                userInstruction: prompt.userInstruction,
+                outputMarker: prompt.outputMarker,
+                shortOutputBlockLimit: prompt.shortOutputBlockLimit,
+                localizedInstructions: prompt.localizedInstructions
+            ),
+            contract: contract, floorBehaviour: floorBehaviour, isPinned: isPinned,
+            minimumInputCharacters: minimumInputCharacters,
+            minimumListItems: minimumListItems
+        )
+    }
+
+    /// The same record with its pinned flag set. Used by the catalogue when it
+    /// merges the stored pin list onto the built-in rows.
+    public func pinned(_ isPinned: Bool) -> SmartMode {
+        var copy = self
+        copy.isPinned = isPinned
+        return copy
+    }
+}
