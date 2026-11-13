@@ -49,7 +49,7 @@ step "Collecting app group, CoreData, and permission logs"
 xcrun simctl spawn "$SIM_ID" log show \
   --style compact \
   --last 30s \
-  --predicate 'process == "FonosApp" AND (eventMessage CONTAINS "group.com.fonos.ios" OR eventMessage CONTAINS "not entitled" OR eventMessage CONTAINS "NSCocoaErrorDomain" OR eventMessage CONTAINS "Failed to create file" OR eventMessage CONTAINS "microphone" OR eventMessage CONTAINS "Speech")' \
+  --predicate 'process == "FonosApp" AND (eventMessage CONTAINS "group.me.chiq.fonos" OR eventMessage CONTAINS "not entitled" OR eventMessage CONTAINS "NSCocoaErrorDomain" OR eventMessage CONTAINS "Failed to create file" OR eventMessage CONTAINS "microphone" OR eventMessage CONTAINS "Speech")' \
   > "$LOG_FILE" || true
 
 cat "$LOG_FILE"
