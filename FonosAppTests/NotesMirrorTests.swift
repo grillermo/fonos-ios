@@ -196,4 +196,30 @@ final class NotesMirrorTests {
         #expect(try text("Work.md") == "one")
         #expect(try text(NotesMirror.manifestName) == manifestBefore)
     }
+
+    @Test("a lost manifest reclaims files whose content is identical")
+    func lostManifestReclaimsIdenticalFiles() throws {
+        let books = [notebook("Work", markdown: "same")]
+        mirror.sync(books)
+        try FileManager.default.removeItem(at: root.appendingPathComponent(NotesMirror.manifestName))
+
+        let result = mirror.sync(books)
+
+        #expect(result == NotesMirror.Result(unchanged: 1))
+        #expect(try files() == [".fonos-mirror.json", "Work.md"])
+        #expect(try text(NotesMirror.manifestName).contains("Work.md"))
+    }
+
+    @Test("a lost manifest does not let two identical notebooks share a file")
+    func lostManifestKeepsDuplicatesApart() throws {
+        let a = notebook("Work", created: 0, markdown: "same")
+        let b = notebook("Work", created: 1, markdown: "same")
+        mirror.sync([a, b])
+        try FileManager.default.removeItem(at: root.appendingPathComponent(NotesMirror.manifestName))
+
+        let result = mirror.sync([a, b])
+
+        #expect(result == NotesMirror.Result(unchanged: 2))
+        #expect(try files() == [".fonos-mirror.json", "Work (2).md", "Work.md"])
+    }
 }

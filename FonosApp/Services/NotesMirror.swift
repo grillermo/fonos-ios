@@ -74,11 +74,11 @@ struct NotesMirror: Sendable {
 
     /// Assigns each notebook a filename, oldest first, so a later notebook with
     /// the same (case-insensitive) title gets `<name> (2).md` and keeps it.
-    /// `isTaken` reports names that are unavailable for other reasons, such as
-    /// an existing file this mirror does not own.
+    /// `isTaken` reports names that are unavailable to a given notebook for other
+    /// reasons, such as an existing file this mirror does not own.
     static func assignFilenames(
         _ notebooks: [Notebook],
-        isTaken: (String) -> Bool = { _ in false }
+        isTaken: (Notebook, String) -> Bool = { _, _ in false }
     ) -> [UUID: String] {
         let ordered = notebooks.sorted {
             ($0.createdAt, $0.id.uuidString) < ($1.createdAt, $1.id.uuidString)
@@ -88,7 +88,7 @@ struct NotesMirror: Sendable {
         for notebook in ordered {
             var name = "\(notebook.baseName).md"
             var suffix = 2
-            while taken.contains(name.lowercased()) || isTaken(name) {
+            while taken.contains(name.lowercased()) || isTaken(notebook, name) {
                 name = "\(notebook.baseName) (\(suffix)).md"
                 suffix += 1
             }
@@ -109,8 +109,13 @@ struct NotesMirror: Sendable {
         }
         let previous = readManifest()
         let owned = Set(previous.values.map { $0.lowercased() })
-        let assigned = Self.assignFilenames(notebooks) { name in
-            !owned.contains(name.lowercased()) && fileSystem.exists(root.appendingPathComponent(name))
+        let assigned = Self.assignFilenames(notebooks) { notebook, name in
+            guard !owned.contains(name.lowercased()) else { return false }
+            let url = root.appendingPathComponent(name)
+            guard fileSystem.exists(url) else { return false }
+            // With the manifest lost, a file holding exactly this notebook's
+            // content is the mirror's own earlier write: reclaim it.
+            return fileSystem.contents(of: url) != Data(notebook.markdown.utf8)
         }
         var manifest: [String: String] = [:]
 
