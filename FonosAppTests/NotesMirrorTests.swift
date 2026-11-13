@@ -9,13 +9,41 @@ import Foundation
 @testable import FonosApp
 
 @Suite("Notes mirror")
-struct NotesMirrorTests {
+final class NotesMirrorTests {
     private let root: URL
 
     init() throws {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("NotesMirrorTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    /// Plain file system that can be told to fail removals or to report the
+    /// manifest as unreadable.
+    private struct FlakyFileSystem: MirrorFileSystem {
+        var failRemoving: Set<String> = []
+        var manifestUnreadable = false
+        private let plain = PlainMirrorFileSystem()
+
+        func exists(_ url: URL) -> Bool { plain.exists(url) }
+
+        func contents(of url: URL) -> Data? {
+            if manifestUnreadable, url.lastPathComponent == NotesMirror.manifestName { return nil }
+            return plain.contents(of: url)
+        }
+
+        func write(_ data: Data, to url: URL) throws { try plain.write(data, to: url) }
+
+        func remove(_ url: URL) throws {
+            if failRemoving.contains(url.lastPathComponent) {
+                throw CocoaError(.fileWriteNoPermission)
+            }
+            try plain.remove(url)
+        }
     }
 
     private var mirror: NotesMirror { NotesMirror(root: root) }
@@ -128,5 +156,44 @@ struct NotesMirrorTests {
         mirror.sync([])
 
         #expect(FileManager.default.fileExists(atPath: victim.path))
+    }
+
+    @Test("a delete that fails after a rename is retried on the next run")
+    func failedDeleteIsRetried() throws {
+        let id = UUID()
+        mirror.sync([notebook("Old", id: id)])
+        let flaky = NotesMirror(root: root, fileSystem: FlakyFileSystem(failRemoving: ["Old.md"]))
+        let first = flaky.sync([notebook("New", id: id)])
+        #expect(first == NotesMirror.Result(written: 1, failed: 1))
+        #expect(try files() == [".fonos-mirror.json", "New.md", "Old.md"])
+
+        let second = mirror.sync([notebook("New", id: id)])
+        #expect(second.deleted == 1)
+        #expect(try files() == [".fonos-mirror.json", "New.md"])
+    }
+
+    @Test("an existing file the mirror does not own is never overwritten")
+    func foreignFileIsNotOverwritten() throws {
+        try "mine".write(to: root.appendingPathComponent("Ideas.md"), atomically: true, encoding: .utf8)
+        let result = mirror.sync([notebook("Ideas", markdown: "theirs")])
+        #expect(result == NotesMirror.Result(written: 1))
+        #expect(try text("Ideas.md") == "mine")
+        #expect(try text("Ideas (2).md") == "theirs")
+        mirror.sync([])
+        #expect(try files() == [".fonos-mirror.json", "Ideas.md"])
+    }
+
+    @Test("an unreadable manifest aborts the sync without touching anything")
+    func unreadableManifestAborts() throws {
+        mirror.sync([notebook("Work", markdown: "one")])
+        let manifestBefore = try text(NotesMirror.manifestName)
+
+        let flaky = NotesMirror(root: root, fileSystem: FlakyFileSystem(manifestUnreadable: true))
+        let result = flaky.sync([notebook("Work", markdown: "two"), notebook("Other", created: 1)])
+
+        #expect(result == NotesMirror.Result(failed: 2))
+        #expect(try files() == [".fonos-mirror.json", "Work.md"])
+        #expect(try text("Work.md") == "one")
+        #expect(try text(NotesMirror.manifestName) == manifestBefore)
     }
 }

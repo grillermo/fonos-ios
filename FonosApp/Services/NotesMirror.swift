@@ -3,6 +3,8 @@ import Foundation
 /// The file operations `NotesMirror` needs. The iCloud adapter swaps in
 /// coordinated versions; tests use the plain one against a temp directory.
 protocol MirrorFileSystem: Sendable {
+    /// Whether something exists at the URL, even if it can't be read.
+    func exists(_ url: URL) -> Bool
     /// The file's bytes, or nil when it does not exist or can't be read.
     func contents(of url: URL) -> Data?
     /// Writes atomically, creating the parent directory when needed.
@@ -12,6 +14,10 @@ protocol MirrorFileSystem: Sendable {
 }
 
 struct PlainMirrorFileSystem: MirrorFileSystem {
+    func exists(_ url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
+    }
+
     func contents(of url: URL) -> Data? {
         try? Data(contentsOf: url)
     }
@@ -56,6 +62,7 @@ struct NotesMirror: Sendable {
     }
 
     static let manifestName = ".fonos-mirror.json"
+    static let pendingDeletePrefix = "pending-delete:"
 
     let root: URL
     let fileSystem: any MirrorFileSystem
@@ -67,7 +74,12 @@ struct NotesMirror: Sendable {
 
     /// Assigns each notebook a filename, oldest first, so a later notebook with
     /// the same (case-insensitive) title gets `<name> (2).md` and keeps it.
-    static func assignFilenames(_ notebooks: [Notebook]) -> [UUID: String] {
+    /// `isTaken` reports names that are unavailable for other reasons, such as
+    /// an existing file this mirror does not own.
+    static func assignFilenames(
+        _ notebooks: [Notebook],
+        isTaken: (String) -> Bool = { _ in false }
+    ) -> [UUID: String] {
         let ordered = notebooks.sorted {
             ($0.createdAt, $0.id.uuidString) < ($1.createdAt, $1.id.uuidString)
         }
@@ -76,7 +88,7 @@ struct NotesMirror: Sendable {
         for notebook in ordered {
             var name = "\(notebook.baseName).md"
             var suffix = 2
-            while taken.contains(name.lowercased()) {
+            while taken.contains(name.lowercased()) || isTaken(name) {
                 name = "\(notebook.baseName) (\(suffix)).md"
                 suffix += 1
             }
@@ -89,8 +101,17 @@ struct NotesMirror: Sendable {
     @discardableResult
     func sync(_ notebooks: [Notebook]) -> Result {
         var result = Result()
+        // A manifest that exists but can't be read is a transient failure; going
+        // on with an empty one would orphan every file this mirror owns.
+        if fileSystem.exists(manifestURL), fileSystem.contents(of: manifestURL) == nil {
+            result.failed = notebooks.count
+            return result
+        }
         let previous = readManifest()
-        let assigned = Self.assignFilenames(notebooks)
+        let owned = Set(previous.values.map { $0.lowercased() })
+        let assigned = Self.assignFilenames(notebooks) { name in
+            !owned.contains(name.lowercased()) && fileSystem.exists(root.appendingPathComponent(name))
+        }
         var manifest: [String: String] = [:]
 
         for notebook in notebooks {
@@ -115,15 +136,15 @@ struct NotesMirror: Sendable {
         }
 
         let kept = Set(manifest.values.map { $0.lowercased() })
-        for (key, name) in previous where !kept.contains(name.lowercased()) {
+        for (_, name) in previous where !kept.contains(name.lowercased()) {
             guard Self.isSafeFilename(name) else { continue }
             do {
                 try fileSystem.remove(root.appendingPathComponent(name))
                 result.deleted += 1
             } catch {
                 result.failed += 1
-                // Retry the delete on the next run.
-                if manifest[key] == nil { manifest[key] = name }
+                // Keep ownership under a synthetic key so the next run retries.
+                manifest["\(Self.pendingDeletePrefix)\(name)"] = name
             }
         }
 
