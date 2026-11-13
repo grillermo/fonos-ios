@@ -241,6 +241,8 @@ enum STTResolver {
         switch profile.provider.lowercased() {
         case "apple":
             return AppleSTT()
+        case OnDeviceSTT.provider:
+            return OnDeviceSTT(modelID: profile.modelID)
         case "fonos":
             guard let url = URL(string: baseURL)
                 ?? URL(string: "http://localhost:9880") else {
