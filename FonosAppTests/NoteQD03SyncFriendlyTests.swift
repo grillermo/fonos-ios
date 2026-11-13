@@ -15,7 +15,7 @@ import Foundation
 @MainActor
 private func makeSyncTestContainer() throws -> ModelContainer {
     let schema = Schema([NoteContainer.self, NoteEntry.self])
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
     return try ModelContainer(for: schema, configurations: [config])
 }
 

@@ -51,7 +51,7 @@ private func makeSuccessLLM() -> LLMService {
 private func makeContainer() throws -> ModelContainer {
     try ModelContainer(
         for: Schema([DictationSession.self]),
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
     )
 }
 

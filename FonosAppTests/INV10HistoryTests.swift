@@ -15,7 +15,7 @@ import Foundation
 @MainActor
 private func makeInMemoryContainer() throws -> ModelContainer {
     let schema = Schema([DictationSession.self])
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
     return try ModelContainer(for: schema, configurations: [config])
 }
 

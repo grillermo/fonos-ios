@@ -81,7 +81,7 @@ private func makeNotes(_ stt: any STTProvider) throws
     -> (NoteViewModel, NoteService, NoteContainer, PendingRecordingStore) {
     let container = try ModelContainer(
         for: Schema([NoteContainer.self, NoteEntry.self]),
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
     )
     let service = NoteService(modelContainer: container)
     let notebook = try service.createNotebook(title: "Retry Notebook")
@@ -529,7 +529,7 @@ struct PendingRecordingNoteTests {
     func flagClearsOnLaterError() async throws {
         let container = try ModelContainer(
             for: Schema([NoteContainer.self, NoteEntry.self]),
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let service = NoteService(modelContainer: container)
         let notebook = try service.createNotebook(title: "N")

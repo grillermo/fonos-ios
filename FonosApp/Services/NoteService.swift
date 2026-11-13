@@ -154,7 +154,7 @@ final class NoteService {
     /// Convenience initializer with an in-memory container (for tests and export-only usage).
     convenience init() {
         let schema = Schema([NoteContainer.self, NoteEntry.self])
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         do {
             let container = try ModelContainer(for: schema, configurations: [config])
             self.init(modelContainer: container)

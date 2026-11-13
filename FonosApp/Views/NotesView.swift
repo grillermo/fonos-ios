@@ -29,7 +29,7 @@ struct NotesView: View {
         // Use an in-memory container for preview/default initialisation.
         // In production, ContentView passes a real container.
         let schema = Schema([NoteContainer.self, NoteEntry.self])
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = (try? ModelContainer(for: schema, configurations: [config]))
             ?? { fatalError("Cannot create default ModelContainer") }()
         let service = NoteService(modelContainer: container)

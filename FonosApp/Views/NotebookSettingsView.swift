@@ -413,7 +413,7 @@ struct NotebookSettingsView: View {
 
 #Preview {
     let schema = Schema([NoteContainer.self, NoteEntry.self])
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
     if let container = try? ModelContainer(for: schema, configurations: [config]) {
         let service = NoteService(modelContainer: container)
         if let notebook = try? service.createNotebook(title: "My Notebook") {

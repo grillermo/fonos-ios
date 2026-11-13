@@ -155,7 +155,7 @@ struct ContentView: View {
         do {
             let container = try ModelContainer(
                 for: NoteContainer.self, NoteEntry.self, DictationSession.self,
-                configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             )
             self.init(modelContainer: container)
         } catch {
