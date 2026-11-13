@@ -670,6 +670,41 @@ struct VoiceWorkflowValidationTests {
         }
     }
 
+    @Test("Operational validation accepts an on-device STT profile, which has no endpoint")
+    func operationalValidationAcceptsOnDeviceProfile() throws {
+        let (baseCatalog, definition) = voiceWorkflowFixture()
+        let onDevice = ModelProfile.onDevice(
+            modelID: "openai_whisper-medium",
+            displayName: "Medium"
+        )
+        var widgets = baseCatalog.widgets
+        let sttIndex = try #require(widgets.firstIndex { $0.id == "stt.fixture" })
+        guard case .object(var props) = widgets[sttIndex].props else {
+            Issue.record("expected object props")
+            return
+        }
+        props["model_profile"] = .string(onDevice.id)
+        widgets[sttIndex].props = .object(props)
+        let catalog = WorkflowCatalog(widgets: widgets, workflows: [definition])
+        var config = AppConfig()
+        config.modelProfiles = [
+            onDevice,
+            ModelProfile(
+                id: "llm-profile",
+                name: "LLM",
+                provider: "openai",
+                modelID: "gpt-4o",
+                capabilities: ["llm"]
+            )
+        ]
+
+        _ = try VoiceWorkflowOperationalValidator.validateMicrophone(
+            definition: definition,
+            catalog: catalog,
+            config: config
+        )
+    }
+
     @Test("Default LLM may be absent only when use_input makes degradation explicit")
     func operationalValidationHonorsLLMFailurePolicy() throws {
         let (baseCatalog, definition) = voiceWorkflowFixture()

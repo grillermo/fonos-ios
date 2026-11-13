@@ -191,7 +191,9 @@ struct VoiceWorkflowOperationalValidator: Sendable {
         profile: ModelProfile,
         capability: String
     ) -> String? {
-        if capability == "STT", profile.provider.lowercased() == "apple" {
+        // Apple Speech and on-device models run in the app: no endpoint to call.
+        if capability == "STT",
+           ["apple", OnDeviceSTT.provider].contains(profile.provider.lowercased()) {
             return nil
         }
         if profile.modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
