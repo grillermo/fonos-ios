@@ -44,7 +44,9 @@
 		A20000000000000000000016 /* VoiceWorkflowContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* VoiceWorkflowContracts.swift */; };
 		A20000000000000000000017 /* VoiceWorkflowPlanFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* VoiceWorkflowPlanFactory.swift */; };
 		A20000000000000000000018 /* VoiceWorkflowCompiler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* VoiceWorkflowCompiler.swift */; };
+		A2E2AC5A3047CEDD91685326 /* ExitMetricsReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD1B0946F0AB937F8DE07C27 /* ExitMetricsReporter.swift */; };
 		A30000000000000000000002 /* WorkflowProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000001 /* WorkflowProgressView.swift */; };
+		A89219E4F489A9C6A1A63558 /* OnDeviceSTTTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 298333AF17D203BB64BDACF7 /* OnDeviceSTTTests.swift */; };
 		AA01B001AA014D00AA014D01 /* Mode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01B001AA014D00AA014D11 /* Mode.swift */; };
 		AA01B001AA014D00AA014D02 /* ModelProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01B001AA014D00AA014D12 /* ModelProfile.swift */; };
 		AA01B001AA014D00AA014D03 /* Destination.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01B001AA014D00AA014D13 /* Destination.swift */; };
@@ -236,6 +238,7 @@
 		1C10D5000000000000000001 /* NotesMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesMirror.swift; sourceTree = "<group>"; };
 		1C10D5000000000000000003 /* ICloudNotesSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudNotesSync.swift; sourceTree = "<group>"; };
 		1C10D5000000000000000005 /* NotesMirrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesMirrorTests.swift; sourceTree = "<group>"; };
+		298333AF17D203BB64BDACF7 /* OnDeviceSTTTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OnDeviceSTTTests.swift; sourceTree = "<group>"; };
 		2AEE44FD0FD7CB450C2E3FA7 /* PendingRecordingStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingStoreTests.swift; sourceTree = "<group>"; };
 		2BF0DA12AFCC49DD543AE679 /* PendingRecording.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecording.swift; sourceTree = "<group>"; };
 		4CFAD31DA2B4FB6014C614BD /* ProcessMemory.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProcessMemory.swift; sourceTree = "<group>"; };
@@ -322,6 +325,7 @@
 		F10000000000000000000001 /* VoiceWorkflowSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowSupport.swift; sourceTree = "<group>"; };
 		F10000000000000000000003 /* VoiceWorkflowIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWorkflowIntegrationTests.swift; sourceTree = "<group>"; };
 		F6DDEA9D62FB4BBDBF863976 /* PendingRecordingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingsView.swift; sourceTree = "<group>"; };
+		FD1B0946F0AB937F8DE07C27 /* ExitMetricsReporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ExitMetricsReporter.swift; sourceTree = "<group>"; };
 		FE0001AA0001AA0001AA0001 /* NotebookTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookTemplate.swift; sourceTree = "<group>"; };
 		FE0002AA0002AA0002AA0001 /* NotebookPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookPipeline.swift; sourceTree = "<group>"; };
 		FE0003AA0003AA0003AA0001 /* SupportedLocale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportedLocale.swift; sourceTree = "<group>"; };
@@ -566,6 +570,7 @@
 				FE0009AA0009AA0009AA0001 /* SharedNotebookCatalogTests.swift */,
 				KBIPC002AA002AA002AA01A /* KeyboardIPCTests.swift */,
 				E97A1AE391D30021A6E8537B /* TerminationWatchTests.swift */,
+				298333AF17D203BB64BDACF7 /* OnDeviceSTTTests.swift */,
 			);
 			path = FonosAppTests;
 			sourceTree = "<group>";
@@ -672,6 +677,7 @@
 				FE0004AA0004AA0004AA0001 /* SharedNotebookCatalog.swift */,
 				4CFAD31DA2B4FB6014C614BD /* ProcessMemory.swift */,
 				CE3EBE2DE5D6806AF8048449 /* TerminationWatch.swift */,
+				FD1B0946F0AB937F8DE07C27 /* ExitMetricsReporter.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -994,6 +1000,7 @@
 				FE0009AA0009AA0009AA0002 /* SharedNotebookCatalogTests.swift in Sources */,
 				KBIPC002AA002AA002AA01B /* KeyboardIPCTests.swift in Sources */,
 				684757C34CA04E32FFE04071 /* TerminationWatchTests.swift in Sources */,
+				A89219E4F489A9C6A1A63558 /* OnDeviceSTTTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1115,6 +1122,7 @@
 				FE0004AA0004AA0004AA0002 /* SharedNotebookCatalog.swift in Sources */,
 				E7572BFD5F100571493D62B0 /* ProcessMemory.swift in Sources */,
 				9DA0E07D18D8CC96A90A2847 /* TerminationWatch.swift in Sources */,
+				A2E2AC5A3047CEDD91685326 /* ExitMetricsReporter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
