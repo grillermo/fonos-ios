@@ -8,6 +8,9 @@ struct FonosApp: App {
     private static let appGroupID = KeyboardIPC.appGroupID
 
     let modelContainer: ModelContainer
+    private let notesSync: ICloudNotesSync?
+
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // Register IPC observers only. Microphone input starts after the user
@@ -18,15 +21,24 @@ struct FonosApp: App {
             let schema = Schema([DictationSession.self, NoteContainer.self, NoteEntry.self])
 #if DEBUG
             let configuration = ModelConfiguration(
-                isStoredInMemoryOnly: ScreenshotDemoData.isEnabled
+                isStoredInMemoryOnly: ScreenshotDemoData.isEnabled,
+                cloudKitDatabase: .none
             )
 #else
-            let configuration = ModelConfiguration()
+            // The iCloud entitlement would otherwise switch SwiftData to CloudKit sync.
+            let configuration = ModelConfiguration(cloudKitDatabase: .none)
 #endif
             modelContainer = try ModelContainer(for: schema, configurations: [configuration])
             BackgroundRecordingService.shared.configure(
                 modelContext: modelContainer.mainContext
             )
+#if DEBUG
+            let mirrorNotes = !ScreenshotDemoData.isEnabled
+#else
+            let mirrorNotes = true
+#endif
+            notesSync = mirrorNotes ? ICloudNotesSync(modelContainer: modelContainer) : nil
+            notesSync?.start()
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -38,6 +50,9 @@ struct FonosApp: App {
                 .modelContainer(modelContainer)
                 .onOpenURL { url in
                     handleDeepLink(url)
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { notesSync?.schedule() }
                 }
         }
     }
