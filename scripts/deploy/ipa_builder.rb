@@ -5,7 +5,8 @@
 # link points at. Signed with the paid team Q3WS4MWCW3, so it installs from
 # Safari with no cable, but only on devices registered on the portal, and only
 # once these exist there (automatic signing creates profiles, not App IDs):
-#   me.chiq.fonos            (App Groups: group.me.chiq.fonos)
+#   me.chiq.fonos            (App Groups: group.me.chiq.fonos;
+#                             iCloud Documents: iCloud.me.chiq.fonos)
 #   me.chiq.fonos.keyboard   (App Groups: group.me.chiq.fonos)
 #   me.chiq.fonos.widget
 #
