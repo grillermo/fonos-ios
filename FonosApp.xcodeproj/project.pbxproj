@@ -128,6 +128,7 @@
 		WP03VON001AA001AA001001B /* NoteViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = WP03VON001AA001AA001001A /* NoteViewModel.swift */; };
 		A1F0A5E0C3D94B7E8A10B004 /* NoteAutosaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0A5E0C3D94B7E8A10B003 /* NoteAutosaver.swift */; };
 		1C10D5000000000000000002 /* NotesMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C10D5000000000000000001 /* NotesMirror.swift */; };
+		1C10D5000000000000000004 /* ICloudNotesSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C10D5000000000000000003 /* ICloudNotesSync.swift */; };
 		DD4A4E53943289228BF64FAF /* PendingRecordingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6FA4D32FA97C9F6E7ECCF6A /* PendingRecordingStore.swift */; };
 		88484A6FD6224BBF97572360 /* PendingRecordingPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CD9760FBAC468B90E5CDB9 /* PendingRecordingPlayer.swift */; };
 		D991C580F57340F3BE3BDBE2 /* PendingRecordingAutoRetrier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 950B266CD0474539B8B1A319 /* PendingRecordingAutoRetrier.swift */; };
@@ -355,6 +356,7 @@
 		WP03VON001AA001AA001001A /* NoteViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteViewModel.swift; sourceTree = "<group>"; };
 		A1F0A5E0C3D94B7E8A10B003 /* NoteAutosaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteAutosaver.swift; sourceTree = "<group>"; };
 		1C10D5000000000000000001 /* NotesMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesMirror.swift; sourceTree = "<group>"; };
+		1C10D5000000000000000003 /* ICloudNotesSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudNotesSync.swift; sourceTree = "<group>"; };
 		D6FA4D32FA97C9F6E7ECCF6A /* PendingRecordingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingStore.swift; sourceTree = "<group>"; };
 		B2CD9760FBAC468B90E5CDB9 /* PendingRecordingPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingPlayer.swift; sourceTree = "<group>"; };
 		950B266CD0474539B8B1A319 /* PendingRecordingAutoRetrier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecordingAutoRetrier.swift; sourceTree = "<group>"; };
@@ -652,6 +654,7 @@
 				WP03VON001AA001AA001001A /* NoteViewModel.swift */,
 				A1F0A5E0C3D94B7E8A10B003 /* NoteAutosaver.swift */,
 				1C10D5000000000000000001 /* NotesMirror.swift */,
+				1C10D5000000000000000003 /* ICloudNotesSync.swift */,
 				D6FA4D32FA97C9F6E7ECCF6A /* PendingRecordingStore.swift */,
 				B2CD9760FBAC468B90E5CDB9 /* PendingRecordingPlayer.swift */,
 				950B266CD0474539B8B1A319 /* PendingRecordingAutoRetrier.swift */,
@@ -1069,6 +1072,7 @@
 				WP03VON001AA001AA001001B /* NoteViewModel.swift in Sources */,
 				A1F0A5E0C3D94B7E8A10B004 /* NoteAutosaver.swift in Sources */,
 				1C10D5000000000000000002 /* NotesMirror.swift in Sources */,
+				1C10D5000000000000000004 /* ICloudNotesSync.swift in Sources */,
 				DD4A4E53943289228BF64FAF /* PendingRecordingStore.swift in Sources */,
 				88484A6FD6224BBF97572360 /* PendingRecordingPlayer.swift in Sources */,
 				D991C580F57340F3BE3BDBE2 /* PendingRecordingAutoRetrier.swift in Sources */,
