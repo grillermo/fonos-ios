@@ -3,7 +3,7 @@
     ./deploy [patch|minor|major|X.Y.Z] [--yes] [--summary ...] [--note ...]
 
 Run it on any Mac that can sign the app. Preflight stops it before anything is touched on
-no working publish route,  a locked keychain it cannot unlock, a missing
+no working publish route, a locked keychain it cannot unlock, a missing
 icon, a branch other than `main`, a dirty tree or an existing tag. A failed run restores
 `project.pbxproj`.
 
@@ -18,16 +18,17 @@ Publishing picks one route per run (see `scripts/deploy/uploader.rb`):
 Optional settings, in the gitignored dotenv file or the shell: `FONOS_UPLOAD_BASE`,
 `FONOS_PUBLISH_DIR` (a local files/ directory; forces the local route),
 `FONOS_PUBLISH_ROUTE=local|scp|api`, `FONOS_PUBLISH_HOST`, `FONOS_PUBLISH_REMOTE_DIR`,
-`FONOS_UPLOAD_TOKEN` and `FONOS_PUBLISH_VERIFY=0`. `FONOS_UNSIGNED=1` builds an unsigned `Payload/` zip and stops before
-publishing, for when signing is broken and you still need a binary.
+`FONOS_UPLOAD_TOKEN` and `FONOS_PUBLISH_VERIFY=0`.
+
+`FONOS_UNSIGNED=1` builds an unsigned `Payload/` zip and stops before publishing, for when signing is broken and you still need a binary.
 
 Deployed builds carry the manifest URL as `FonosOTAManifestURL`, which adds an Install Latest
 item to the app icon's long-press menu. The app closes itself after starting that install.
 Builds made outside `./deploy` have no manifest URL and offer no such item.
 
 Builds an ad-hoc `.ipa` signed by team Q3WS4MWCW3 as `me.chiq.fonos`, publishes it with
-its manifest, icon and install page to the file_server (served at `files.chiq.me`), then commits the version bump, tags `fonos-ota-vX.Y.Z` and pushes to the
-`github` remote (grillermo/fonos-ios).
+its manifest, icon and install page to the file_server (served at `files.chiq.me`), then commits the version bump, tags
+`fonos-ota-vX.Y.Z` and pushes to the `github` remote (grillermo/fonos-ios).
 
 Install page (stable URL, open in Safari): https://files.chiq.me/files/fonos-install.html
 
