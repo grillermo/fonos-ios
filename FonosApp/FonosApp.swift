@@ -48,6 +48,7 @@ struct FonosApp: App {
         WindowGroup {
             ContentView(modelContainer: modelContainer)
                 .modelContainer(modelContainer)
+                .unexpectedExitAlert()
                 .onOpenURL { url in
                     handleDeepLink(url)
                 }

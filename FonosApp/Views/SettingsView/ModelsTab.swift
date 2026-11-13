@@ -270,6 +270,20 @@ extension ModelsTab {
             .listRowBackground(cardBg)
             .listRowSeparatorTint(separator)
 
+            NavigationLink {
+                OnDeviceModelsView(config: $config)
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "iphone.gen3")
+                        .foregroundColor(amber)
+                        .frame(width: 22)
+                    Text("On-device models")
+                        .foregroundColor(textPrimary)
+                }
+            }
+            .listRowBackground(cardBg)
+            .listRowSeparatorTint(separator)
+
             // LLM default
             Picker(selection: $config.llmProfile) {
                 Text("Not configured").tag("")
